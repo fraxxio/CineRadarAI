@@ -1,10 +1,16 @@
 "use client";
 import { Menu, X } from "lucide-react";
 import Link from "next/link";
+import { UserButton } from "@clerk/nextjs";
 import React, { useState } from "react";
 
-const Navbar = () => {
+type NavbarProps = {
+  userId: string | null;
+};
+
+const Navbar = ({ userId }: NavbarProps) => {
   const [isNavOpen, setIsNavOpen] = useState(false);
+
   function hMovibileNavbar() {
     const menu = document.getElementById("menu") as HTMLElement;
     const x = document.getElementById("x") as HTMLElement;
@@ -30,15 +36,15 @@ const Navbar = () => {
           <a href='/' className='text-2xl font-bold'>
             CineRadar
           </a>
-          <ul className='flex gap-4 font-medium max-[450px]:hidden'>
+          <ul className='flex items-center gap-4 font-medium max-[450px]:hidden'>
             <li>
               <Link href='#'>Trending</Link>
             </li>
             <li>
-              <Link href='#'>My list</Link>
+              <Link href='/my-list'>My list</Link>
             </li>
             <li>
-              <Link href='#'>Sign In</Link>
+              {userId ? <UserButton afterSignOutUrl='/' /> : <Link href='/sign-in'>Sign In</Link>}
             </li>
           </ul>
           <button className='min-[450px]:hidden' onClick={hMovibileNavbar}>
@@ -56,10 +62,10 @@ const Navbar = () => {
             <Link href='#'>Trending</Link>
           </li>
           <li>
-            <Link href='#'>My list</Link>
+            <Link href='/mylist'>My list</Link>
           </li>
           <li>
-            <Link href='#'>Sign In</Link>
+            <Link href='/signin'>Sign In</Link>
           </li>
         </ul>
       </div>
