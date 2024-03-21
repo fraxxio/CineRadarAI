@@ -1,7 +1,11 @@
+import Filters from "@/Components/Filters";
+import Trending from "@/Components/Trending";
+
 export default function Home() {
   return (
-    <main className='container'>
-      <h1>Hello world</h1>
+    <main className='container flex flex-col justify-between gap-20 py-20'>
+      <Filters />
+      <Trending />
     </main>
   );
 }

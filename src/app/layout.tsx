@@ -3,6 +3,7 @@ import { Sora } from "next/font/google";
 import Navbar from "@/Components/Navbar";
 import { ClerkProvider, auth } from "@clerk/nextjs";
 import "./globals.css";
+import Footer from "@/Components/Footer";
 
 const sora = Sora({ subsets: ["latin"] });
 
@@ -24,6 +25,7 @@ export default function RootLayout({
         <body className={sora.className}>
           <Navbar userId={userId} />
           {children}
+          <Footer />
         </body>
       </html>
     </ClerkProvider>
