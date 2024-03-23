@@ -23,6 +23,7 @@ const config: Config = {
         "primary-bg": "#0E1428",
         "primary-text": "#0ba6cf",
         "dark-bg": "#060b1c",
+        "blue-darker": "#116A8D",
       },
     },
   },
