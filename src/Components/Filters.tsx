@@ -1,12 +1,12 @@
 import { fetchMovies } from "@/app/actions";
 import React from "react";
 import SubmitBtn from "./ui/SubmitBtn";
-import Combobox from "./ui/Combobox";
+import LangSelect from "./ui/LangSelect";
 
 const Filters = () => {
   return (
-    <section className='border border-border-clr bg-primary-bg rounded-sm p-4'>
-      <h1 className='text-2xl font-semibold text-center pb-12 pt-4'>
+    <section className='border border-border-clr bg-primary-bg rounded-sm px-4 py-8'>
+      <h1 className='text-2xl font-semibold text-center pb-12'>
         Apply filters to generate recommendations
       </h1>
       <div>
@@ -18,8 +18,7 @@ const Filters = () => {
             className='bg-dark-bg p-3 rounded-sm border border-border-clr outline-none focus:ring focus:ring-primary-text focus:border-transparent placeholder-primary-text placeholder-opacity-45'
           />
           <div className='flex gap-4'>
-            <Combobox />
-            <Combobox />
+            <LangSelect />
           </div>
           <SubmitBtn />
         </form>
