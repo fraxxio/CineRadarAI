@@ -20,12 +20,12 @@ const Navbar = ({ userId }: NavbarProps) => {
       setIsNavOpen(false);
       menu.classList.remove("hidden");
       x.classList.add("hidden");
-      MobileNav.classList.replace("-translate-y-[0rem]", "-translate-y-[12rem]");
+      MobileNav.classList.replace("translate-y-[4rem]", "-translate-y-[10rem]");
     } else {
       setIsNavOpen(true);
       menu.classList.add("hidden");
       x.classList.remove("hidden");
-      MobileNav.classList.replace("-translate-y-[12rem]", "-translate-y-[0rem]");
+      MobileNav.classList.replace("-translate-y-[10rem]", "translate-y-[4rem]");
     }
   }
 
@@ -36,9 +36,12 @@ const Navbar = ({ userId }: NavbarProps) => {
           <a href='/' className='text-2xl font-bold'>
             CineRadar
           </a>
-          <ul className='flex items-center gap-4 font-medium max-[510px]:hidden'>
+          <ul className='flex items-center gap-4 font-medium max-[640px]:hidden'>
             <li>
               <Link href='#'>Trending</Link>
+            </li>
+            <li>
+              <Link href='/search'>Manual Search</Link>
             </li>
             <li>
               <Link href='/my-list'>My list</Link>
@@ -50,7 +53,7 @@ const Navbar = ({ userId }: NavbarProps) => {
               {userId ? <UserButton afterSignOutUrl='/' /> : <Link href='/sign-in'>Sign In</Link>}
             </li>
           </ul>
-          <button className='min-[510px]:hidden' onClick={hMovibileNavbar}>
+          <button className='min-[640px]:hidden' onClick={hMovibileNavbar}>
             <Menu id='menu' />
             <X id='x' className='hidden' />
           </button>
@@ -58,11 +61,14 @@ const Navbar = ({ userId }: NavbarProps) => {
       </nav>
       <div
         id='MobileNav'
-        className='bg-primary-bg border-b border-border-clr z-0 fixed w-full duration-[400ms] ease-in -translate-y-[12rem]'
+        className='bg-primary-bg border-b border-border-clr z-0 fixed w-full duration-[400ms] ease-in -translate-y-[10rem]'
       >
         <ul className='flex flex-col items-center gap-4 font-medium min-[510px]:hidden py-4'>
           <li>
             <Link href='#'>Trending</Link>
+          </li>
+          <li>
+            <Link href='/search'>Manual Search</Link>
           </li>
           <li>
             <Link href='/mylist'>My list</Link>

@@ -11,6 +11,9 @@
 body {
   color: var(--primary-text-clr);
   background: var(--background-clr);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 @layer utilities {

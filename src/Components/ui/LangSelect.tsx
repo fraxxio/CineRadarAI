@@ -32,7 +32,7 @@ export default async function LangSelect() {
 
   return (
     <select
-      name='languages'
+      name='language'
       className='bg-dark-bg border border-border-clr p-2 rounded-sm focus:outline outline-primary-text outline-1 duration-200'
     >
       <option value='' className='bg-primary-text text-primary-bg last:rounded-md'>

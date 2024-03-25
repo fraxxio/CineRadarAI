@@ -13,10 +13,9 @@ const Filters = () => {
       </h1>
       <div>
         <form action={fetchMovies} className='flex flex-col gap-8 w-[80%] mx-auto'>
-          <textarea
-            rows={1}
-            name='description'
-            placeholder='Movie about war, release must be after 2000s'
+          <input
+            name='query'
+            placeholder='Type keywords...'
             className='bg-dark-bg p-3 rounded-sm border border-border-clr outline-none focus:ring focus:ring-primary-text focus:border-transparent placeholder-primary-text placeholder-opacity-45'
           />
           <div className='flex gap-4 items-center justify-center'>
@@ -24,7 +23,11 @@ const Filters = () => {
             <SelectYear />
             <IncludeAdult />
           </div>
-          <SubmitBtn />
+          <div className='mx-auto flex items-center gap-4'>
+            <SubmitBtn text='Search movies' searchTarget='movie' />
+            <p className='font-medium text-lg'>or</p>
+            <SubmitBtn text='Search TV shows' searchTarget='tv' />
+          </div>
         </form>
       </div>
     </section>
