@@ -1,5 +1,5 @@
 "use server";
 
 export async function fetchMovies(formData: FormData) {
-  console.log(formData.get("description"));
+  console.log(formData.get("adult"));
 }

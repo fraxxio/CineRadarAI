@@ -2,6 +2,8 @@ import { fetchMovies } from "@/app/actions";
 import React from "react";
 import SubmitBtn from "./ui/SubmitBtn";
 import LangSelect from "./ui/LangSelect";
+import { IncludeAdult } from "./ui/IncludeAdult";
+import { SelectYear } from "./ui/SelectYear";
 
 const Filters = () => {
   return (
@@ -17,8 +19,10 @@ const Filters = () => {
             placeholder='Movie about war, release must be after 2000s'
             className='bg-dark-bg p-3 rounded-sm border border-border-clr outline-none focus:ring focus:ring-primary-text focus:border-transparent placeholder-primary-text placeholder-opacity-45'
           />
-          <div className='flex gap-4'>
+          <div className='flex gap-4 items-center justify-center'>
             <LangSelect />
+            <SelectYear />
+            <IncludeAdult />
           </div>
           <SubmitBtn />
         </form>
