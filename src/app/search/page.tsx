@@ -1,10 +1,11 @@
 import Filters from "@/Components/Filters";
-import React from "react";
+import SearchResults from "@/Components/SearchResults";
 
 export default function page() {
   return (
-    <main className='container flex flex-col justify-between gap-20 py-20'>
+    <main className='container flex gap-12 py-20 max-lg:flex-col'>
       <Filters />
+      <SearchResults />
     </main>
   );
 }
