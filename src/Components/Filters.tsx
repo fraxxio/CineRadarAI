@@ -6,7 +6,7 @@ import { fetchMovies } from "@/app/actions";
 
 const Filters = () => {
   return (
-    <aside className="sticky h-fit rounded-sm border border-border-clr bg-primary-bg px-4 py-8 max-lg:w-full lg:max-w-[22rem]">
+    <aside className="sticky top-20 h-fit rounded-sm border border-border-clr bg-primary-bg px-4 py-8 max-lg:w-full lg:max-w-[22rem]">
       <h1 className="pb-12 text-center text-xl font-semibold">
         Apply filters to generate recommendations
       </h1>

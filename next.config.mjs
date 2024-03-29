@@ -4,6 +4,15 @@ const nextConfig = {
     TMDB_BASE_URL: process.env.TMDB_BASE_URL,
     TMDB_ACCESS_TOKEN: process.env.TMDB_ACCESS_TOKEN,
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "image.tmdb.org",
+        port: "",
+      },
+    ],
+  },
 };
 
 export default nextConfig;

@@ -1,4 +1,5 @@
 import { movieFilterValues } from "@/lib/validation";
+import MovieCard from "./ui/MovieCard";
 
 type SearchResultsProps = {
   filterValues: movieFilterValues;
@@ -10,6 +11,30 @@ type fetchMoviesProps = {
   year?: string | undefined;
   adult?: boolean | undefined;
   btn?: string | undefined;
+};
+
+type Results = {
+  adult: boolean;
+  backdrop_path: string;
+  genre_ids: Array<number>;
+  id: number;
+  original_language: string;
+  original_title: string;
+  overview: string;
+  popularity: number;
+  poster_path: string;
+  release_date: string;
+  title: string;
+  video: boolean;
+  vote_average: number;
+  vote_count: number;
+};
+
+type FetchedData = {
+  page: number;
+  results: Results[];
+  total_pages: number;
+  total_results: number;
 };
 
 async function fetchMovies({
@@ -31,16 +56,21 @@ async function fetchMovies({
 
   const query = searchString === undefined ? "" : `query=${searchString}`;
   const Year = year === undefined ? "" : `&year=${year}`;
+
   const fetchURL = `${process.env.TMDB_BASE_URL}/discover/${btn}?${query}&include_adult=${adult}&language=${language}&page=1${Year}&sort_by=popularity.desc`;
 
   try {
     const response = await fetch(fetchURL, options);
     if (!response.ok) {
-      throw new Error("Failed to fetch languages");
+      const error = new Error(
+        `Failed to fetch search results (Status: ${response.status})`,
+      );
+      throw error;
     }
-    return response.json();
+    const data = await response.json();
+    return data;
   } catch (error) {
-    console.error("Error fetching languages:", error);
+    console.error("Error fetching search results:", error);
     throw error;
   }
 }
@@ -53,7 +83,7 @@ export default async function SearchResults({
     .filter((word) => word.length > 0)
     .join("|");
 
-  const fetchedData = await fetchMovies({
+  const fetchedData: FetchedData = await fetchMovies({
     searchString,
     language,
     year,
@@ -62,6 +92,10 @@ export default async function SearchResults({
   });
 
   return (
-    <section className="max-w-[70%]">{JSON.stringify(fetchedData)}</section>
+    <section className="grid w-full max-w-[70%] grid-cols-3 gap-4">
+      {fetchedData.results.map((movie: Results) => {
+        return <MovieCard key={movie.id} movie={movie} />;
+      })}
+    </section>
   );
 }
