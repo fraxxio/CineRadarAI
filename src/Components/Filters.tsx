@@ -4,10 +4,6 @@ import { SelectYear } from "./ui/SelectYear";
 import LangSelect from "./ui/LangSelect";
 import { fetchMovies } from "@/app/actions";
 
-type FiltersProps = {
-  fetchTMDB: (formData: FormData) => void;
-};
-
 const Filters = () => {
   return (
     <aside className='border sticky border-border-clr bg-primary-bg rounded-sm px-4 py-8 lg:max-w-[22rem] max-lg:w-full'>
