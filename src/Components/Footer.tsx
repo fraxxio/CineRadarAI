@@ -2,9 +2,9 @@ import React from "react";
 
 const Footer = () => {
   return (
-    <footer className='bg-primary-bg font-semibold text-center py-1 border-t border-border-clr mt-auto'>
+    <footer className="mt-auto border-t border-border-clr bg-primary-bg py-1 text-center font-semibold">
       Created by{" "}
-      <a href='https://github.com/fraxxio/' className='underline'>
+      <a href="https://github.com/fraxxio/" className="underline">
         DevRokas
       </a>
     </footer>

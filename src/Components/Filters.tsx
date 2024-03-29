@@ -6,23 +6,26 @@ import { fetchMovies } from "@/app/actions";
 
 const Filters = () => {
   return (
-    <aside className='border sticky border-border-clr bg-primary-bg rounded-sm px-4 py-8 lg:max-w-[22rem] max-lg:w-full'>
-      <h1 className='text-xl font-semibold text-center pb-12'>
+    <aside className="sticky rounded-sm border border-border-clr bg-primary-bg px-4 py-8 max-lg:w-full lg:max-w-[22rem]">
+      <h1 className="pb-12 text-center text-xl font-semibold">
         Apply filters to generate recommendations
       </h1>
-      <form action={fetchMovies} className='flex flex-col gap-4 w-full max-lg:items-center'>
+      <form
+        action={fetchMovies}
+        className="flex w-full flex-col gap-4 max-lg:items-center"
+      >
         <input
-          name='query'
-          placeholder='Type keywords...'
-          className='bg-dark-bg p-3 rounded-sm border border-border-clr outline-none focus:ring focus:ring-primary-text focus:border-transparent placeholder-primary-text placeholder-opacity-45 w-full'
+          name="query"
+          placeholder="Type keywords..."
+          className="w-full rounded-sm border border-border-clr bg-dark-bg p-3 placeholder-primary-text placeholder-opacity-45 outline-none focus:border-transparent focus:ring focus:ring-primary-text"
         />
         <LangSelect />
         <SelectYear />
         <IncludeAdult />
-        <div className='mx-auto flex items-center gap-4 pt-4 max-[415px]:flex-col max-[415px]:gap-2'>
-          <SubmitBtn text='Search movies' searchTarget='movie' />
-          <p className='font-medium text-lg'>or</p>
-          <SubmitBtn text='Search TV shows' searchTarget='tv' />
+        <div className="mx-auto flex items-center gap-4 pt-4 max-[415px]:flex-col max-[415px]:gap-2">
+          <SubmitBtn text="Search movies" searchTarget="movie" />
+          <p className="text-lg font-medium">or</p>
+          <SubmitBtn text="Search TV shows" searchTarget="tv" />
         </div>
       </form>
     </aside>

@@ -20,8 +20,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider afterSignInUrl='/' afterSignUpUrl='/'>
-      <html lang='en'>
+    <ClerkProvider afterSignInUrl="/" afterSignUpUrl="/">
+      <html lang="en">
         <body className={sora.className}>
           <Navbar userId={userId} />
           {children}

@@ -12,15 +12,15 @@ const SubmitBtn = ({ text, searchTarget }: BtnProps) => {
   const { pending } = useFormStatus();
   return (
     <button
-      name='btn'
+      name="btn"
       value={searchTarget}
-      type='submit'
+      type="submit"
       aria-disabled={pending}
-      className='bg-primary-text rounded-sm w-fit text-primary-bg font-medium p-2 border-2 border-primary-text hover:bg-primary-bg hover:text-primary-text duration-300 text-sm'
+      className="w-fit rounded-sm border-2 border-primary-text bg-primary-text p-2 text-sm font-medium text-primary-bg duration-300 hover:bg-primary-bg hover:text-primary-text"
     >
       {pending ? (
-        <p className='flex items-center gap-2'>
-          <span className='animate-spin'>
+        <p className="flex items-center gap-2">
+          <span className="animate-spin">
             <LoaderCircle size={18} />
           </span>
           Generating...

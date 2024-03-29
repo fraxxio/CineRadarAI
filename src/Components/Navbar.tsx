@@ -31,53 +31,61 @@ const Navbar = ({ userId }: NavbarProps) => {
 
   return (
     <>
-      <nav className='bg-primary-bg border-b border-border-clr z-10 sticky'>
-        <div className='flex items-center justify-between container py-4'>
-          <a href='/' className='text-2xl font-bold'>
+      <nav className="sticky z-10 border-b border-border-clr bg-primary-bg">
+        <div className="container flex items-center justify-between py-4">
+          <a href="/" className="text-2xl font-bold">
             CineRadar
           </a>
-          <ul className='flex items-center gap-4 font-medium max-[640px]:hidden'>
+          <ul className="flex items-center gap-4 font-medium max-[640px]:hidden">
             <li>
-              <Link href='#'>Trending</Link>
+              <Link href="#">Trending</Link>
             </li>
             <li>
-              <Link href='/search'>Manual Search</Link>
+              <Link href="/search">Manual Search</Link>
             </li>
             <li>
-              <Link href='/my-list'>My list</Link>
+              <Link href="/my-list">My list</Link>
             </li>
             <li>
-              <Link href='#'>About</Link>
+              <Link href="#">About</Link>
             </li>
             <li>
-              {userId ? <UserButton afterSignOutUrl='/' /> : <Link href='/sign-in'>Sign In</Link>}
+              {userId ? (
+                <UserButton afterSignOutUrl="/" />
+              ) : (
+                <Link href="/sign-in">Sign In</Link>
+              )}
             </li>
           </ul>
-          <button className='min-[640px]:hidden' onClick={hMovibileNavbar}>
-            <Menu id='menu' />
-            <X id='x' className='hidden' />
+          <button className="min-[640px]:hidden" onClick={hMovibileNavbar}>
+            <Menu id="menu" />
+            <X id="x" className="hidden" />
           </button>
         </div>
       </nav>
       <div
-        id='MobileNav'
-        className='bg-primary-bg border-b border-border-clr z-0 fixed w-full duration-[400ms] ease-in -translate-y-[10rem]'
+        id="MobileNav"
+        className="fixed z-0 w-full -translate-y-[10rem] border-b border-border-clr bg-primary-bg duration-[400ms] ease-in"
       >
-        <ul className='flex flex-col items-center gap-4 font-medium min-[510px]:hidden py-4'>
+        <ul className="flex flex-col items-center gap-4 py-4 font-medium min-[510px]:hidden">
           <li>
-            <Link href='#'>Trending</Link>
+            <Link href="#">Trending</Link>
           </li>
           <li>
-            <Link href='/search'>Manual Search</Link>
+            <Link href="/search">Manual Search</Link>
           </li>
           <li>
-            <Link href='/mylist'>My list</Link>
+            <Link href="/mylist">My list</Link>
           </li>
           <li>
-            <Link href='#'>About</Link>
+            <Link href="#">About</Link>
           </li>
           <li>
-            {userId ? <UserButton afterSignOutUrl='/' /> : <Link href='/sign-in'>Sign In</Link>}
+            {userId ? (
+              <UserButton afterSignOutUrl="/" />
+            ) : (
+              <Link href="/sign-in">Sign In</Link>
+            )}
           </li>
         </ul>
       </div>
