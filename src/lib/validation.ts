@@ -8,4 +8,4 @@ export const movieFilterSchema = z.object({
   btn: z.string().optional(),
 });
 
-export type movieFilterSchema = z.infer<typeof movieFilterSchema>;
+export type movieFilterValues = z.infer<typeof movieFilterSchema>;
