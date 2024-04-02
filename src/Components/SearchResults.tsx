@@ -3,6 +3,18 @@ import MovieCard from "./ui/MovieCard";
 
 type SearchResultsProps = {
   filterValues: movieFilterValues;
+  getTitle: ({
+    query,
+    language,
+    year,
+    adult,
+  }: {
+    query: string;
+    language?: string | undefined;
+    year?: string | undefined;
+    adult?: boolean | undefined;
+    btn?: string | undefined;
+  }) => string;
 };
 
 type fetchMoviesProps = {
@@ -80,6 +92,7 @@ async function fetchMovies({
 
 export default async function SearchResults({
   filterValues: { query, language, year, adult, btn },
+  getTitle,
 }: SearchResultsProps) {
   const searchString = query
     ?.split(" ")
@@ -95,16 +108,21 @@ export default async function SearchResults({
   });
 
   return (
-    <section className="grid w-full max-w-[70%] grid-cols-3 gap-4 max-lg:max-w-full max-[700px]:grid-cols-2 max-[450px]:grid-cols-1">
-      {fetchedData.results.length === 0 ? (
-        <h1 className="col-span-3 row-start-2 w-full text-center text-2xl font-medium">
-          No results with these filters were found. Try something else.
-        </h1>
-      ) : (
-        fetchedData.results.map((movie: Results) => {
-          return <MovieCard key={movie.id} movie={movie} />;
-        })
-      )}
+    <section className="w-full max-w-[70%] max-lg:max-w-full">
+      <h1 className="pb-8 text-center text-2xl font-medium">
+        {getTitle({ query, language, year, adult })}
+      </h1>
+      <div className="grid grid-cols-3 gap-4 max-[700px]:grid-cols-2 max-[450px]:grid-cols-1">
+        {fetchedData.results.length === 0 ? (
+          <h1 className="col-span-3 row-start-2 w-full text-center text-2xl font-medium">
+            No results with these filters were found. Try something else.
+          </h1>
+        ) : (
+          fetchedData.results.map((movie: Results) => {
+            return <MovieCard key={movie.id} movie={movie} />;
+          })
+        )}
+      </div>
     </section>
   );
 }
