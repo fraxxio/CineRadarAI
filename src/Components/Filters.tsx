@@ -3,10 +3,17 @@ import { IncludeAdult } from "./ui/IncludeAdult";
 import { SelectYear } from "./ui/SelectYear";
 import LangSelect from "./ui/LangSelect";
 import { fetchMovies } from "@/app/actions";
+import { movieFilterValues } from "@/lib/validation";
 
-const Filters = () => {
+type SearchResultsProps = {
+  filterValues: movieFilterValues;
+};
+
+const Filters = ({
+  filterValues: { query, language, year, adult, btn },
+}: SearchResultsProps) => {
   return (
-    <aside className="sticky top-20 h-fit rounded-sm border border-border-clr bg-primary-bg px-4 py-8 max-lg:w-full lg:max-w-[22rem]">
+    <aside className="sticky top-20 h-fit rounded-sm border border-border-clr bg-primary-bg px-4 py-8 max-lg:static">
       <h1 className="pb-12 text-center text-xl font-semibold">
         Apply filters to search
       </h1>
@@ -23,7 +30,7 @@ const Filters = () => {
         <LangSelect />
         <SelectYear />
         <IncludeAdult />
-        <div className="mx-auto flex items-center gap-4 pt-4 max-[415px]:flex-col max-[415px]:gap-2">
+        <div className="flex flex-col items-center gap-2 pt-4 max-[480px]:w-full">
           <SubmitBtn text="Search movies" searchTarget="movie" />
           <p className="text-lg font-medium">or</p>
           <SubmitBtn text="Search TV shows" searchTarget="tv" />

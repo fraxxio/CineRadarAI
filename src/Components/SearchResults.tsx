@@ -95,7 +95,7 @@ export default async function SearchResults({
   });
 
   return (
-    <section className="grid w-full max-w-[70%] grid-cols-3 gap-4">
+    <section className="grid w-full max-w-[70%] grid-cols-3 gap-4 max-lg:max-w-full max-[700px]:grid-cols-2 max-[470px]:grid-cols-1">
       {fetchedData.results.length === 0 ? (
         <h1 className="col-span-3 row-start-2 w-full text-center text-2xl font-medium">
           No results with these filters were found. Try something else.
