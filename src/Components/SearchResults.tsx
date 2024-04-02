@@ -24,7 +24,9 @@ type Results = {
   popularity: number;
   poster_path: string;
   release_date: string;
+  first_air_date: string;
   title: string;
+  name: string;
   video: boolean;
   vote_average: number;
   vote_count: number;
@@ -56,8 +58,9 @@ async function fetchMovies({
 
   const query = searchString === undefined ? "" : `query=${searchString}`;
   const Year = year === undefined ? "" : `&year=${year}`;
+  const FetchType = query === "" ? "discover" : "search";
 
-  const fetchURL = `${process.env.TMDB_BASE_URL}/discover/${btn}?${query}&include_adult=${adult}&language=${language}&page=1${Year}&sort_by=popularity.desc`;
+  const fetchURL = `${process.env.TMDB_BASE_URL}/${FetchType}/${btn}?${query}&include_adult=${adult}&language=${language}&page=1${Year}`;
 
   try {
     const response = await fetch(fetchURL, options);
@@ -93,9 +96,15 @@ export default async function SearchResults({
 
   return (
     <section className="grid w-full max-w-[70%] grid-cols-3 gap-4">
-      {fetchedData.results.map((movie: Results) => {
-        return <MovieCard key={movie.id} movie={movie} />;
-      })}
+      {fetchedData.results.length === 0 ? (
+        <h1 className="col-span-3 row-start-2 w-full text-center text-2xl font-medium">
+          No results with these filters were found. Try something else.
+        </h1>
+      ) : (
+        fetchedData.results.map((movie: Results) => {
+          return <MovieCard key={movie.id} movie={movie} />;
+        })
+      )}
     </section>
   );
 }

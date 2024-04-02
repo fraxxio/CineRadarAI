@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const movieFilterSchema = z.object({
-  query: z.string().optional(),
+  query: z.string(),
   language: z.string().optional(),
   year: z.string().optional(),
   adult: z.coerce.boolean().optional(),

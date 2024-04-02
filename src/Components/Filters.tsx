@@ -8,7 +8,7 @@ const Filters = () => {
   return (
     <aside className="sticky top-20 h-fit rounded-sm border border-border-clr bg-primary-bg px-4 py-8 max-lg:w-full lg:max-w-[22rem]">
       <h1 className="pb-12 text-center text-xl font-semibold">
-        Apply filters to generate recommendations
+        Apply filters to search
       </h1>
       <form
         action={fetchMovies}
@@ -17,6 +17,7 @@ const Filters = () => {
         <input
           name="query"
           placeholder="Type keywords..."
+          required
           className="w-full rounded-sm border border-border-clr bg-dark-bg p-3 placeholder-primary-text placeholder-opacity-45 outline-none focus:border-transparent focus:ring focus:ring-primary-text"
         />
         <LangSelect />

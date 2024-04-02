@@ -4,7 +4,7 @@ import { movieFilterValues } from "@/lib/validation";
 
 type PageProps = {
   searchParams: {
-    query?: string;
+    query: string | "";
     language?: string;
     year?: string;
     adult?: string;
