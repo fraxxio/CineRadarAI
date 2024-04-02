@@ -1,6 +1,6 @@
 import React from "react";
 
-export const SelectYear = () => {
+export const SelectYear = (props: React.HTMLProps<HTMLSelectElement>) => {
   const currentYear = new Date().getFullYear();
   const years = Array.from(
     { length: currentYear - 1887 },
@@ -10,6 +10,7 @@ export const SelectYear = () => {
   return (
     <select
       name="year"
+      {...props}
       className="rounded-sm border border-border-clr bg-dark-bg p-2 outline-1 outline-primary-text duration-200 focus:outline max-lg:w-[12rem] max-[480px]:w-full"
     >
       <option

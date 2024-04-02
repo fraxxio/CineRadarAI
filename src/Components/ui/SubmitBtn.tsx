@@ -3,11 +3,14 @@ import { LoaderCircle } from "lucide-react";
 import { useFormStatus } from "react-dom";
 
 type BtnProps = {
-  text: string;
   searchTarget: string;
+  children: React.ReactNode;
 };
 
-const SubmitBtn = ({ text, searchTarget }: BtnProps) => {
+const SubmitBtn = (
+  { searchTarget, children }: BtnProps,
+  props: React.ButtonHTMLAttributes<HTMLButtonElement>,
+) => {
   const { pending } = useFormStatus();
 
   return (
@@ -16,6 +19,7 @@ const SubmitBtn = ({ text, searchTarget }: BtnProps) => {
       value={searchTarget}
       type="submit"
       disabled={pending}
+      {...props}
       className="w-full rounded-sm border-2 border-primary-text bg-primary-text p-2 text-sm font-medium text-primary-bg duration-300 hover:bg-primary-bg hover:text-primary-text disabled:bg-slate-700"
     >
       {pending ? (
@@ -26,7 +30,7 @@ const SubmitBtn = ({ text, searchTarget }: BtnProps) => {
           Generating...
         </p>
       ) : (
-        text
+        children
       )}
     </button>
   );
