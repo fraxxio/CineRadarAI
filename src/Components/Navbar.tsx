@@ -31,7 +31,10 @@ const Navbar = ({ userId }: NavbarProps) => {
 
   return (
     <>
-      <nav className="sticky top-0 z-10 border-b border-border-clr bg-primary-bg">
+      <nav
+        id="top"
+        className="sticky top-0 z-10 border-b border-border-clr bg-primary-bg"
+      >
         <div className="container flex items-center justify-between py-4">
           <a href="/" className="text-2xl font-bold">
             CineRadar

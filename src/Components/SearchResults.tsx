@@ -1,5 +1,6 @@
 import { movieFilterValues } from "@/lib/validation";
 import MovieCard from "./ui/MovieCard";
+import { Pages } from "./ui/Pages";
 
 type SearchResultsProps = {
   filterValues: movieFilterValues;
@@ -23,6 +24,7 @@ type fetchMoviesProps = {
   year?: string | undefined;
   adult?: boolean | undefined;
   btn?: string | undefined;
+  page?: string | undefined;
 };
 
 type Results = {
@@ -57,6 +59,7 @@ async function fetchMovies({
   year,
   adult,
   btn,
+  page,
 }: fetchMoviesProps) {
   "use server";
 
@@ -72,7 +75,7 @@ async function fetchMovies({
   const Year = year === undefined ? "" : `&year=${year}`;
   const FetchType = query === "" ? "discover" : "search";
 
-  const fetchURL = `${process.env.TMDB_BASE_URL}/${FetchType}/${btn}?${query}&include_adult=${adult}&language=${language}&page=1${Year}`;
+  const fetchURL = `${process.env.TMDB_BASE_URL}/${FetchType}/${btn}?${query}&include_adult=${adult}&language=${language}&page=${page}${Year}`;
 
   try {
     const response = await fetch(fetchURL, options);
@@ -91,7 +94,7 @@ async function fetchMovies({
 }
 
 export default async function SearchResults({
-  filterValues: { query, language, year, adult, btn },
+  filterValues: { query, language, year, adult, btn, page },
   getTitle,
 }: SearchResultsProps) {
   const searchString = query
@@ -105,6 +108,7 @@ export default async function SearchResults({
     year,
     adult,
     btn,
+    page,
   });
 
   return (
@@ -122,6 +126,16 @@ export default async function SearchResults({
             return <MovieCard key={movie.id} movie={movie} />;
           })
         )}
+        <Pages
+          page={page}
+          totalResults={fetchedData.total_results}
+          totalPages={fetchedData.total_pages}
+          language={language}
+          query={query}
+          year={year}
+          adult={adult}
+          btn={btn}
+        />
       </div>
     </section>
   );

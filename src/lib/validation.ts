@@ -6,6 +6,7 @@ export const movieFilterSchema = z.object({
   year: z.string().optional(),
   adult: z.coerce.boolean().optional(),
   btn: z.string().optional(),
+  page: z.string().optional(),
 });
 
 export type movieFilterValues = z.infer<typeof movieFilterSchema>;

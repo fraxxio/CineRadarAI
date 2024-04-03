@@ -10,6 +10,7 @@ type PageProps = {
     year?: string;
     adult?: string;
     btn?: string;
+    page?: string;
   };
 };
 
@@ -19,7 +20,7 @@ function getTitle({ query, language, year, adult }: movieFilterValues) {
   const including = adult ? `, including adult.` : "";
   const title = query
     ? `Results for: ${query}${lang}${Year}${including}`
-    : "Popular movies";
+    : "Trending movies";
 
   return title;
 }
@@ -35,14 +36,21 @@ export function generateMetadata({
     adult: adult === "true",
   });
   const title =
-    dynamicTitle === "Popular movies" ? "Manual search" : dynamicTitle;
+    dynamicTitle === "Trending movies" ? "Manual search" : dynamicTitle;
   return {
     title: `${title} | CineRadar`,
   };
 }
 
 export default function page({
-  searchParams: { query, language = "en", year, adult, btn = "movie" },
+  searchParams: {
+    query,
+    language = "en",
+    year,
+    adult,
+    btn = "movie",
+    page = "1",
+  },
 }: PageProps) {
   const filterValues: movieFilterValues = {
     query,
@@ -50,6 +58,7 @@ export default function page({
     year,
     btn,
     adult: adult === "true",
+    page,
   };
 
   return (
@@ -59,3 +68,4 @@ export default function page({
     </main>
   );
 }
+// TODO add scrolling to top after changing the page
