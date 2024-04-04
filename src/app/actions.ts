@@ -17,20 +17,3 @@ export async function fetchMovies(formData: FormData) {
 
   redirect(`/search?${searchParams.toString()}`);
 }
-
-export async function changePage(formData: FormData) {
-  const values = Object.fromEntries(formData.entries());
-  const { query, language, year, adult, btn, page } =
-    movieFilterSchema.parse(values);
-
-  const searchParams = new URLSearchParams({
-    ...(query && { query: query?.trim() }),
-    ...(language && { language }),
-    ...(year && { year }),
-    ...(adult && { adult: "false" }),
-    ...(btn && { btn }),
-    ...(page && { page }),
-  });
-
-  redirect(`/search?${searchParams.toString()}`);
-}

@@ -10,7 +10,7 @@ type SearchResultsProps = {
     year,
     adult,
   }: {
-    query: string;
+    query: string | undefined;
     language?: string | undefined;
     year?: string | undefined;
     adult?: boolean | undefined;
@@ -122,20 +122,18 @@ export default async function SearchResults({
             No results with these filters were found. Try something else.
           </h1>
         ) : (
-          fetchedData.results.map((movie: Results) => {
-            return <MovieCard key={movie.id} movie={movie} />;
-          })
+          <>
+            {fetchedData.results.map((movie: Results) => {
+              return <MovieCard key={movie.id} movie={movie} />;
+            })}
+            <Pages
+              filterValues={{ query, language, year, adult, btn, page }}
+              page={page}
+              totalResults={fetchedData.total_results}
+              totalPages={fetchedData.total_pages}
+            />
+          </>
         )}
-        <Pages
-          page={page}
-          totalResults={fetchedData.total_results}
-          totalPages={fetchedData.total_pages}
-          language={language}
-          query={query}
-          year={year}
-          adult={adult}
-          btn={btn}
-        />
       </div>
     </section>
   );

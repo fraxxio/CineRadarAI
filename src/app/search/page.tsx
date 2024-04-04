@@ -68,4 +68,3 @@ export default function page({
     </main>
   );
 }
-// TODO add scrolling to top after changing the page
