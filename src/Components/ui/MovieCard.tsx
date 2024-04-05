@@ -1,6 +1,7 @@
 import { Star } from "lucide-react";
 import Image from "next/image";
 import { NoImage } from "./NoImage";
+import Link from "next/link";
 
 type MovieCardProps = {
   movie: {
@@ -21,6 +22,7 @@ type MovieCardProps = {
     vote_average: number;
     vote_count: number;
   };
+  type: string | undefined;
 };
 
 export default function MovieCard({
@@ -42,9 +44,13 @@ export default function MovieCard({
     vote_average,
     vote_count,
   },
+  type,
 }: MovieCardProps) {
   return (
-    <div className="relative w-full border border-border-clr bg-primary-bg duration-300 hover:border-primary-text hover:shadow-md hover:shadow-primary-text">
+    <Link
+      href={`/search/${type}/${id}`}
+      className="relative w-full border border-border-clr bg-primary-bg duration-300 hover:border-primary-text hover:shadow-md hover:shadow-primary-text"
+    >
       {poster_path === null && backdrop_path === null ? (
         <NoImage title={title} />
       ) : (
@@ -77,6 +83,6 @@ export default function MovieCard({
           <p>Votes: {vote_count}</p>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }

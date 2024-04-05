@@ -124,7 +124,7 @@ export default async function SearchResults({
         ) : (
           <>
             {fetchedData.results.map((movie: Results) => {
-              return <MovieCard key={movie.id} movie={movie} />;
+              return <MovieCard type={btn} key={movie.id} movie={movie} />;
             })}
             <Pages
               filterValues={{ query, language, year, adult, btn, page }}

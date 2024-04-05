@@ -12,13 +12,13 @@ export const metadata: Metadata = {
   description: "Movie recommendations generator AI",
 };
 
-const { userId } = auth();
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { userId } = auth();
+
   return (
     <ClerkProvider afterSignInUrl="/" afterSignUpUrl="/">
       <html lang="en">

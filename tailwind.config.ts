@@ -22,6 +22,7 @@ const config: Config = {
       colors: {
         "primary-bg": "#0E1428",
         "primary-text": "#0ba6cf",
+        "secondary-text": "#0C7DAD",
         "dark-bg": "#060b1c",
         "blue-darker": "#116A8D",
       },
