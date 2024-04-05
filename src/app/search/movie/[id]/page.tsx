@@ -1,4 +1,5 @@
 import Details from "@/Components/Details";
+import Reviews from "@/Components/Reviews";
 import { Metadata } from "next";
 
 async function fetchDetails(id: string) {
@@ -45,6 +46,7 @@ export default async function page({ params }: { params: { id: number } }) {
   return (
     <main className="container">
       <Details id={params.id} />
+      <Reviews id={params.id} />
     </main>
   );
 }

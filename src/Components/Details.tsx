@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { formatCurrency } from "@/lib/utils";
-import { Star } from "lucide-react";
+import { Clapperboard, Star } from "lucide-react";
 
 type DetailsProps = {
   title: string;
@@ -75,7 +75,7 @@ export default async function Details({ id }: { id: number }) {
       />
       <div className="items-startp-4 my-auto pr-12">
         <div className="flex items-end justify-between">
-          <h1 className="text-3xl font-medium">{title}</h1>
+          <h1 className="max-w-[35rem] text-3xl font-medium">{title}</h1>
           <p className="pb-1">
             {status}: {release_date}
           </p>
@@ -93,8 +93,8 @@ export default async function Details({ id }: { id: number }) {
             );
           })}
         </div>
-        <div className="flex justify-between gap-4 pt-8 text-lg">
-          <div className="flex items-center gap-2">
+        <div className="flex justify-between gap-4 py-8 text-lg">
+          <div className="flex items-center gap-2 text-yellow-600">
             <Star size={18} />
             <p>
               {vote_average.toFixed(1)} / {vote_count}
@@ -109,6 +109,17 @@ export default async function Details({ id }: { id: number }) {
           <p>
             Revenue: <b>{formatCurrency(revenue)}</b>
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Clapperboard size={16} />
+          <a
+            target="_blank"
+            rel="noopener noreferrer"
+            href={`https://www.themoviedb.org/movie/${id}/watch`}
+            className="underline underline-offset-4"
+          >
+            Where to watch?
+          </a>
         </div>
       </div>
     </section>
