@@ -6,6 +6,7 @@
   --background-clr: #060b1c;
   --primary-text-clr: #0ba6cf;
   color-scheme: dark;
+  scroll-behavior: smooth;
 }
 
 body {

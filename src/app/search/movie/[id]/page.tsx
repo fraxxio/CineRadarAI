@@ -1,5 +1,7 @@
 import Details from "@/Components/Details";
+import Gallery from "@/Components/Gallery";
 import Reviews from "@/Components/Reviews";
+import Trailer from "@/Components/Trailer";
 import { Metadata } from "next";
 
 async function fetchDetails(id: string) {
@@ -46,6 +48,8 @@ export default async function page({ params }: { params: { id: number } }) {
   return (
     <main className="container">
       <Details id={params.id} />
+      <Trailer id={params.id} />
+      <Gallery id={params.id} />
       <Reviews id={params.id} />
     </main>
   );

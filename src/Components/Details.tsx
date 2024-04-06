@@ -1,6 +1,12 @@
 import Image from "next/image";
 import { formatCurrency } from "@/lib/utils";
-import { Clapperboard, Star } from "lucide-react";
+import {
+  Clapperboard,
+  Film,
+  Images,
+  MessageCircleMore,
+  Star,
+} from "lucide-react";
 
 type DetailsProps = {
   title: string;
@@ -64,23 +70,28 @@ export default async function Details({ id }: { id: number }) {
     status,
   }: DetailsProps = await fetchDetails(id.toString());
   return (
-    <section className="mt-20 flex gap-32 rounded-sm border border-border-clr bg-primary-bg">
+    <section className="mt-20 flex gap-32 rounded-sm border border-border-clr bg-primary-bg max-[950px]:flex-col max-[950px]:gap-4">
       <Image
         src={`https://image.tmdb.org/t/p/w500${poster_path || backdrop_path}`}
         alt={title || name}
-        width={150}
-        height={150}
-        className="w-[30%] border-b border-border-clr object-cover"
-        sizes="(max-width: 768px) 100vw, 33vw"
+        width={650}
+        height={366}
+        className="w-[30%] border-b border-border-clr object-cover max-[950px]:max-h-[30rem] max-[950px]:w-full"
+        sizes="(min-width: 2120px) 400px, (min-width: 960px) calc(18.33vw + 15px), calc(100vw - 66px)"
+        priority
       />
-      <div className="items-startp-4 my-auto pr-12">
-        <div className="flex items-end justify-between">
-          <h1 className="max-w-[35rem] text-3xl font-medium">{title}</h1>
-          <p className="pb-1">
+      <div className="items-startp-4 my-auto p-8">
+        <div className="flex items-end justify-between max-[930px]:flex-col max-[930px]:items-start">
+          <h1 className="max-w-[35rem] text-3xl font-medium max-[930px]:text-xl">
+            {title}
+          </h1>
+          <p className="pb-1 max-[930px]:text-sm">
             {status}: {release_date}
           </p>
         </div>
-        <p className=" pt-4 text-lg text-secondary-text">{overview}</p>
+        <p className=" pt-4 text-lg text-secondary-text max-[930px]:text-[1rem]">
+          {overview}
+        </p>
         <div className="flex flex-wrap gap-2 pt-4">
           {genres.map((genre: { name: string; id: number }) => {
             return (
@@ -93,7 +104,7 @@ export default async function Details({ id }: { id: number }) {
             );
           })}
         </div>
-        <div className="flex justify-between gap-4 py-8 text-lg">
+        <div className="flex flex-wrap justify-between gap-4 py-8 text-lg">
           <div className="flex items-center gap-2 text-yellow-600">
             <Star size={18} />
             <p>
@@ -120,6 +131,20 @@ export default async function Details({ id }: { id: number }) {
           >
             Where to watch?
           </a>
+        </div>
+        <div className="flex items-center gap-5 pt-8">
+          <div className="flex items-center gap-1 hover:underline">
+            <Images size={20} />
+            <a href="#gallery">Gallery</a>
+          </div>
+          <div className="flex items-center gap-1 hover:underline">
+            <Film size={20} />
+            <a href="#trailer">Trailer</a>
+          </div>
+          <div className="flex items-center gap-1 hover:underline">
+            <MessageCircleMore size={20} />
+            <a href="#reviews">Reviews</a>
+          </div>
         </div>
       </div>
     </section>
