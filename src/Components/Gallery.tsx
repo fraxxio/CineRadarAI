@@ -22,7 +22,7 @@ type GalleryProps = {
   ];
 };
 
-async function fetchGallery(id: number) {
+async function fetchGallery(id: number, mediaType: "movie" | "tv") {
   "use server";
 
   const options = {
@@ -33,26 +33,32 @@ async function fetchGallery(id: number) {
     },
   };
 
-  const fetchURL = `${process.env.TMDB_BASE_URL}/movie/${id}/images`;
+  const fetchURL = `${process.env.TMDB_BASE_URL}/${mediaType}/${id}/images`;
 
   try {
     const response = await fetch(fetchURL, options);
     if (!response.ok) {
       const error = new Error(
-        `Failed to fetch movie images (Status: ${response.status})`,
+        `Failed to fetch ${mediaType} images (Status: ${response.status})`,
       );
       throw error;
     }
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error("Error fetching movie images:", error);
+    console.error(`Error fetching ${mediaType} images:`, error);
     throw error;
   }
 }
 
-export default async function Gallery({ id }: { id: number }) {
-  const { backdrops }: GalleryProps = await fetchGallery(id);
+export default async function Gallery({
+  id,
+  mediaType,
+}: {
+  id: number;
+  mediaType: "movie" | "tv";
+}) {
+  const { backdrops }: GalleryProps = await fetchGallery(id, mediaType);
 
   return (
     <section className="mt-20 rounded-sm border border-border-clr bg-primary-bg py-4">

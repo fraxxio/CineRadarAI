@@ -22,7 +22,7 @@ type ProvidersProps = {
   ];
 };
 
-async function fetchReviews(id: number) {
+async function fetchReviews(id: number, mediaType: "movie" | "tv") {
   "use server";
 
   const options = {
@@ -33,26 +33,32 @@ async function fetchReviews(id: number) {
     },
   };
 
-  const fetchURL = `${process.env.TMDB_BASE_URL}/movie/${id}/reviews?language=en-US&page=1`;
+  const fetchURL = `${process.env.TMDB_BASE_URL}/${mediaType}/${id}/reviews?language=en-US&page=1`;
 
   try {
     const response = await fetch(fetchURL, options);
     if (!response.ok) {
       const error = new Error(
-        `Failed to fetch movie reviews (Status: ${response.status})`,
+        `Failed to fetch ${mediaType} reviews (Status: ${response.status})`,
       );
       throw error;
     }
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error("Error fetching movie reviews:", error);
+    console.error(`Error fetching ${mediaType} reviews:`, error);
     throw error;
   }
 }
 
-export default async function Reviews({ id }: { id: number }) {
-  const { results }: ProvidersProps = await fetchReviews(id);
+export default async function Reviews({
+  id,
+  mediaType,
+}: {
+  id: number;
+  mediaType: "movie" | "tv";
+}) {
+  const { results }: ProvidersProps = await fetchReviews(id, mediaType);
 
   return (
     <section

@@ -47,10 +47,10 @@ export async function generateMetadata({
 export default async function page({ params }: { params: { id: number } }) {
   return (
     <main className="container">
-      <Details id={params.id} />
-      <Trailer id={params.id} />
-      <Gallery id={params.id} />
-      <Reviews id={params.id} />
+      <Details id={params.id} mediaType="movie" />
+      <Trailer id={params.id} mediaType="movie" />
+      <Gallery id={params.id} mediaType="movie" />
+      <Reviews id={params.id} mediaType="movie" />
     </main>
   );
 }
