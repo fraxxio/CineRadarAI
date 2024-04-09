@@ -1,7 +1,6 @@
 "use client";
 import { Menu, X } from "lucide-react";
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
 import React, { useState } from "react";
 
 type NavbarProps = {
@@ -51,7 +50,7 @@ const Navbar = ({ userId }: NavbarProps) => {
             </li>
             <li>
               {userId ? (
-                <UserButton afterSignOutUrl="/" />
+                "TODO User profile"
               ) : (
                 <Link href="/sign-in">Sign In</Link>
               )}
@@ -79,7 +78,7 @@ const Navbar = ({ userId }: NavbarProps) => {
           </li>
           <li>
             {userId ? (
-              <UserButton afterSignOutUrl="/" />
+              "TODO User profile"
             ) : (
               <Link href="/sign-in">Sign In</Link>
             )}
