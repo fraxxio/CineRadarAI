@@ -41,9 +41,6 @@ const Navbar = ({ userId }: NavbarProps) => {
           </a>
           <ul className="flex items-center gap-4 font-medium max-[640px]:hidden">
             <li>
-              <Link href="#">Trending</Link>
-            </li>
-            <li>
               <Link href="/search">Manual Search</Link>
             </li>
             <li>
@@ -71,9 +68,6 @@ const Navbar = ({ userId }: NavbarProps) => {
         className="fixed z-0 w-full -translate-y-[10rem] border-b border-border-clr bg-primary-bg duration-[400ms] ease-in"
       >
         <ul className="flex flex-col items-center gap-4 py-4 font-medium min-[510px]:hidden">
-          <li>
-            <Link href="#">Trending</Link>
-          </li>
           <li>
             <Link href="/search">Manual Search</Link>
           </li>

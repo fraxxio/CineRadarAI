@@ -100,7 +100,7 @@ export default async function Reviews({
               </div>
             </div>
             <p
-              className="max-h-[10rem] overflow-hidden pt-4 text-secondary-text duration-300 hover:max-h-[30rem]"
+              className="max-h-[10rem] overflow-hidden pt-4 text-secondary-text duration-300 hover:max-h-[50rem]"
               dangerouslySetInnerHTML={{
                 __html: DOMPurify.sanitize(review.content),
               }}

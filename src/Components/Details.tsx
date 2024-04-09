@@ -8,6 +8,7 @@ import {
   MessageCircleMore,
   Star,
 } from "lucide-react";
+import AddToListBtn from "./ui/AddToListBtn";
 
 type DetailsProps = {
   title: string;
@@ -59,8 +60,8 @@ async function fetchDetails(id: number, mediaType: "movie" | "tv") {
 }
 
 export default async function Details({
-  id,
   mediaType,
+  id,
 }: {
   id: number;
   mediaType: "movie" | "tv";
@@ -133,7 +134,7 @@ export default async function Details({
               {vote_average.toFixed(1)} / {vote_count}
             </p>
           </div>
-          {type === "movie" ? (
+          {mediaType === "movie" ? (
             <p>
               Duration: <b>{runtime} min.</b>
             </p>
@@ -142,7 +143,7 @@ export default async function Details({
               Seasons: <b>{number_of_seasons}</b>
             </p>
           )}
-          {type === "movie" ? (
+          {mediaType === "movie" ? (
             <p>
               Budget: <b>{formatCurrency(budget)}</b>
             </p>
@@ -151,7 +152,7 @@ export default async function Details({
               First air date: <b>{first_air_date}</b>
             </p>
           )}
-          {type === "movie" ? (
+          {mediaType === "movie" ? (
             <p>
               Revenue: <b>{formatCurrency(revenue)}</b>
             </p>
@@ -186,6 +187,7 @@ export default async function Details({
             <a href="#reviews">Reviews</a>
           </div>
         </div>
+        <AddToListBtn id={id} fullSize={true} />
       </div>
     </section>
   );
