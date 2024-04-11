@@ -10,9 +10,8 @@ export default function page() {
           action={async (formData: FormData) => {
             "use server";
             const provider = formData.get("provider") as string;
-            // probalby data base error, check if database is reachable
             try {
-              await signIn(provider);
+              await signIn(provider, { redirectTo: "/" });
             } catch (error) {
               throw error;
             }

@@ -17,7 +17,7 @@ type AuthBtnProps = {
 
 export default function AuthBtn({ user }: AuthBtnProps) {
   if (user === undefined) {
-    return <Link href="/sign-in">Sign In</Link>;
+    return <Link href="/signin">Sign In</Link>;
   }
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);

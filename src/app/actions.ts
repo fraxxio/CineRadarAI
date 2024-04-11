@@ -20,5 +20,5 @@ export async function fetchMovies(formData: FormData) {
 }
 
 export async function SignOut() {
-  signOut();
+  await signOut({ redirectTo: "/" });
 }

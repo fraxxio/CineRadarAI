@@ -61,7 +61,7 @@ const Navbar = ({ user }: NavbarProps) => {
               {id ? (
                 <AuthBtn user={user} />
               ) : (
-                <Link href="/sign-in">Sign In</Link>
+                <Link href="/signin">Sign In</Link>
               )}
             </li>
           </ul>
@@ -86,11 +86,7 @@ const Navbar = ({ user }: NavbarProps) => {
             <Link href="#">About</Link>
           </li>
           <li>
-            {id ? (
-              <AuthBtn user={user} />
-            ) : (
-              <Link href="/sign-in">Sign In</Link>
-            )}
+            {id ? <AuthBtn user={user} /> : <Link href="/signin">Sign In</Link>}
           </li>
         </ul>
       </div>

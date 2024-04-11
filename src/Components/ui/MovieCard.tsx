@@ -3,6 +3,7 @@ import Image from "next/image";
 import { NoImage } from "./NoImage";
 import Link from "next/link";
 import AddToListBtn from "./AddToListBtn";
+import { auth } from "@/auth";
 
 type MovieCardProps = {
   movie: {
@@ -26,7 +27,7 @@ type MovieCardProps = {
   type: string | undefined;
 };
 
-export default function MovieCard({
+export default async function MovieCard({
   movie: {
     adult,
     backdrop_path,
@@ -47,9 +48,10 @@ export default function MovieCard({
   },
   type,
 }: MovieCardProps) {
+  const session = await auth();
   return (
     <div className="relative w-full border border-border-clr bg-primary-bg duration-300 hover:border-primary-text hover:shadow-md hover:shadow-primary-text">
-      <AddToListBtn id={id} />
+      <AddToListBtn user={session?.user} />
       <Link href={`/search/${type}/${id}`}>
         {poster_path === null && backdrop_path === null ? (
           <NoImage title={title} />
