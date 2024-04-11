@@ -11,6 +11,11 @@ const nextConfig = {
         hostname: "image.tmdb.org",
         port: "",
       },
+      {
+        protocol: "https",
+        hostname: "avatars.githubusercontent.com",
+        port: "",
+      },
     ],
   },
 };

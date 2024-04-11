@@ -1,5 +1,6 @@
 "use server";
 
+import { signOut } from "@/auth";
 import { movieFilterSchema } from "@/lib/validation";
 import { redirect } from "next/navigation";
 
@@ -16,4 +17,8 @@ export async function fetchMovies(formData: FormData) {
   });
 
   redirect(`/search?${searchParams.toString()}`);
+}
+
+export async function SignOut() {
+  signOut();
 }

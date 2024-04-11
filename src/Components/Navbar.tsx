@@ -2,13 +2,22 @@
 import { Menu, X } from "lucide-react";
 import Link from "next/link";
 import React, { useState } from "react";
+import AuthBtn from "./AuthBtn";
 
 type NavbarProps = {
-  userId: string | null;
+  user:
+    | {
+        id: string;
+        name: string;
+        email: string;
+        image: string;
+      }
+    | undefined;
 };
 
-const Navbar = ({ userId }: NavbarProps) => {
+const Navbar = ({ user }: NavbarProps) => {
   const [isNavOpen, setIsNavOpen] = useState(false);
+  const { id } = user || {};
 
   function hMovibileNavbar() {
     const menu = document.getElementById("menu") as HTMLElement;
@@ -49,8 +58,8 @@ const Navbar = ({ userId }: NavbarProps) => {
               <Link href="#">About</Link>
             </li>
             <li>
-              {userId ? (
-                "TODO User profile"
+              {id ? (
+                <AuthBtn user={user} />
               ) : (
                 <Link href="/sign-in">Sign In</Link>
               )}
@@ -77,8 +86,8 @@ const Navbar = ({ userId }: NavbarProps) => {
             <Link href="#">About</Link>
           </li>
           <li>
-            {userId ? (
-              "TODO User profile"
+            {id ? (
+              <AuthBtn user={user} />
             ) : (
               <Link href="/sign-in">Sign In</Link>
             )}

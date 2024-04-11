@@ -1,5 +1,4 @@
-import { AuthError } from "next-auth";
-import { signIn } from "next-auth/react";
+import { signIn } from "@/auth";
 import React from "react";
 
 export default function page() {
@@ -11,6 +10,7 @@ export default function page() {
           action={async (formData: FormData) => {
             "use server";
             const provider = formData.get("provider") as string;
+            // probalby data base error, check if database is reachable
             try {
               await signIn(provider);
             } catch (error) {
