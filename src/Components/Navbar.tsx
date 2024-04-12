@@ -1,5 +1,6 @@
 "use client";
 import { Menu, X } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import React, { useState } from "react";
 import AuthBtn from "./AuthBtn";
@@ -44,9 +45,10 @@ const Navbar = ({ user }: NavbarProps) => {
         className="sticky top-0 z-10 border-b border-border-clr bg-primary-bg"
       >
         <div className="container flex items-center justify-between py-4">
-          <a href="/" className="text-2xl font-bold">
+          <Link href="/" className="flex items-center gap-2 text-2xl font-bold">
+            <Image src="/CineRadarLogo.png" width={35} height={35} alt="Logo" />
             CineRadar
-          </a>
+          </Link>
           <ul className="flex items-center gap-4 font-medium max-[640px]:hidden">
             <li>
               <Link href="/search">Manual Search</Link>

@@ -11,6 +11,7 @@ const sora = Sora({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "CineRadar AI",
   description: "Movie recommendations generator AI",
+  icons: "/CineRadarLogo.png",
 };
 
 export default async function RootLayout({
