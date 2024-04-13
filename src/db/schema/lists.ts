@@ -3,8 +3,10 @@ import { users } from "./users";
 
 export const lists = sqliteTable("lists", {
   id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
-  userId: integer("userId")
+  userId: text("userId")
     .notNull()
     .references(() => users.id),
-  movies: blob("movies", { mode: "json" }).$type<string[]>(),
+  movies: blob("movies", { mode: "json" }).$type<
+    Array<{ image: string; name: string; movieId: number }>
+  >(),
 });

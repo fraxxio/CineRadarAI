@@ -51,7 +51,12 @@ export default async function MovieCard({
   const session = await auth();
   return (
     <div className="relative w-full border border-border-clr bg-primary-bg duration-300 hover:border-primary-text hover:shadow-md hover:shadow-primary-text">
-      <AddToListBtn user={session?.user} />
+      <AddToListBtn
+        user={session?.user}
+        movieId={id}
+        title={name || title}
+        image={poster_path || backdrop_path}
+      />
       <Link href={`/search/${type}/${id}`}>
         {poster_path === null && backdrop_path === null ? (
           <NoImage title={title} />
