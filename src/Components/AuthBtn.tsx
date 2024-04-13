@@ -52,21 +52,34 @@ export default function AuthBtn({ user }: AuthBtnProps) {
         />
       </button>
       <div
-        className={`absolute right-0 top-16 w-max rounded-sm rounded-tr-none border border-border-clr bg-primary-bg px-3 py-2 text-right ${isOpen ? "block" : "hidden"}`}
+        className={`absolute right-0 top-[4.2rem] w-max rounded-sm rounded-tr-none border border-border-clr bg-primary-bg px-3 py-2 text-right ${isOpen ? "block" : "hidden"}`}
       >
         <span
           style={{
             position: "absolute",
-            top: "-19px",
+            top: "-20.5px",
             right: "-0.5px",
             width: "0",
             height: "0",
             borderLeft: "20px solid transparent",
             borderRight: "20px solid transparent",
             borderBottom: "20px solid #0E1428",
+            zIndex: "2",
           }}
         ></span>
-        <div className="flex w-full justify-between">
+        <span
+          style={{
+            position: "absolute",
+            top: "-20.5px",
+            right: "-0.5px",
+            width: "0",
+            height: "0",
+            borderLeft: "20px solid transparent",
+            borderRight: "20px solid transparent",
+            borderBottom: "20px solid rgba(39, 195, 233, 0.6)",
+          }}
+        ></span>
+        <div className="flex w-full justify-between gap-2">
           <p className="text-lg">Logged in as:</p>
           <p className="text-lg">{user.name}</p>
         </div>
