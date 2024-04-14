@@ -1,6 +1,9 @@
+import ListCard from "@/Components/ui/ListCard";
 import { auth } from "@/auth";
+import { db } from "@/db";
+import { lists } from "@/db/schema/lists";
+import { eq } from "drizzle-orm";
 import { AlertTriangleIcon } from "lucide-react";
-import Image from "next/image";
 
 export default async function page() {
   const session = await auth();
@@ -14,12 +17,32 @@ export default async function page() {
   }
   const safeSession = session!;
 
+  const result = await db
+    .select({
+      movies: lists.movies,
+    })
+    .from(lists)
+    .where(eq(lists.userId, safeSession.user.id))
+    .execute();
+
+  const moviesArray = result[0]?.movies || [];
+
   return (
     <main className="container">
-      <section className="mt-20 border border-border-clr bg-primary-bg p-4">
-        <h1 className="text-center text-3xl">
-          <b>{safeSession.user.name}</b> movie and TV show list.
-        </h1>
+      <section className="my-20 border border-border-clr bg-primary-bg">
+        <div className="relative flex items-center justify-center pb-12 pt-4 ">
+          <h1 className="text-center text-3xl">
+            <b>{safeSession.user.name}</b> movie and TV show list.
+          </h1>
+          <p className="absolute right-8 top-7 text-lg">
+            Length: {moviesArray.length}
+          </p>
+        </div>
+        <div className="border-t border-border-clr">
+          {moviesArray.map((movie, index) => {
+            return <ListCard key={movie.movieId} movie={movie} index={index} />;
+          })}
+        </div>
       </section>
     </main>
   );

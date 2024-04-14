@@ -55,7 +55,7 @@ export default async function MovieCard({
         user={session?.user}
         movieId={id}
         title={name || title}
-        image={poster_path || backdrop_path}
+        image={backdrop_path || poster_path}
       />
       <Link href={`/search/${type}/${id}`}>
         {poster_path === null && backdrop_path === null ? (

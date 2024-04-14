@@ -80,6 +80,9 @@ export default function AddToListBtn({
       }
     } catch (error) {
       console.error(error);
+      toast.error("Something went wrong while adding to the list.", {
+        style: { color: "red" },
+      });
     } finally {
       setLoading(false);
       setIsOpen(false);
