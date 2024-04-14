@@ -4,9 +4,16 @@ import { eq } from "drizzle-orm";
 
 export async function PUT(request: Request) {
   const userId = request.headers.get("userId") as string;
+  const rating =
+    request.headers.get("rating") === ""
+      ? 0
+      : Number(request.headers.get("rating") as string);
+
   const newMovie = {
     name: request.headers.get("title") as string,
     image: request.headers.get("image") as string,
+    status: request.headers.get("status") as string,
+    rating: rating,
     movieId: Number(request.headers.get("movieId") as string),
   };
 
@@ -21,13 +28,23 @@ export async function PUT(request: Request) {
   try {
     if (existingRows.length > 0) {
       // If row exists, retrieve and update the movies array
-      const existingMovies = existingRows[0].movies;
-      const updatedMovies = [...(existingMovies || []), newMovie];
+      let existingMovies = existingRows[0].movies || [];
+      const movieIndex = existingMovies.findIndex(
+        (movie) => movie.movieId === newMovie.movieId,
+      );
+
+      if (movieIndex !== -1) {
+        // Replace existing movie with newMovie
+        existingMovies[movieIndex] = newMovie;
+      } else {
+        // Add newMovie to the array
+        existingMovies.push(newMovie);
+      }
 
       // Update the row with the updated movies array
       await db
         .update(lists)
-        .set({ movies: updatedMovies })
+        .set({ movies: existingMovies })
         .where(eq(lists.userId, userId));
     } else {
       // If row does not exist, insert it with the new movie in an array

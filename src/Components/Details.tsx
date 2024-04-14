@@ -9,6 +9,7 @@ import {
   Star,
 } from "lucide-react";
 import AddToListBtn from "./ui/AddToListBtn";
+import { auth } from "@/auth";
 
 type DetailsProps = {
   title: string;
@@ -85,6 +86,8 @@ export default async function Details({
     first_air_date,
     type,
   }: DetailsProps = await fetchDetails(id, mediaType);
+  const session = await auth();
+
   return (
     <section className="mt-20 flex gap-32 rounded-sm border border-border-clr bg-primary-bg max-[950px]:flex-col max-[950px]:gap-4">
       {poster_path || backdrop_path ? (
@@ -187,7 +190,13 @@ export default async function Details({
             <a href="#reviews">Reviews</a>
           </div>
         </div>
-        <AddToListBtn id={id} fullSize={true} />
+        <AddToListBtn
+          movieId={id}
+          fullSize={true}
+          user={session?.user}
+          title={title || name}
+          image={backdrop_path || poster_path}
+        />
       </div>
     </section>
   );

@@ -7,6 +7,12 @@ export const lists = sqliteTable("lists", {
     .notNull()
     .references(() => users.id),
   movies: blob("movies", { mode: "json" }).$type<
-    Array<{ image: string; name: string; movieId: number }>
+    Array<{
+      image: string;
+      name: string;
+      movieId: number;
+      rating: number;
+      status: string;
+    }>
   >(),
 });

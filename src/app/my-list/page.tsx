@@ -12,17 +12,15 @@ export default async function page() {
       </main>
     );
   }
-
   const safeSession = session!;
+
   return (
-    <div>
-      <Image
-        alt="profile"
-        width={100}
-        height={100}
-        src={safeSession.user.image}
-      />
-      <p>{safeSession.user.name}</p>
-    </div>
+    <main className="container">
+      <section className="mt-20 border border-border-clr bg-primary-bg p-4">
+        <h1 className="text-center text-3xl">
+          <b>{safeSession.user.name}</b> movie and TV show list.
+        </h1>
+      </section>
+    </main>
   );
 }
