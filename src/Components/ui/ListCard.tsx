@@ -24,7 +24,6 @@ type ListCardProps = {
 
 // TODO add movie type to the db and change Link accordingly
 // TODO implement list sorting
-// TODO add delete from list and edit buttons
 
 export default function ListCard({ movie, index, user }: ListCardProps) {
   return (
@@ -78,7 +77,11 @@ export default function ListCard({ movie, index, user }: ListCardProps) {
             title={movie.name}
             image={movie.image}
           />
-          <DeleteListBtn />
+          <DeleteListBtn
+            userId={user.id}
+            movieId={movie.movieId}
+            title={movie.name}
+          />
         </div>
       </div>
     </div>

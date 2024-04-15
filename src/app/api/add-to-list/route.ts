@@ -55,7 +55,7 @@ export async function PUT(request: Request) {
       });
     }
 
-    revalidatePath("/my-list");
+    revalidatePath("/my-list", "page");
     return Response.json({ addToListResult: "success" });
   } catch (error) {
     console.error(error);

@@ -3,17 +3,12 @@ import { auth } from "@/auth";
 import { db } from "@/db";
 import { lists } from "@/db/schema/lists";
 import { eq } from "drizzle-orm";
-import { AlertTriangleIcon } from "lucide-react";
+import { redirect } from "next/navigation";
 
 export default async function page() {
   const session = await auth();
   if (session?.user === undefined) {
-    return (
-      <main className="container flex items-center justify-center gap-4 pt-40">
-        <AlertTriangleIcon size={50} color="red" />
-        <p className="text-3xl">You need to be logged in to acces this page.</p>
-      </main>
-    );
+    redirect("/signin");
   }
   const safeSession = session!;
 
