@@ -40,7 +40,14 @@ export default async function page() {
         </div>
         <div className="border-t border-border-clr">
           {moviesArray.map((movie, index) => {
-            return <ListCard key={movie.movieId} movie={movie} index={index} />;
+            return (
+              <ListCard
+                key={movie.movieId}
+                movie={movie}
+                index={index}
+                user={safeSession.user}
+              />
+            );
           })}
         </div>
       </section>

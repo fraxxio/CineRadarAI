@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { lists } from "@/db/schema/lists";
 import { eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 
 export async function PUT(request: Request) {
   const userId = request.headers.get("userId") as string;
@@ -54,6 +55,7 @@ export async function PUT(request: Request) {
       });
     }
 
+    revalidatePath("/my-list");
     return Response.json({ addToListResult: "success" });
   } catch (error) {
     console.error(error);

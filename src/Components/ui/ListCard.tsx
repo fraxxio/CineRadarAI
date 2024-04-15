@@ -13,6 +13,12 @@ type ListCardProps = {
     rating: number;
     status: string;
   };
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    image: string;
+  };
   index: number;
 };
 
@@ -20,7 +26,7 @@ type ListCardProps = {
 // TODO implement list sorting
 // TODO add delete from list and edit buttons
 
-export default function ListCard({ movie, index }: ListCardProps) {
+export default function ListCard({ movie, index, user }: ListCardProps) {
   return (
     <div className="relative flex gap-8 border-b border-border-clr last:border-none">
       <Image
@@ -66,7 +72,12 @@ export default function ListCard({ movie, index }: ListCardProps) {
         </div>
         <div className="flex flex-col items-end justify-between gap-4">
           <p className=" text-lg text-secondary-text">#{index + 1}</p>
-          <EditListBtn />
+          <EditListBtn
+            user={user}
+            movieId={movie.movieId}
+            title={movie.name}
+            image={movie.image}
+          />
           <DeleteListBtn />
         </div>
       </div>
