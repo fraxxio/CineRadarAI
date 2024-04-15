@@ -196,6 +196,7 @@ export default async function Details({
           user={session?.user}
           title={title || name}
           image={backdrop_path || poster_path}
+          type={mediaType}
         />
       </div>
     </section>

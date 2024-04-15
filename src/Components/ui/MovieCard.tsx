@@ -24,7 +24,7 @@ type MovieCardProps = {
     vote_average: number;
     vote_count: number;
   };
-  type: string | undefined;
+  type: "movie" | "tv";
 };
 
 export default async function MovieCard({
@@ -56,6 +56,7 @@ export default async function MovieCard({
         movieId={id}
         title={name || title}
         image={backdrop_path || poster_path}
+        type={type}
       />
       <Link href={`/search/${type}/${id}`}>
         {poster_path === null && backdrop_path === null ? (

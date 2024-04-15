@@ -13,6 +13,7 @@ export const lists = sqliteTable("lists", {
       movieId: number;
       rating: number;
       status: string;
+      type: string;
     }>
   >(),
 });

@@ -26,6 +26,7 @@ type EditListBtnProps = {
   movieId: number;
   title: string;
   image: string;
+  type: string;
 };
 
 export default function EditListBtn({
@@ -33,6 +34,7 @@ export default function EditListBtn({
   movieId,
   title,
   image,
+  type,
 }: EditListBtnProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [status, setStatus] = useState("");
@@ -67,6 +69,7 @@ export default function EditListBtn({
           status: status,
           rating: rating,
           redirect: "true",
+          type: type,
         },
       });
       const data = await response.json();

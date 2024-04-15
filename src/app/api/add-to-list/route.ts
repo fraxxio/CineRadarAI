@@ -16,6 +16,7 @@ export async function PUT(request: Request) {
     status: request.headers.get("status") as string,
     rating: rating,
     movieId: Number(request.headers.get("movieId") as string),
+    type: request.headers.get("type") as string,
   };
 
   //Find the existing row

@@ -26,6 +26,7 @@ type AddToListBtnProps = {
   movieId: number;
   title: string;
   image: string;
+  type: "movie" | "tv";
 };
 
 export default function AddToListBtn({
@@ -34,6 +35,7 @@ export default function AddToListBtn({
   movieId,
   title,
   image,
+  type,
 }: AddToListBtnProps) {
   const [status, setStatus] = useState("");
   const [rating, setRating] = useState("");
@@ -66,6 +68,7 @@ export default function AddToListBtn({
           image: image,
           status: status,
           rating: rating,
+          type: type,
         },
       });
       const data = await response.json();

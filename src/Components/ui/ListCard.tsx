@@ -4,6 +4,7 @@ import Link from "next/link";
 import React from "react";
 import EditListBtn from "./EditListBtn";
 import DeleteListBtn from "./DeleteListBtn";
+import { ZodType } from "zod";
 
 type ListCardProps = {
   movie: {
@@ -12,6 +13,7 @@ type ListCardProps = {
     movieId: number;
     rating: number;
     status: string;
+    type: string;
   };
   user: {
     id: string;
@@ -39,7 +41,7 @@ export default function ListCard({ movie, index, user }: ListCardProps) {
       <div className="flex flex-grow justify-between py-4 pr-8">
         <div>
           <Link
-            href={`/search/movie/${movie.movieId}`}
+            href={`/search/${movie.type}/${movie.movieId}`}
             className="text-2xl font-medium hover:underline"
           >
             {movie.name}
@@ -55,7 +57,10 @@ export default function ListCard({ movie, index, user }: ListCardProps) {
               </div>
             )}
           </div>
-          <div className="flex items-center gap-4 pt-12 text-lg">
+          <p>
+            Type: {movie.type.charAt(0).toUpperCase() + movie.type.slice(1)}
+          </p>
+          <div className="flex items-center gap-4 pt-8 text-lg">
             <p>Status: </p>
             <div className="flex items-center gap-1">
               {movie.status === "Watching" ? (
@@ -76,6 +81,7 @@ export default function ListCard({ movie, index, user }: ListCardProps) {
             movieId={movie.movieId}
             title={movie.name}
             image={movie.image}
+            type={movie.type}
           />
           <DeleteListBtn
             userId={user.id}
