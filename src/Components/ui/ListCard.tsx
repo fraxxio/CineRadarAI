@@ -4,7 +4,6 @@ import Link from "next/link";
 import React from "react";
 import EditListBtn from "./EditListBtn";
 import DeleteListBtn from "./DeleteListBtn";
-import { ZodType } from "zod";
 
 type ListCardProps = {
   movie: {
@@ -23,9 +22,6 @@ type ListCardProps = {
   };
   index: number;
 };
-
-// TODO add movie type to the db and change Link accordingly
-// TODO implement list sorting
 
 export default function ListCard({ movie, index, user }: ListCardProps) {
   return (

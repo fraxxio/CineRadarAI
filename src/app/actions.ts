@@ -2,7 +2,7 @@
 
 import { auth, signOut } from "@/auth";
 import { db } from "@/db";
-import { accounts, users } from "@/db/schema/users";
+import { users } from "@/db/schema/users";
 import { movieFilterSchema } from "@/lib/validation";
 import { eq } from "drizzle-orm/sqlite-core/expressions";
 import { redirect } from "next/navigation";
@@ -43,4 +43,39 @@ export async function DeleteUser(formData: FormData) {
   } else {
     redirect(`/?deleteAcc=fail`);
   }
+}
+
+export async function SortList(formData: FormData) {
+  const formRating = formData.get("rating") as string;
+  const formStatus = formData.get("status") as string;
+  const formType = formData.get("type") as string;
+
+  const rating =
+    formRating === "asc"
+      ? "?rating=asc"
+      : formRating === "desc"
+        ? "?rating=desc"
+        : `?rating=${formData.get("currRating") as string}`;
+
+  const status =
+    formStatus === "planning"
+      ? "&status=planning"
+      : formStatus === "completed"
+        ? "&status=completed"
+        : formStatus === "watching"
+          ? "&status=watching"
+          : formStatus === "all"
+            ? "&status=all"
+            : `&status=${formData.get("currStatus") as string}`;
+
+  const type =
+    formType === "movie"
+      ? "&type=movie"
+      : formType === "tv"
+        ? "&type=tv"
+        : formType === "both"
+          ? "&type=both"
+          : `&type=${formData.get("currType") as string}`;
+
+  redirect(`/my-list${rating}${status}${type}`);
 }
