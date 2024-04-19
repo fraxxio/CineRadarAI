@@ -1,16 +1,16 @@
-import Trending from "@/Components/Trending";
+import Chat from "@/Components/Chat";
 import DeleteResult from "@/Components/ui/DeleteResult";
-import { toast } from "sonner";
 
+export const runtime = "edge";
 export default function Home({
   searchParams,
 }: {
   searchParams: { deleteAcc: string };
 }) {
   return (
-    <main className="container flex flex-col justify-between gap-20 py-20">
+    <main className="container py-10">
       <DeleteResult deleteAcc={searchParams.deleteAcc} />
-      <Trending />
+      <Chat />
     </main>
   );
 }
