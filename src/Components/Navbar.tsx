@@ -45,7 +45,10 @@ const Navbar = ({ user }: NavbarProps) => {
         className="sticky top-0 z-10 border-b border-border-clr bg-primary-bg"
       >
         <div className="container flex items-center justify-between py-4">
-          <Link href="/" className="flex items-center gap-2 text-2xl font-bold">
+          <Link
+            href="/"
+            className="flex items-center gap-2 text-2xl font-bold no-underline"
+          >
             <Image src="/CineRadarLogo.png" width={35} height={35} alt="Logo" />
             CineRadar
           </Link>

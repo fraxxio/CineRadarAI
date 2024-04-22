@@ -5,7 +5,6 @@ import { LoaderCircle, SendHorizontal } from "lucide-react";
 
 type OpenAIAssistantProps = {
   greeting: string;
-  messageLimit: number;
 };
 
 type Tmessage = {
@@ -16,9 +15,9 @@ type Tmessage = {
 
 export default function OpenAIAssistant({
   greeting = "Ask me for movie or TV show suggestions. Describe what would you like to watch, for example: genre, actors, style...",
-  messageLimit = 10,
 }: OpenAIAssistantProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [isError, setIsError] = useState(false);
   const [threadId, setThreadId] = useState();
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<Tmessage>([]);
@@ -39,7 +38,7 @@ export default function OpenAIAssistant({
     // clear streaming message
     setStreamingMessage({
       role: "assistant",
-      content: "_Thinking..._",
+      content: "_Generating list..._",
     });
 
     setIsLoading(true);
@@ -64,10 +63,12 @@ export default function OpenAIAssistant({
     });
 
     if (!response.ok) {
+      setIsError(true);
       throw new Error("Network response was not ok.");
     }
 
     if (!response.body) {
+      setIsError(true);
       throw new Error("Response body is null.");
     }
 
@@ -110,6 +111,7 @@ export default function OpenAIAssistant({
             setStreamingMessage(newStreamingMessage);
             break;
           case "thread.run.failed":
+            setIsError(true);
             throw new Error("Thread run failed.");
         }
       }
@@ -120,10 +122,11 @@ export default function OpenAIAssistant({
       "/api/assistant?" +
         new URLSearchParams({
           threadId: newThreadId,
-          messageLimit: messageLimit.toString(),
         }),
     );
     const allMessages = await messagesResponse.json();
+    console.log(allMessages);
+
     setMessages(allMessages);
     setIsLoading(false);
   }
@@ -133,16 +136,29 @@ export default function OpenAIAssistant({
   }
 
   return (
-    <div className="relative flex min-h-[70vh] flex-col rounded-sm border border-border-clr bg-primary-bg">
-      <AssistantMessage message={greetingMessage} />
-      {messages.map((m) => (
-        <AssistantMessage key={m.id} message={m} />
-      ))}
-      {isLoading && <AssistantMessage message={streamingMessage} />}
-      <form onSubmit={handleSubmit} className="mx-4 mb-2 mt-auto flex">
+    <div className="relative flex h-[80vh] flex-col rounded-sm border border-border-clr bg-primary-bg">
+      <h1 className="pb-2 pt-4 text-center text-2xl font-medium">
+        Chat with CineRadarAI
+      </h1>
+      <div className="overflow-y-auto">
+        <AssistantMessage message={greetingMessage} />
+        {messages.map((m) => (
+          <AssistantMessage key={m.id} message={m} />
+        ))}
+        {isLoading && <AssistantMessage message={streamingMessage} />}
+        {isError && (
+          <AssistantMessage
+            message={{
+              role: "assistant",
+              content: "Unfortunately an error occurred. Try again later.",
+            }}
+          />
+        )}
+      </div>
+      <form onSubmit={handleSubmit} className="mt-auto flex px-4 py-2">
         <input
           disabled={isLoading}
-          className="w-full rounded-bl-md rounded-tl-md border border-border-clr bg-dark-bg px-3 py-2 text-primary-text outline-none placeholder:text-secondary-text focus:ring-1 focus:ring-primary-text"
+          className="h-[40px] w-full rounded-bl-md rounded-tl-md border border-border-clr bg-dark-bg px-3 py-2 text-primary-text outline-none placeholder:text-secondary-text focus:ring-1 focus:ring-primary-text"
           onChange={handlePromptChange}
           value={prompt}
           required
@@ -151,7 +167,7 @@ export default function OpenAIAssistant({
         {isLoading ? (
           <button
             disabled
-            className="flex min-h-[40px] items-center gap-1 rounded-br-md rounded-tr-md border-b border-r border-t border-border-clr bg-dark-bg px-2 font-medium duration-200 hover:bg-primary-text hover:text-dark-bg"
+            className="flex h-[40px] items-center gap-1 rounded-br-md rounded-tr-md border-b border-r border-t border-border-clr bg-dark-bg px-2 font-medium duration-200 hover:bg-primary-text hover:text-dark-bg"
           >
             <LoaderCircle size={16} className="animate-spin" />
             Generating...
@@ -159,7 +175,7 @@ export default function OpenAIAssistant({
         ) : (
           <button
             disabled={prompt.length == 0}
-            className="flex min-h-[40px] items-center gap-1 rounded-br-md rounded-tr-md border-b border-r border-t border-border-clr bg-dark-bg px-2 font-medium duration-200 hover:cursor-pointer hover:bg-primary-text hover:text-dark-bg"
+            className="flex h-[40px] items-center gap-1 rounded-br-md rounded-tr-md border-b border-r border-t border-border-clr bg-dark-bg px-2 font-medium duration-200 hover:cursor-pointer hover:bg-primary-text hover:text-dark-bg"
           >
             Submit
             <SendHorizontal size={16} />
@@ -169,97 +185,3 @@ export default function OpenAIAssistant({
     </div>
   );
 }
-
-// "use client";
-
-// import { useChat } from "ai/react";
-// import { SendHorizontal } from "lucide-react";
-// import Image from "next/image";
-// import { useRef, useEffect } from "react";
-
-// export default function Chat() {
-//   const { messages, input, handleInputChange, handleSubmit } = useChat();
-//   const chatParent = useRef<HTMLUListElement>(null);
-
-//   useEffect(() => {
-//     const domNode = chatParent.current;
-//     if (domNode) {
-//       domNode.scrollTop = domNode.scrollHeight;
-//     }
-//   });
-
-//   return (
-//     <section className="flex h-[80vh] w-full flex-col rounded-sm border border-border-clr bg-primary-bg p-4">
-//       <h1 className="mx-auto pb-2 text-2xl font-bold">CineRadar AI chat</h1>
-
-//       <ul
-//         ref={chatParent}
-//         className="flex h-1 flex-grow flex-col gap-4 overflow-y-auto rounded-lg p-4"
-//       >
-//         {messages.length === 0 ? (
-//           <li className="px-4 pt-40 text-center">
-//             <span className="font-bold">
-//               <Image
-//                 width={50}
-//                 height={50}
-//                 src="/CineRadarLogo.png"
-//                 alt="AI icon"
-//                 className="mx-auto rounded-full border border-border-clr bg-dark-bg p-1"
-//               />
-//               CineRadarAI
-//             </span>
-//             <p className="mx-auto max-w-[35rem] pt-4">
-//               Ask me for movie or TV show recommendations! Describe what you
-//               would like to watch: genre, actors, style or whatever.
-//             </p>
-//           </li>
-//         ) : (
-//           messages.map((m, index) => (
-//             <>
-//               {m.role === "user" ? (
-//                 <li key={index} className="p-4">
-//                   <span className="pl-[54px] font-bold">You:</span>
-//                   <p className="pl-[54px]">{m.content}</p>
-//                 </li>
-//               ) : (
-//                 <li key={index} className=" p-4">
-//                   <span className="flex items-center gap-1 font-bold">
-//                     <Image
-//                       width={50}
-//                       height={50}
-//                       src="/CineRadarLogo.png"
-//                       alt="AI icon"
-//                       className="rounded-full border border-border-clr bg-dark-bg p-1"
-//                     />
-//                     CineRadarAI:
-//                   </span>
-//                   <p className="pl-[54px]">{m.content}</p>
-//                 </li>
-//               )}
-//             </>
-//           ))
-//         )}
-//       </ul>
-
-//       <form
-//         onSubmit={handleSubmit}
-//         className="mx-auto flex w-full max-w-3xl items-center pt-2"
-//       >
-//         <input
-//           className="min-h-[40px] flex-1 rounded-bl-md rounded-tl-md border border-border-clr bg-dark-bg px-2  outline-2 -outline-offset-4 outline-primary-text placeholder:text-secondary-text focus:outline"
-//           placeholder="Ask for movie recommendations..."
-//           type="text"
-//           value={input}
-//           onChange={handleInputChange}
-//         />
-//         <button
-//           className="flex min-h-[40px] items-center gap-1 rounded-br-md rounded-tr-md border-b border-r border-t border-border-clr bg-dark-bg px-2 font-medium duration-200 hover:bg-primary-text hover:text-dark-bg"
-//           type="submit"
-//         >
-//           Submit
-//           <SendHorizontal size={16} />
-//         </button>
-//       </form>
-//     </section>
-//   );
-// }

@@ -38,13 +38,8 @@ export async function GET(request: NextRequest) {
   // get thread id
   const searchParams = request.nextUrl.searchParams;
   const threadId = searchParams.get("threadId");
-  const messageLimit = searchParams.get("messageLimit");
 
   if (threadId == null) {
-    return NextResponse.error();
-  }
-
-  if (messageLimit == null) {
     return NextResponse.error();
   }
 
@@ -53,7 +48,7 @@ export async function GET(request: NextRequest) {
 
   // get thread and messages
   const threadMessages = await openai.beta.threads.messages.list(threadId, {
-    limit: parseInt(messageLimit),
+    limit: 10,
   });
 
   // only transmit the data that we need

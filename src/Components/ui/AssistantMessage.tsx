@@ -28,6 +28,7 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
         );
     }
   }
+
   return (
     <div className="flex flex-col gap-2 px-4 py-2">
       <div className="text-xl font-medium">{displayRole(message.role)}</div>

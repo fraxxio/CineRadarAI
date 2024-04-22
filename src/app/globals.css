@@ -17,6 +17,15 @@ body {
   flex-direction: column;
 }
 
+ol {
+  list-style: decimal;
+  padding-left: 2rem;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
