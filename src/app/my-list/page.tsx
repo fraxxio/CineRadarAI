@@ -7,6 +7,13 @@ import { eq } from "drizzle-orm";
 import { RotateCcw } from "lucide-react";
 import { redirect } from "next/navigation";
 import { SortList } from "../actions";
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "My list | CineRadar",
+  description: "Movie and TV show list",
+  icons: "/CineRadarLogo.png",
+};
 
 type filteredMoviesProps = {
   type: "movie" | "tv" | "both";
