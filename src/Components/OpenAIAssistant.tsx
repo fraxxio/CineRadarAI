@@ -140,20 +140,22 @@ export default function OpenAIAssistant({
       <h1 className="pb-2 pt-4 text-center text-2xl font-medium">
         Chat with CineRadarAI
       </h1>
-      <div className="overflow-y-auto">
-        <AssistantMessage message={greetingMessage} />
-        {messages.map((m) => (
-          <AssistantMessage key={m.id} message={m} />
-        ))}
-        {isLoading && <AssistantMessage message={streamingMessage} />}
-        {isError && (
-          <AssistantMessage
-            message={{
-              role: "assistant",
-              content: "Unfortunately an error occurred. Try again later.",
-            }}
-          />
-        )}
+      <div className="flex max-h-full flex-col-reverse overflow-y-auto">
+        <div>
+          <AssistantMessage message={greetingMessage} />
+          {messages.map((m) => (
+            <AssistantMessage key={m.id} message={m} />
+          ))}
+          {isLoading && <AssistantMessage message={streamingMessage} />}
+          {isError && (
+            <AssistantMessage
+              message={{
+                role: "assistant",
+                content: "Unfortunately an error occurred. Try again later.",
+              }}
+            />
+          )}
+        </div>
       </div>
       <form onSubmit={handleSubmit} className="mt-auto flex px-4 py-2">
         <input
