@@ -14,7 +14,6 @@ type SearchResultsProps = {
     language?: string | undefined;
     year?: string | undefined;
     adult?: boolean | undefined;
-    btn?: string | undefined;
   }) => string;
 };
 
@@ -116,25 +115,23 @@ export default async function SearchResults({
       <h1 className="pb-8 text-center text-2xl font-medium">
         {getTitle({ query, language, year, adult })}
       </h1>
-      <div className="grid grid-cols-3 gap-4 max-[700px]:grid-cols-2 max-[450px]:grid-cols-1">
-        {fetchedData.results.length === 0 ? (
-          <h1 className="col-span-3 row-start-2 w-full text-center text-2xl font-medium">
-            No results with these filters were found. Try something else.
-          </h1>
-        ) : (
-          <>
-            {fetchedData.results.map((movie: Results) => {
-              return <MovieCard type={btn} key={movie.id} movie={movie} />;
-            })}
-            <Pages
-              filterValues={{ query, language, year, adult, btn, page }}
-              page={page}
-              totalResults={fetchedData.total_results}
-              totalPages={fetchedData.total_pages}
-            />
-          </>
-        )}
-      </div>
+      {fetchedData.results.length === 0 ? (
+        <h1 className="w-full text-center text-2xl font-medium">
+          No results with these filters were found. Try something else.
+        </h1>
+      ) : (
+        <div className="grid grid-cols-3 gap-4 max-[700px]:grid-cols-2 max-[450px]:grid-cols-1">
+          {fetchedData.results.map((movie: Results) => {
+            return <MovieCard type={btn} key={movie.id} movie={movie} />;
+          })}
+          <Pages
+            filterValues={{ query, language, year, adult, btn, page }}
+            page={page}
+            totalResults={fetchedData.total_results}
+            totalPages={fetchedData.total_pages}
+          />
+        </div>
+      )}
     </section>
   );
 }

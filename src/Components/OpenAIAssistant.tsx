@@ -93,7 +93,6 @@ export default function OpenAIAssistant({
       // process each event
       for (const strServerEvent of strServerEvents) {
         const serverEvent = JSON.parse(strServerEvent);
-        console.log(serverEvent);
         switch (serverEvent.event) {
           // create new message
           case "thread.message.created":
@@ -125,7 +124,6 @@ export default function OpenAIAssistant({
         }),
     );
     const allMessages = await messagesResponse.json();
-    console.log(allMessages);
 
     setMessages(allMessages);
     setIsLoading(false);
@@ -137,7 +135,7 @@ export default function OpenAIAssistant({
 
   return (
     <div className="relative flex h-[80vh] flex-col rounded-sm border border-border-clr bg-primary-bg">
-      <h1 className="pb-2 pt-4 text-center text-2xl font-medium">
+      <h1 className="pb-2 pt-4 text-center text-2xl font-medium max-[380px]:text-xl">
         Chat with CineRadarAI
       </h1>
       <div className="flex max-h-full flex-col-reverse overflow-y-auto">

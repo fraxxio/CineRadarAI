@@ -18,7 +18,7 @@ export default function ListSortBtn({
       {...props}
       name={name}
       disabled={isChecked}
-      className={`mr-2 rounded-md border border-border-clr bg-dark-bg px-2 py-1 duration-200 hover:bg-primary-text hover:text-dark-bg disabled:bg-primary-text disabled:text-dark-bg
+      className={`rounded-md border border-border-clr bg-dark-bg px-2 py-1 duration-200 hover:bg-primary-text hover:text-dark-bg disabled:bg-primary-text disabled:text-dark-bg
       ${withIcon && "flex items-center gap-2"}
       `}
     >

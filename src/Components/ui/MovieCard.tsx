@@ -24,7 +24,7 @@ type MovieCardProps = {
     vote_average: number;
     vote_count: number;
   };
-  type: "movie" | "tv";
+  type: "movie" | "tv" | undefined;
 };
 
 export default async function MovieCard({
@@ -56,7 +56,7 @@ export default async function MovieCard({
         movieId={id}
         title={name || title}
         image={backdrop_path || poster_path}
-        type={type}
+        type={type!}
       />
       <Link href={`/search/${type}/${id}`}>
         {poster_path === null && backdrop_path === null ? (
@@ -72,7 +72,7 @@ export default async function MovieCard({
           />
         )}
         <div className="flex h-[20%] flex-col justify-between p-2">
-          <div className="relative flex justify-between">
+          <div className="flex justify-between">
             <h1
               title={title || name}
               className="max-w-[60%] truncate text-xl font-medium"

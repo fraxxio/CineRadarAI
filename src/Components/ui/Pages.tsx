@@ -27,7 +27,7 @@ export const Pages = ({
   const prevIterations = Number(page) === 1 ? 0 : Math.min(Number(page) - 1, 4);
 
   return (
-    <div className="col-span-3 flex items-end justify-center gap-8 pt-8">
+    <div className="col-span-full flex items-end justify-center gap-8 pt-8 max-[700px]:flex-col max-[700px]:items-center">
       <Link
         href={getNewURL({
           newPage: Number(page) - 1,

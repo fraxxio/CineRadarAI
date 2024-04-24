@@ -89,7 +89,7 @@ export default async function page({
   return (
     <main className="container">
       <section className="my-20 border border-border-clr bg-primary-bg">
-        <div className="relative flex items-center justify-between p-8 pb-12 ">
+        <div className="relative flex items-center justify-between p-8 pb-12 max-[1070px]:flex-col max-[1070px]:gap-4">
           <form
             action={async () => {
               "use server";
@@ -108,7 +108,7 @@ export default async function page({
         </div>
         <form
           action={SortList}
-          className="flex items-center justify-center gap-8 pb-8"
+          className="flex items-center justify-center gap-8 pb-8 max-[1070px]:flex-col"
         >
           <input type="hidden" name="currRating" value={rating} />
           <input type="hidden" name="currType" value={type} />
@@ -117,55 +117,73 @@ export default async function page({
             <p className="pb-2 text-center text-lg font-medium">
               Sort by rating:
             </p>
-            <ListSortBtn value="asc" name="rating" isChecked={rating === "asc"}>
-              Ascending
-            </ListSortBtn>
-            <ListSortBtn
-              value="desc"
-              name="rating"
-              isChecked={rating === "desc"}
-            >
-              Descending
-            </ListSortBtn>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <ListSortBtn
+                value="asc"
+                name="rating"
+                isChecked={rating === "asc"}
+              >
+                Ascending
+              </ListSortBtn>
+              <ListSortBtn
+                value="desc"
+                name="rating"
+                isChecked={rating === "desc"}
+              >
+                Descending
+              </ListSortBtn>
+            </div>
           </div>
           <div>
             <p className="pb-2 text-center text-lg font-medium">Type:</p>
-            <ListSortBtn value="tv" name="type" isChecked={type === "tv"}>
-              TV shows
-            </ListSortBtn>
-            <ListSortBtn value="movie" name="type" isChecked={type === "movie"}>
-              Movies
-            </ListSortBtn>
-            <ListSortBtn value="both" name="type" isChecked={type === "both"}>
-              Both
-            </ListSortBtn>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <ListSortBtn value="tv" name="type" isChecked={type === "tv"}>
+                TV shows
+              </ListSortBtn>
+              <ListSortBtn
+                value="movie"
+                name="type"
+                isChecked={type === "movie"}
+              >
+                Movies
+              </ListSortBtn>
+              <ListSortBtn value="both" name="type" isChecked={type === "both"}>
+                Both
+              </ListSortBtn>
+            </div>
           </div>
           <div>
             <p className="pb-2 text-center text-lg font-medium">Show only:</p>
-            <ListSortBtn
-              value="completed"
-              name="status"
-              isChecked={status === "completed"}
-            >
-              Completed
-            </ListSortBtn>
-            <ListSortBtn
-              value="planning"
-              name="status"
-              isChecked={status === "planning"}
-            >
-              Planning to watch
-            </ListSortBtn>
-            <ListSortBtn
-              value="watching"
-              name="status"
-              isChecked={status === "watching"}
-            >
-              Watching
-            </ListSortBtn>
-            <ListSortBtn value="all" name="status" isChecked={status === "all"}>
-              All
-            </ListSortBtn>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <ListSortBtn
+                value="completed"
+                name="status"
+                isChecked={status === "completed"}
+              >
+                Completed
+              </ListSortBtn>
+              <ListSortBtn
+                value="planning"
+                name="status"
+                isChecked={status === "planning"}
+              >
+                Planning to watch
+              </ListSortBtn>
+              <ListSortBtn
+                value="watching"
+                name="status"
+                isChecked={status === "watching"}
+              >
+                Watching
+              </ListSortBtn>
+              <ListSortBtn
+                value="all"
+                name="status"
+                isChecked={status === "all"}
+              >
+                All
+              </ListSortBtn>
+            </div>
           </div>
         </form>
         <div className="border-t border-border-clr">

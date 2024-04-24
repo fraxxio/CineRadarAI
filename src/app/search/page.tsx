@@ -9,7 +9,7 @@ type PageProps = {
     language?: string;
     year?: string;
     adult?: string;
-    btn?: string;
+    btn: "movie" | "tv";
     page?: string;
   };
 };

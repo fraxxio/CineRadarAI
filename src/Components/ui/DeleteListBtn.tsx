@@ -79,7 +79,7 @@ export default function DeleteListBtn({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger className="h-10 rounded-md border border-border-clr bg-dark-bg px-3 py-2 font-medium duration-200 hover:bg-red-700 hover:text-dark-bg">
+      <DialogTrigger className="h-10 w-10 rounded-md border border-border-clr bg-dark-bg px-3 py-2 font-medium duration-200 hover:bg-red-700 hover:text-dark-bg max-[840px]:h-7 max-[840px]:w-7 max-[840px]:p-1">
         <Trash2 size={16} />
       </DialogTrigger>
       <DialogContent>

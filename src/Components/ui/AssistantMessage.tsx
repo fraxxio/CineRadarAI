@@ -31,7 +31,9 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
 
   return (
     <div className="flex flex-col gap-2 px-4 py-2">
-      <div className="text-xl font-medium">{displayRole(message.role)}</div>
+      <div className="text-xl font-medium max-[380px]:text-lg">
+        {displayRole(message.role)}
+      </div>
       <div className="chatLink overflow-auto text-left">
         <Markdown>{message.content}</Markdown>
       </div>

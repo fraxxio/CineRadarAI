@@ -63,7 +63,7 @@ export default async function Reviews({
   return (
     <section
       id="reviews"
-      className="my-10 rounded-sm border border-border-clr bg-primary-bg px-16 py-4"
+      className="my-10 rounded-sm border border-border-clr bg-primary-bg px-16 py-4 max-[550px]:px-4"
     >
       <h1 className="pb-8 text-center text-3xl font-medium">Reviews</h1>
       {results.length < 1 && (
@@ -100,7 +100,7 @@ export default async function Reviews({
               </div>
             </div>
             <p
-              className="max-h-[10rem] overflow-hidden pt-4 text-secondary-text duration-300 hover:max-h-[50rem]"
+              className="max-h-[10rem] overflow-hidden pt-4 text-secondary-text duration-300 hover:max-h-[90rem] max-[550px]:max-h-[20rem]"
               dangerouslySetInnerHTML={{
                 __html: DOMPurify.sanitize(review.content),
               }}
