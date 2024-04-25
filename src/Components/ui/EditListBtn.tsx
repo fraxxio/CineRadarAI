@@ -58,7 +58,7 @@ export default function EditListBtn({
     }
 
     try {
-      const response = await fetch("http://localhost:3000/api/add-to-list", {
+      const response = await fetch("api/add-to-list", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

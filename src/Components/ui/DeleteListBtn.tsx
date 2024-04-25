@@ -43,18 +43,15 @@ export default function DeleteListBtn({
     }
 
     try {
-      const response = await fetch(
-        "http://localhost:3000/api/remove-from-list",
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-            userId: userId,
-            movieId: movieId.toString(),
-            redirect: "true",
-          },
+      const response = await fetch("api/remove-from-list", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          userId: userId,
+          movieId: movieId.toString(),
+          redirect: "true",
         },
-      );
+      });
       const data = await response.json();
       if (data.addToListResult === "success") {
         toast.success(`${title} was removed.`, {
