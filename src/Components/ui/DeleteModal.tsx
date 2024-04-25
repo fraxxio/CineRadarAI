@@ -32,8 +32,8 @@ export default function DeleteModal({ id }: { id: string }) {
           </DialogHeader>
           <form action={DeleteUser}>
             <label htmlFor="check">
-              To permamently delete your account type "Delete account" and click
-              Delete.
+              To permamently delete your account type &quot;Delete account&quot;
+              and click Delete.
             </label>
             <input
               id="check"

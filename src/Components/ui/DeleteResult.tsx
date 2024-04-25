@@ -5,7 +5,7 @@ import { toast } from "sonner";
 // * This component exists because sonner toast function
 // * doesn't work in server components
 
-export default function ({ deleteAcc }: { deleteAcc: string }) {
+export default function DeleteResult({ deleteAcc }: { deleteAcc: string }) {
   setTimeout(() => {
     if (deleteAcc !== undefined && deleteAcc === "success") {
       toast.success("Account deleted succesfully.", {
