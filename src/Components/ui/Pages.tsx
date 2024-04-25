@@ -23,7 +23,7 @@ export const Pages = ({
   const nextIterations =
     Number(page) === 500 || Number(page) === maxPages
       ? 0
-      : Math.min(totalResults, 4);
+      : Math.min(maxPages - 1, 4);
   const prevIterations = Number(page) === 1 ? 0 : Math.min(Number(page) - 1, 4);
 
   return (

@@ -67,11 +67,11 @@ export default async function MovieCard({
             alt={title || name}
             width={150}
             height={150}
-            className="h-[80%] w-full border-b border-border-clr object-cover"
+            className="h-[30rem] w-full border-b border-border-clr object-cover"
             sizes="(max-width: 768px) 100vw, 33vw"
           />
         )}
-        <div className="flex h-[20%] flex-col justify-between p-2">
+        <div className="flex h-[6.5rem] flex-col justify-between p-2">
           <div className="flex justify-between">
             <h1
               title={title || name}
