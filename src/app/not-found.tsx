@@ -32,7 +32,9 @@ export default function NotFound() {
         </g>
       </svg>
       <h1 className="text-4xl font-semibold">Not found</h1>
-      <p className="pb-12">Page that you are trying to visit doesn't exist.</p>
+      <p className="pb-12">
+        Page that you are trying to visit doesn&apos;t exist.
+      </p>
       <Link
         href="/"
         className="mx-auto flex max-w-[50%] items-center justify-center gap-2 rounded border border-border-clr bg-dark-bg px-2 py-1 text-xl font-medium text-primary-text duration-200 hover:bg-primary-text hover:text-dark-bg"
