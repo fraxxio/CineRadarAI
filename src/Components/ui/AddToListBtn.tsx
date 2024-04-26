@@ -62,6 +62,8 @@ export default function AddToListBtn({
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
           userId: user.id.toString(),
           movieId: movieId.toString(),
           title: title,
@@ -69,7 +71,7 @@ export default function AddToListBtn({
           status: status,
           rating: rating,
           type: type,
-        },
+        }),
       });
       const data = await response.json();
       if (data.addToListResult === "success") {
@@ -82,7 +84,7 @@ export default function AddToListBtn({
         });
       }
     } catch (error) {
-      console.error(error);
+      console.error("/api/add-to-list ERROR:", error);
       toast.error("Something went wrong while adding to the list.", {
         style: { color: "red" },
       });

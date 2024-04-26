@@ -4,19 +4,18 @@ import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export async function PUT(request: Request) {
-  const userId = request.headers.get("userId") as string;
-  const rating =
-    request.headers.get("rating") === ""
-      ? 0
-      : Number(request.headers.get("rating") as string);
+  const requestData = await request.json();
+
+  const userId = requestData.userId;
+  const rating = requestData.rating === "" ? 0 : Number(requestData.rating);
 
   const newMovie = {
-    name: request.headers.get("title") as string,
-    image: request.headers.get("image") as string,
-    status: request.headers.get("status") as string,
+    name: requestData.title,
+    image: requestData.image,
+    status: requestData.status,
     rating: rating,
-    movieId: Number(request.headers.get("movieId") as string),
-    type: request.headers.get("type") as string,
+    movieId: Number(requestData.movieId),
+    type: requestData.type,
   };
 
   //Find the existing row

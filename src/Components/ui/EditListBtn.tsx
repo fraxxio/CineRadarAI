@@ -131,10 +131,10 @@ export default function EditListBtn({
                 <span className="animate-spin">
                   <LoaderCircle size={18} />
                 </span>
-                Adding...
+                Editing...
               </p>
             ) : (
-              <p>Add to list</p>
+              <p>Edit</p>
             )}
           </button>
         </form>
