@@ -62,15 +62,16 @@ export default function EditListBtn({
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
           userId: user.id.toString(),
           movieId: movieId.toString(),
           title: title,
           image: image,
           status: status,
           rating: rating,
-          redirect: "true",
           type: type,
-        },
+        }),
       });
       const data = await response.json();
       if (data.addToListResult === "success") {
