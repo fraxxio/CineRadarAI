@@ -8,7 +8,7 @@ export default function RecaptchaWrapper({
 }) {
   return (
     <GoogleReCaptchaProvider
-      reCaptchaKey={process.env.RECAPTCHA_SITE_KEY ?? "Not defined"}
+      reCaptchaKey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY ?? "Not defined"}
     >
       {children}
     </GoogleReCaptchaProvider>
