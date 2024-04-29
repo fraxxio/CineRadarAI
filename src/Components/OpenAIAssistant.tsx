@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { AssistantMessage } from "./ui/AssistantMessage";
 import { LoaderCircle, SendHorizontal } from "lucide-react";
+import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 
 type OpenAIAssistantProps = {
   greeting: string;
@@ -16,8 +17,10 @@ type Tmessage = {
 export default function OpenAIAssistant({
   greeting = "Ask me for movie or TV show suggestions. Describe what would you like to watch, for example: genre, actors, style...",
 }: OpenAIAssistantProps) {
+  const { executeRecaptcha } = useGoogleReCaptcha();
   const [isLoading, setIsLoading] = useState(false);
   const [isError, setIsError] = useState(false);
+  const [captchaFailed, setCaptchaFailed] = useState(false);
   const [threadId, setThreadId] = useState();
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<Tmessage>([]);
@@ -35,13 +38,46 @@ export default function OpenAIAssistant({
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
+    if (!executeRecaptcha) {
+      console.log("Execute recaptcha not yet available");
+      return;
+    }
+    const recaptchaToken = await executeRecaptcha("AIchatSubmit");
+    setIsLoading(true);
+    try {
+      const response = await fetch("/api/recaptcha", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ recaptchaToken }),
+      });
+      if (!response.ok) {
+        const error = new Error(
+          `Failed to verify captcha. (Status: ${response.status})`,
+        );
+        throw error;
+      }
+      const res = await response.json();
+      if (res.success === false) {
+        setCaptchaFailed(true);
+        setTimeout(() => {
+          setCaptchaFailed(false);
+        }, 3000);
+        setIsLoading(false);
+        return;
+      }
+    } catch (error) {
+      console.error("Recaptcha verify error (Client):", error);
+      setIsLoading(false);
+      return;
+    }
+
     // clear streaming message
     setStreamingMessage({
       role: "assistant",
       content: "_Generating list..._",
     });
-
-    setIsLoading(true);
 
     setMessages([
       ...messages,
@@ -182,6 +218,22 @@ export default function OpenAIAssistant({
           </button>
         )}
       </form>
+      <small className="text-center text-secondary-text">
+        This site is protected by reCAPTCHA and the Google{" "}
+        <a href="https://policies.google.com/privacy" className="underline">
+          Privacy Policy
+        </a>{" "}
+        and{" "}
+        <a href="https://policies.google.com/terms" className="underline">
+          Terms of Service
+        </a>{" "}
+        apply.
+      </small>
+      {captchaFailed && (
+        <div className="text-center font-medium text-red-600">
+          Recaptcha failed to verify!
+        </div>
+      )}
     </div>
   );
 }

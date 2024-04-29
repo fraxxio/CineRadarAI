@@ -31,3 +31,7 @@ ol {
     text-wrap: balance;
   }
 }
+
+.grecaptcha-badge {
+  visibility: hidden;
+}

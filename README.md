@@ -9,7 +9,6 @@
   <a href="https://mocksocial.vercel.app/"><b>https://cineradar.vercel.app/</b></a>
 </p>
 
-
 <p align="center">
 
   <img alt="Stars" src="https://img.shields.io/github/stars/fraxxio/CineRadarAI?style=social">
@@ -34,7 +33,7 @@
 
 ## About
 
-**CineRadar: Your Personalized Movie and TV Show AI Companion.** 
+**CineRadar: Your Personalized Movie and TV Show AI Companion.**
 It provides tailored movie and TV show recommendations powered by AI. Simply input your preferences, including genre, style, and actors, and let our AI generate a curated list of suggestions just for you. Need more control? Use our manual search feature to explore the extensive TMDB movie database. You can also log in using Google or GitHub authentication, and create a custom list to track your viewing journey. Mark movies as planning to watch, completed, or watching, and even rate them on a scale of 1 to 10.
 
 ---
@@ -51,10 +50,11 @@ It provides tailored movie and TV show recommendations powered by AI. Simply inp
 - [x] Create your personal list and add movies with custom status or rating.
   - [x] Status: `Planning to watch`, `Completed`, `Watching`.
   - [x] Rating: `1-10`.
-- [x] Ability to sort the list based on rating, status or type: movie or TV show. 
-
+- [x] Ability to sort the list based on rating, status or type: movie or TV show.
+- [x] Google reCAPTCHA protection.
 
 ---
+
 ## Tech Stack
 
 The following tools were used for creating the project:
@@ -69,12 +69,15 @@ The following tools were used for creating the project:
 - **[Drizzle](https://orm.drizzle.team/)**
 - **[Vercel AI SDK](https://sdk.vercel.ai/)**
 - **[Turso](https://turso.tech/)**
+- **[Google reCAPTCHA](https://www.google.com/recaptcha/about/)**
 
 > See the file [package.json](https://github.com/fraxxio/CineRadarAI/blob/main/package.json)
-> 
-#### API's used 
+
+#### API's used
+
 - **[OpenAI](https://openai.com/)**
 - **[TMDB](https://www.themoviedb.org/)**
+
 ---
 
 ### Pre-requisites
