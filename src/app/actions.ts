@@ -37,6 +37,7 @@ export async function DeleteUser(formData: FormData) {
     try {
       await db.delete(users).where(eq(users.id, formData.get("id") as string));
     } catch (error) {
+      console.error("Failed to delete account: ", error);
       redirect(`/?deleteAcc=fail`);
     }
     redirect(`/?deleteAcc=success`);
