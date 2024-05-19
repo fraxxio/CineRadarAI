@@ -78,7 +78,7 @@ const Navbar = ({ user }: NavbarProps) => {
       </nav>
       <div
         id="MobileNav"
-        className="fixed z-0 w-full -translate-y-[10rem] border-b border-border-clr bg-primary-bg duration-[400ms] ease-in"
+        className="fixed z-[1] w-full -translate-y-[10rem] border-b border-border-clr bg-primary-bg duration-[400ms] ease-in"
       >
         <ul className="flex flex-col items-center gap-4 py-4 font-medium min-[510px]:hidden">
           <li>
