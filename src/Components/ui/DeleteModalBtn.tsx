@@ -1,7 +1,6 @@
 import { LoaderCircle, Trash2 } from "lucide-react";
 import { Dispatch, SetStateAction } from "react";
 import { useFormStatus } from "react-dom";
-import { toast } from "sonner";
 
 type DeleteModalBtnProps = {
   setIsOpen: Dispatch<SetStateAction<boolean>>;

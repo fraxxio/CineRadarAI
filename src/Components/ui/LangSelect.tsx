@@ -1,11 +1,5 @@
 import React from "react";
 
-type Language = {
-  iso_639_1: string;
-  english_name: string;
-  name: string;
-};
-
 async function getLanguages() {
   const options = {
     method: "GET",

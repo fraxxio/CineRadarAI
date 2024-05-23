@@ -8,12 +8,6 @@ type OpenAIAssistantProps = {
   greeting: string;
 };
 
-type Tmessage = {
-  id: string;
-  role: string;
-  content: string;
-}[];
-
 export default function OpenAIAssistant({
   greeting = "Ask me for movie or TV show suggestions. Describe what would you like to watch, for example: genre, actors, style...",
 }: OpenAIAssistantProps) {
