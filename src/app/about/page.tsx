@@ -32,7 +32,7 @@ export default function page() {
             Open AI
           </a>{" "}
           <code className="rounded border border-border-clr bg-dark-bg p-1">
-            gpt-3.5-turbo-16k
+            gpt-3.5-turbo-0125
           </code>{" "}
           model.
         </p>
