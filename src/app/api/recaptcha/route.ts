@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
+  if (process.env.AI_CHAT_ENABLED !== "true") {
+    return NextResponse.json({ error: "AI chat is disabled" }, { status: 503 });
+  }
+
   const { recaptchaToken } = await request.json();
 
   const fetchURL = `https://www.google.com/recaptcha/api/siteverify?secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`;

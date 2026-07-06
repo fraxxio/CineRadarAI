@@ -5,6 +5,10 @@ export const runtime = "edge";
 
 // post a new message and stream OpenAI Assistant response
 export async function POST(request: NextRequest) {
+  if (process.env.AI_CHAT_ENABLED !== "true") {
+    return NextResponse.json({ error: "AI chat is disabled" }, { status: 503 });
+  }
+
   // parse message from post
   const newMessage = await request.json();
 
@@ -35,6 +39,10 @@ export async function POST(request: NextRequest) {
 
 // get all of the OpenAI Assistant messages associated with a thread
 export async function GET(request: NextRequest) {
+  if (process.env.AI_CHAT_ENABLED !== "true") {
+    return NextResponse.json({ error: "AI chat is disabled" }, { status: 503 });
+  }
+
   // get thread id
   const searchParams = request.nextUrl.searchParams;
   const threadId = searchParams.get("threadId");
