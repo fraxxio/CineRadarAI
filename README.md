@@ -67,7 +67,7 @@ The following tools were used for creating the project:
 - **[Zod](https://zod.dev/)**
 - **[React-Markdown](https://remarkjs.github.io/react-markdown/)**
 - **[Drizzle](https://orm.drizzle.team/)**
-- **[Vercel AI SDK](https://sdk.vercel.ai/)**
+- **[Google Gen AI SDK](https://github.com/googleapis/js-genai)**
 - **[Turso](https://turso.tech/)**
 - **[Google reCAPTCHA](https://www.google.com/recaptcha/about/)**
 
@@ -75,7 +75,7 @@ The following tools were used for creating the project:
 
 #### API's used
 
-- **[OpenAI](https://openai.com/)**
+- **[Google Gemini](https://ai.google.dev/)**
 - **[TMDB](https://www.themoviedb.org/)**
 
 ---
