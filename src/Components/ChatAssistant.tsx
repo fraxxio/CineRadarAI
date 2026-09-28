@@ -7,10 +7,12 @@ import { MAX_PROMPT_LENGTH } from "@/lib/chatLimits";
 
 type ChatAssistantProps = {
   greeting: string;
+  recaptchaEnabled: boolean;
 };
 
 export default function ChatAssistant({
   greeting = "Ask me for movie or TV show suggestions. Describe what would you like to watch, for example: genre, actors, style...",
+  recaptchaEnabled,
 }: ChatAssistantProps) {
   const { executeRecaptcha } = useGoogleReCaptcha();
   const [isLoading, setIsLoading] = useState(false);
@@ -33,39 +35,43 @@ export default function ChatAssistant({
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
-    if (!executeRecaptcha) {
-      console.log("Execute recaptcha not yet available");
-      return;
-    }
-    const recaptchaToken = await executeRecaptcha("AIchatSubmit");
-    setIsLoading(true);
-    try {
-      const response = await fetch("/api/recaptcha", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ recaptchaToken }),
-      });
-      if (!response.ok) {
-        const error = new Error(
-          `Failed to verify captcha. (Status: ${response.status})`,
-        );
-        throw error;
+    if (recaptchaEnabled) {
+      if (!executeRecaptcha) {
+        console.log("Execute recaptcha not yet available");
+        return;
       }
-      const res = await response.json();
-      if (res.success === false) {
-        setCaptchaFailed(true);
-        setTimeout(() => {
-          setCaptchaFailed(false);
-        }, 3000);
+      const recaptchaToken = await executeRecaptcha("AIchatSubmit");
+      setIsLoading(true);
+      try {
+        const response = await fetch("/api/recaptcha", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ recaptchaToken }),
+        });
+        if (!response.ok) {
+          const error = new Error(
+            `Failed to verify captcha. (Status: ${response.status})`,
+          );
+          throw error;
+        }
+        const res = await response.json();
+        if (res.success === false) {
+          setCaptchaFailed(true);
+          setTimeout(() => {
+            setCaptchaFailed(false);
+          }, 3000);
+          setIsLoading(false);
+          return;
+        }
+      } catch (error) {
+        console.error("Recaptcha verify error (Client):", error);
         setIsLoading(false);
         return;
       }
-    } catch (error) {
-      console.error("Recaptcha verify error (Client):", error);
-      setIsLoading(false);
-      return;
+    } else {
+      setIsLoading(true);
     }
 
     // clear streaming message
@@ -246,17 +252,19 @@ export default function ChatAssistant({
           </button>
         )}
       </form>
-      <small className="text-center text-secondary-text">
-        This site is protected by reCAPTCHA and the Google{" "}
-        <a href="https://policies.google.com/privacy" className="underline">
-          Privacy Policy
-        </a>{" "}
-        and{" "}
-        <a href="https://policies.google.com/terms" className="underline">
-          Terms of Service
-        </a>{" "}
-        apply.
-      </small>
+      {recaptchaEnabled && (
+        <small className="text-center text-secondary-text">
+          This site is protected by reCAPTCHA and the Google{" "}
+          <a href="https://policies.google.com/privacy" className="underline">
+            Privacy Policy
+          </a>{" "}
+          and{" "}
+          <a href="https://policies.google.com/terms" className="underline">
+            Terms of Service
+          </a>{" "}
+          apply.
+        </small>
+      )}
       {captchaFailed && (
         <div className="text-center font-medium text-red-600">
           Recaptcha failed to verify!

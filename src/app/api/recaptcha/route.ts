@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
+import { isRecaptchaEnabled } from "@/lib/recaptcha";
 
 export async function POST(request: Request) {
   if (process.env.AI_CHAT_ENABLED !== "true") {
     return NextResponse.json({ error: "AI chat is disabled" }, { status: 503 });
+  }
+
+  if (!isRecaptchaEnabled()) {
+    return NextResponse.json(
+      { error: "reCAPTCHA is not configured" },
+      { status: 404 },
+    );
   }
 
   const { recaptchaToken } = await request.json();
