@@ -26,13 +26,13 @@ export default function page() {
           <a
             target="_blank"
             rel="noreferrer noopener"
-            href="https://openai.com/"
+            href="https://ai.google.dev/"
             className="underline"
           >
-            Open AI
+            Google Gemini
           </a>{" "}
           <code className="rounded border border-border-clr bg-dark-bg p-1">
-            gpt-3.5-turbo-0125
+            gemini-3.5-flash-lite
           </code>{" "}
           model.
         </p>

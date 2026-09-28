@@ -1,4 +1,4 @@
-import OpenAIAssistant from "@/Components/OpenAIAssistant";
+import ChatAssistant from "@/Components/ChatAssistant";
 import RecaptchaWrapper from "@/Components/RecaptchaWrapper";
 import DeleteResult from "@/Components/ui/DeleteResult";
 
@@ -19,12 +19,12 @@ export default function Home({
       <DeleteResult deleteAcc={searchParams.deleteAcc} />
       {aiChatEnabled ? (
         <RecaptchaWrapper>
-          <OpenAIAssistant greeting={greeting} />
+          <ChatAssistant greeting={greeting} />
         </RecaptchaWrapper>
       ) : (
         <div className="relative overflow-hidden">
           <div inert className="pointer-events-none">
-            <OpenAIAssistant greeting={greeting} />
+            <ChatAssistant greeting={greeting} />
           </div>
           <div className="absolute inset-0 z-10 rounded-sm bg-black/70" />
           <div className="absolute left-1/2 top-1/2 z-20 w-[150%] -translate-x-1/2 -translate-y-1/2 -rotate-[8deg] select-none whitespace-nowrap bg-yellow-400 py-3 text-center text-xl font-extrabold tracking-widest text-black">

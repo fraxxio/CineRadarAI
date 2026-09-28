@@ -3,19 +3,20 @@ import { useState } from "react";
 import { AssistantMessage } from "./ui/AssistantMessage";
 import { LoaderCircle, SendHorizontal } from "lucide-react";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
+import { MAX_PROMPT_LENGTH } from "@/lib/chatLimits";
 
-type OpenAIAssistantProps = {
+type ChatAssistantProps = {
   greeting: string;
 };
 
-export default function OpenAIAssistant({
+export default function ChatAssistant({
   greeting = "Ask me for movie or TV show suggestions. Describe what would you like to watch, for example: genre, actors, style...",
-}: OpenAIAssistantProps) {
+}: ChatAssistantProps) {
   const { executeRecaptcha } = useGoogleReCaptcha();
   const [isLoading, setIsLoading] = useState(false);
   const [isError, setIsError] = useState(false);
   const [captchaFailed, setCaptchaFailed] = useState(false);
-  const [threadId, setThreadId] = useState();
+  const [interactionId, setInteractionId] = useState<string>();
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<Tmessage>([]);
   const [streamingMessage, setStreamingMessage] = useState({
@@ -73,90 +74,122 @@ export default function OpenAIAssistant({
       content: "_Generating list..._",
     });
 
-    setMessages([
-      ...messages,
+    setIsError(false);
+
+    const userPrompt = prompt;
+    const tempId = `temp_user_${Date.now()}`;
+    setMessages((prev) => [
+      ...prev,
       {
-        id: "temp_user",
+        id: tempId,
         role: "user",
-        content: prompt,
+        content: userPrompt,
       },
     ]);
     setPrompt("");
 
-    // post new message to server and stream OpenAI Assistant response
-    const response = await fetch("/api/assistant", {
-      method: "POST",
-      body: JSON.stringify({
-        threadId: threadId,
-        content: prompt,
-      }),
-    });
-
-    if (!response.ok) {
-      setIsError(true);
-      throw new Error("Network response was not ok.");
-    }
-
-    if (!response.body) {
-      setIsError(true);
-      throw new Error("Response body is null.");
-    }
-
     let contentSnapshot = "";
-    let newThreadId = "";
+    let newInteractionId = "";
 
-    // this code can be simplified when more browsers support async iteration
-    let reader = response.body.getReader();
-    while (true) {
-      const { value, done } = await reader.read();
+    try {
+      // post new message to server and stream Gemini response
+      const response = await fetch("/api/assistant", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          previousInteractionId: interactionId,
+          content: userPrompt,
+        }),
+      });
 
-      if (done) {
-        break;
+      if (!response.ok) {
+        throw new Error(
+          `Network response was not ok. (Status: ${response.status})`,
+        );
       }
 
-      // parse server sent event
-      const strChunk = new TextDecoder().decode(value).trim();
+      if (!response.body) {
+        throw new Error("Response body is null.");
+      }
 
-      // split on newlines (to handle multiple JSON elements passed at once)
-      const strServerEvents = strChunk.split("\n");
+      let completed = false;
 
-      // process each event
-      for (const strServerEvent of strServerEvents) {
-        const serverEvent = JSON.parse(strServerEvent);
-        switch (serverEvent.event) {
-          // create new message
-          case "thread.message.created":
-            newThreadId = serverEvent.data.thread_id;
-            setThreadId(serverEvent.data.thread_id);
+      const handleServerEvent = (serverEvent: ChatStreamEvent) => {
+        switch (serverEvent.type) {
+          case "start":
+            newInteractionId = serverEvent.interactionId;
             break;
 
           // update streaming message content
-          case "thread.message.delta":
-            contentSnapshot += serverEvent.data.delta.content[0].text.value;
-            const newStreamingMessage = {
+          case "delta":
+            contentSnapshot += serverEvent.text;
+            setStreamingMessage({
               ...streamingMessage,
               content: contentSnapshot,
-            };
-            setStreamingMessage(newStreamingMessage);
+            });
             break;
-          case "thread.run.failed":
-            setIsError(true);
-            throw new Error("Thread run failed.");
+          case "done":
+            newInteractionId = serverEvent.interactionId;
+            completed = true;
+            break;
+          case "error":
+            throw new Error("Chat response failed.");
+        }
+      };
+
+      // this code can be simplified when more browsers support async iteration
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { value, done } = await reader.read();
+
+        // keep the last (possibly partial) line in the buffer for the next read
+        buffer += decoder.decode(value, { stream: !done });
+        const lines = done ? [buffer] : buffer.split("\n");
+        buffer = done ? "" : lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (line.trim()) {
+            handleServerEvent(JSON.parse(line));
+          }
+        }
+
+        if (done) {
+          break;
         }
       }
+
+      if (!completed) {
+        throw new Error("Chat stream ended unexpectedly.");
+      }
+
+      setInteractionId(newInteractionId);
+
+      // keep only the last 10 messages
+      setMessages((prev) =>
+        [
+          ...prev.filter((m) => m.id !== tempId),
+          { id: `${newInteractionId}-user`, role: "user", content: userPrompt },
+          {
+            id: `${newInteractionId}-model`,
+            role: "assistant",
+            content: contentSnapshot,
+          },
+        ].slice(-10),
+      );
+    } catch (error) {
+      console.error("AI chat error:", error);
+      setIsError(true);
+      // turn was never created (e.g. expired interaction), start a new conversation next time
+      if (!newInteractionId) {
+        setInteractionId(undefined);
+      }
+    } finally {
+      setIsLoading(false);
     }
-
-    // refetch all of the messages from the OpenAI Assistant thread
-    const messagesResponse = await fetch(
-      "/api/assistant?" +
-        new URLSearchParams({
-          threadId: newThreadId,
-        }),
-    );
-    const allMessages = await messagesResponse.json();
-
-    setMessages(allMessages);
-    setIsLoading(false);
   }
 
   function handlePromptChange(e: React.FormEvent<HTMLInputElement>) {
@@ -191,6 +224,7 @@ export default function OpenAIAssistant({
           className="h-[40px] w-full rounded-bl-md rounded-tl-md border border-border-clr bg-dark-bg px-3 py-2 text-primary-text outline-none placeholder:text-secondary-text focus:ring-1 focus:ring-primary-text"
           onChange={handlePromptChange}
           value={prompt}
+          maxLength={MAX_PROMPT_LENGTH}
           required
           placeholder="Suggest me movies about war with Brad Pitt..."
         />
