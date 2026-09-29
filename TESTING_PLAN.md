@@ -15,7 +15,7 @@ Priority levels:
 
 ## 0. Known bugs found during the survey
 
-Some of the tests below should **fail against the current code**. Write them anyway, then decide whether to fix the code or mark the test as `todo`/`fails`.
+Some of the tests below failed against the code at the time of the survey. They were written first and marked `fails`. All of these bugs are now fixed, and their tests pass (see "Phase 6" in [TESTING_IMPLEMENTATION_PLAN.md](TESTING_IMPLEMENTATION_PLAN.md)).
 
 | # | Where | Problem |
 |---|-------|---------|
@@ -27,6 +27,12 @@ Some of the tests below should **fail against the current code**. Write them any
 | B6 | [src/Components/SearchResults.tsx](src/Components/SearchResults.tsx) `fetchMovies` | The query is not URL-encoded. A search containing `&`, `#` or `?` (e.g. "Tom & Jerry") breaks the TMDB request URL. |
 | B7 | [src/app/search/page.tsx](src/app/search/page.tsx) `getTitle` | With no query, the heading is always "Trending movies", even when browsing TV (`btn=tv`). This is minor. |
 | B8 | add-to-list route | The DB `select` runs outside the `try`, so a DB failure becomes an unhandled 500 instead of `{ addToListResult: "fail" }`. This is minor. |
+| B9 | [src/app/page.tsx](src/app/page.tsx) | `<div inert>` is dropped by React 18, so the disabled chat's input can still be focused and typed into with the keyboard. |
+| B10 | [src/app/signin/page.tsx](src/app/signin/page.tsx) | Sign-in ignores the middleware's `callbackUrl` and always returns to `/`. This is minor. |
+| B11 | `/api/assistant`, `/api/recaptcha` | A malformed JSON body returns a 500 instead of a 400. This is minor. |
+| B12 | [src/Components/ui/DeleteResult.tsx](src/Components/ui/DeleteResult.tsx) | The toast is fired from render, so every re-render (and StrictMode) shows it again. This is minor. |
+| B13 | [src/Components/Reviews.tsx](src/Components/Reviews.tsx) | `#reviews` has no `scroll-mt-20`, so the "Reviews" link scrolls its heading under the sticky navbar. This is minor. |
+| B14 | [src/Components/ui/DeleteModalBtn.tsx](src/Components/ui/DeleteModalBtn.tsx) | The delete dialog closes 300 ms after any click, even when the submit was blocked or is still pending. This is minor. |
 
 ---
 

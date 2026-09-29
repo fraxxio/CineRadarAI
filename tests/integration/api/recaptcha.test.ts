@@ -40,6 +40,12 @@ describe("POST /api/recaptcha", () => {
     expect(f).not.toHaveBeenCalled();
   });
 
+  test("[B11] returns 400 for a malformed JSON body", async () => {
+    const res = await POST(jsonRequest("POST", "/api/recaptcha", "{not json"));
+    expect(res.status).toBe(400);
+    expect(f).not.toHaveBeenCalled();
+  });
+
   test("calls Google siteverify with the secret and the token", async () => {
     f.mockResolvedValue(Response.json({ success: true, score: 0.9 }));
 

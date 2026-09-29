@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, it, test, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { DELETE } from "@/app/api/remove-from-list/route";
 import { asUser } from "../../helpers/auth";
@@ -7,6 +7,7 @@ import { makeMovie } from "../../helpers/factories";
 
 vi.mock("@/auth", () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }));
 
+// userId is ignored by the route (B2); it's sent to prove that
 const del = (
   userId: string,
   movieId: number,
@@ -15,7 +16,7 @@ const del = (
   DELETE(
     new Request("http://localhost/api/remove-from-list", {
       method: "DELETE",
-      headers: { userId, movieId: String(movieId), ...extra },
+      headers: { userId, movieId: String(movieId), type: "movie", ...extra },
     }),
   );
 
@@ -23,7 +24,6 @@ let user: Awaited<ReturnType<typeof seedUser>>;
 
 beforeEach(async () => {
   user = await seedUser();
-  // the route ignores the session today (B2); logging in keeps these tests valid after the fix
   asUser(user);
 });
 
@@ -73,24 +73,41 @@ describe("DELETE /api/remove-from-list", () => {
     expect(vi.mocked(revalidatePath)).toHaveBeenCalledWith("/my-list", "page");
   });
 
-  // the fix also needs the type, so the request already sends it
-  test.fails(
-    "[B4] removing a movie keeps a TV show with the same id",
-    async () => {
-      const show = makeMovie({ movieId: 550, type: "tv" });
-      await seedList(user.id, [
-        makeMovie({ movieId: 550, type: "movie" }),
-        show,
-      ]);
+  test("[B4] removing a movie keeps a TV show with the same id", async () => {
+    const show = makeMovie({ movieId: 550, type: "tv" });
+    await seedList(user.id, [makeMovie({ movieId: 550, type: "movie" }), show]);
 
-      await del(user.id, 550, { type: "movie" });
+    await del(user.id, 550, { type: "movie" });
 
-      expect(await getMovies(user.id)).toEqual([show]);
-    },
-  );
+    expect(await getMovies(user.id)).toEqual([show]);
+  });
+
+  test("[B4] removing a TV show keeps a movie with the same id", async () => {
+    const movie = makeMovie({ movieId: 550, type: "movie" });
+    await seedList(user.id, [movie, makeMovie({ movieId: 550, type: "tv" })]);
+
+    await del(user.id, 550, { type: "tv" });
+
+    expect(await getMovies(user.id)).toEqual([movie]);
+  });
+
+  it.each([
+    ["no type", { type: "" }],
+    ['type "anime"', { type: "anime" }],
+    ["movieId 0", { movieId: "0" }],
+    ["movieId abc", { movieId: "abc" }],
+  ])("400 for %s, list unchanged", async (_, extra) => {
+    const movies = [makeMovie({ movieId: 550 })];
+    await seedList(user.id, movies);
+
+    const res = await del(user.id, 550, extra);
+
+    expect(res.status).toBe(400);
+    expect(await getMovies(user.id)).toEqual(movies);
+  });
 
   describe("authorization", () => {
-    test.fails("[B2] rejects a request without a session", async () => {
+    test("[B2] rejects a request without a session", async () => {
       const movies = [makeMovie({ movieId: 550 })];
       await seedList(user.id, movies);
       asUser(null);
@@ -101,7 +118,7 @@ describe("DELETE /api/remove-from-list", () => {
       expect(await getMovies(user.id)).toEqual(movies);
     });
 
-    test.fails("[B2] ignores a foreign userId header", async () => {
+    test("[B2] ignores a foreign userId header", async () => {
       const victim = await seedUser();
       const victimMovies = [makeMovie({ movieId: 550 })];
       await seedList(victim.id, victimMovies);

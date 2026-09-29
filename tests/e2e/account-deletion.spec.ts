@@ -26,11 +26,26 @@ test("the wrong confirmation text keeps the account", async ({
   await confirmWith(page, "delete");
 
   await expect(page).toHaveURL(/\/\?deleteAcc=fail/);
-  // .first(): DeleteResult toasts on every render, so StrictMode (next dev) shows two
-  await expect(
-    page.getByText("Failed to delete account.").first(),
-  ).toBeVisible();
+  // exactly one toast, also under StrictMode in next dev (B12)
+  await expect(page.getByText("Failed to delete account.")).toBeVisible();
+  // the dialog closes once the action has finished (B14)
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await userExists(db, user.id)).toBe(true);
+});
+
+test("[B14] an empty confirmation keeps the dialog open", async ({
+  page,
+  loginAs,
+}) => {
+  await loginAs();
+  await page.goto("/");
+
+  // the required input blocks the submit
+  await confirmWith(page, "");
+  await page.waitForTimeout(500); // the old code closed it after 300 ms
+
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page).not.toHaveURL(/deleteAcc=/);
 });
 
 test("the right confirmation text deletes the account and list", async ({
@@ -54,9 +69,8 @@ test("the right confirmation text deletes the account and list", async ({
   await confirmWith(page, "Delete account");
 
   await expect(page).toHaveURL(/\/\?deleteAcc=success/);
-  await expect(
-    page.getByText("Account deleted succesfully.").first(),
-  ).toBeVisible();
+  await expect(page.getByText("Account deleted succesfully.")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await userExists(db, user.id)).toBe(false);
   expect(await getMovies(db, user.id)).toBeUndefined();
   await expect(
@@ -64,29 +78,29 @@ test("the right confirmation text deletes the account and list", async ({
   ).toBeVisible();
 });
 
-test.fail(
-  "[B3] a tampered id can't delete another account",
-  async ({ page, loginAs, seedUser, db }) => {
-    const victim = await seedUser();
-    const attacker = await loginAs();
-    await page.goto("/");
+test("[B3] a tampered id can't delete another account", async ({
+  page,
+  loginAs,
+  seedUser,
+  db,
+}) => {
+  const victim = await seedUser();
+  const attacker = await loginAs();
+  await page.goto("/");
 
-    // Editing the hidden input isn't enough: React writes the controlled
-    // value={id} back before the form data is read. Rewrite the server action
-    // request instead, as an attacker would.
-    await page.route(
-      (url) => url.pathname === "/",
-      (route) => {
-        const request = route.request();
-        if (request.method() !== "POST") return route.continue();
-        return route.continue({
-          postData: request.postData()!.replace(attacker.id, victim.id),
-        });
-      },
-    );
-    await confirmWith(page, "Delete account");
+  // the form no longer sends an id; add one, as an attacker would
+  const dialog = await openDelete(page);
+  await dialog.locator("form").evaluate((form, id) => {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "id";
+    input.value = id;
+    form.append(input);
+  }, victim.id);
+  await dialog.getByRole("textbox").fill("Delete account");
+  await dialog.getByRole("button", { name: "Delete" }).click();
 
-    await expect(page).toHaveURL(/\/\?deleteAcc=/);
-    expect(await userExists(db, victim.id)).toBe(true);
-  },
-);
+  await expect(page).toHaveURL(/\/\?deleteAcc=success/);
+  expect(await userExists(db, victim.id)).toBe(true);
+  expect(await userExists(db, attacker.id)).toBe(false);
+});

@@ -48,5 +48,19 @@ describe("Trailer", () => {
     );
   });
 
-  test.todo("ignores non-YouTube trailers");
+  test("ignores non-YouTube trailers", async () => {
+    await renderTrailer([
+      video("Trailer", "vimeo-key", "Vimeo"),
+      video("Trailer", "yt-key"),
+    ]);
+    expect(screen.getByTitle("Trailer")).toHaveAttribute(
+      "src",
+      "https://www.youtube.com/embed/yt-key",
+    );
+  });
+
+  test("only non-YouTube trailers -> No trailer.", async () => {
+    await renderTrailer([video("Trailer", "vimeo-key", "Vimeo")]);
+    expect(screen.getByText("No trailer.")).toBeInTheDocument();
+  });
 });

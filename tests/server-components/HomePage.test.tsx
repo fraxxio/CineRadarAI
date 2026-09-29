@@ -53,8 +53,7 @@ describe("Home page", () => {
     expect(screen.queryByTestId("recaptcha-wrapper")).toBeNull();
   });
 
-  test.fails("[B9] chat disabled -> the chat input is inert", () => {
-    vi.spyOn(console, "error").mockImplementation(() => {}); // React's inert warning
+  test("[B9] chat disabled -> the chat input is inert", () => {
     stubChat(false, false);
     const { container } = renderHome();
 

@@ -58,5 +58,22 @@ test("sign out ends the session", async ({ page, loginAs, db }) => {
   await expect.poll(() => sessionCount(db, user.id)).toBe(0);
 });
 
-// B10: needs a real OAuth round trip, so this is documentation only
-test.fixme("[B10] login returns to the callbackUrl", async () => {});
+// B10: the OAuth round trip can't run here, but next-auth stores the redirect
+// target in its callback-url cookie before leaving for the provider
+test("[B10] login from a protected page returns to it", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/my-list");
+  await expect(page).toHaveURL(/\/signin\?/);
+
+  await page.route("https://github.com/**", (r) => r.abort());
+  const authorize = page.waitForRequest(/github\.com\/login\/oauth\/authorize/);
+  await page.getByRole("button", { name: "Sign in with Github" }).click();
+  await authorize;
+
+  const cookie = (await context.cookies()).find((c) =>
+    c.name.endsWith("authjs.callback-url"),
+  );
+  expect(new URL(decodeURIComponent(cookie!.value)).pathname).toBe("/my-list");
+});

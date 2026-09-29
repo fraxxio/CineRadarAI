@@ -103,21 +103,21 @@ test("shows the skeleton while results load", async ({ page }) => {
   await expect(page.getByTestId("search-results-skeleton")).toHaveCount(0);
 });
 
-test.fail(
-  "[B6] the query is URL-encoded in the TMDB request",
-  async ({ page, request }) => {
-    const query = unique("Tom & Jerry");
-    await search(page, query);
-    await expect(
-      page.getByRole("heading", { name: `Results for: ${query}` }),
-    ).toBeVisible();
+test("[B6] the query is URL-encoded in the TMDB request", async ({
+  page,
+  request,
+}) => {
+  const query = unique("Tom & Jerry");
+  await search(page, query);
+  await expect(
+    page.getByRole("heading", { name: `Results for: ${query}` }),
+  ).toBeVisible();
 
-    const log: { path: string; query: string }[] = await (
-      await request.get(`${TMDB_URL}/__requests`)
-    ).json();
-    const sent = log
-      .filter((r) => r.path === "/search/movie")
-      .map((r) => new URLSearchParams(r.query).get("query"));
-    expect(sent).toContain(query.split(" ").join("|"));
-  },
-);
+  const log: { path: string; query: string }[] = await (
+    await request.get(`${TMDB_URL}/__requests`)
+  ).json();
+  const sent = log
+    .filter((r) => r.path === "/search/movie")
+    .map((r) => new URLSearchParams(r.query).get("query"));
+  expect(sent).toContain(query.split(" ").join("|"));
+});

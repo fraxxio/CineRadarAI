@@ -19,12 +19,12 @@ export const Pages = ({
 }: PagesProps) => {
   const maxPages = totalPages >= 500 ? 500 : totalPages;
   const canPrevious = Number(page) > 1 ? false : true;
-  const canNext = maxPages > 1 && Number(page) < 500 ? false : true;
-  const nextIterations =
-    Number(page) === 500 || Number(page) === maxPages
-      ? 0
-      : Math.min(maxPages - 1, 4);
+  const canNext = Number(page) < maxPages ? false : true;
+  const nextIterations = Math.max(Math.min(maxPages - Number(page), 4), 0);
   const prevIterations = Number(page) === 1 ? 0 : Math.min(Number(page) - 1, 4);
+  // the last page already has a button when it's within reach
+  const showLast = Number(page) + nextIterations < maxPages;
+  const skipsPages = Number(page) + nextIterations < maxPages - 1;
 
   return (
     <div className="col-span-full flex items-end justify-center gap-8 pt-8 max-[700px]:flex-col max-[700px]:items-center">
@@ -62,10 +62,12 @@ export const Pages = ({
           ))}
         </div>
 
-        <div className="flex gap-2">
-          <p className="font-semibold">...</p>
-          <PageBtn value={maxPages} filterValues={filterValues} />
-        </div>
+        {showLast && (
+          <div className="flex gap-2">
+            {skipsPages && <p className="font-semibold">...</p>}
+            <PageBtn value={maxPages} filterValues={filterValues} />
+          </div>
+        )}
       </div>
       <Link href={buildSearchURL(filterValues, Number(page) + 1)}>
         <button

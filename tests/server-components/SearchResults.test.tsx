@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
 import SearchResults from "@/Components/SearchResults";
 import { getTitle } from "@/lib/searchTitle";
 import type { movieFilterValues } from "@/lib/validation";
@@ -94,13 +94,22 @@ describe("SearchResults", () => {
     );
   });
 
-  test.fails("[B6] the query is URL-encoded", async () => {
+  test("[B6] the query is URL-encoded", async () => {
     const spy = mockAll(page([1]));
     await run({ query: "Tom & Jerry" });
 
     const params = lastTmdbUrl(spy).searchParams;
     expect(params.get("query")).toBe("Tom|&|Jerry");
     expect(params.has("|Jerry")).toBe(false);
+  });
+
+  it.each(["C#", "a+b"])("[B6] %j reaches TMDB unchanged", async (query) => {
+    const spy = mockAll(page([1]));
+    await run({ query, year: "2014" });
+
+    const params = lastTmdbUrl(spy).searchParams;
+    expect(params.get("query")).toBe(query);
+    expect(params.get("year")).toBe("2014");
   });
 
   test("renders the title, one card per result and pagination", async () => {
@@ -116,6 +125,7 @@ describe("SearchResults", () => {
       language: "en",
       year: "2014",
       adult: false,
+      btn: "movie",
     });
     expect(screen.getAllByTestId("card").map((c) => c.textContent)).toEqual([
       "11",
@@ -146,14 +156,11 @@ describe("SearchResults", () => {
     );
   });
 
-  test.fails(
-    "[B7] browsing TV without a query isn't titled Trending movies",
-    async () => {
-      mockAll(page([1]));
-      render(await run({ btn: "tv" }));
-      expect(
-        screen.queryByRole("heading", { name: "Trending movies" }),
-      ).toBeNull();
-    },
-  );
+  test("[B7] browsing TV without a query is titled Trending TV shows", async () => {
+    mockAll(page([1]));
+    render(await run({ btn: "tv" }));
+    expect(
+      screen.getByRole("heading", { name: "Trending TV shows" }),
+    ).toBeInTheDocument();
+  });
 });

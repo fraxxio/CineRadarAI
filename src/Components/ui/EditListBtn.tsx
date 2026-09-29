@@ -64,7 +64,6 @@ export default function EditListBtn({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          userId: user.id.toString(),
           movieId: movieId.toString(),
           title: title,
           image: image,

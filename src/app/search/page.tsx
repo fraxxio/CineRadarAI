@@ -27,8 +27,7 @@ export function generateMetadata({
     btn,
     adult: adult === "true",
   });
-  const title =
-    dynamicTitle === "Trending movies" ? "Manual search" : dynamicTitle;
+  const title = query ? dynamicTitle : "Manual search";
   return {
     title: `${title} | CineRadar`,
   };

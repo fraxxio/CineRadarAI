@@ -11,7 +11,7 @@ test("shows the out-of-order overlay", async ({ page }) => {
   await expect(page.getByText(/no longer available/)).toBeVisible();
 });
 
-test.fail("[B9] the chat input can't be used", async ({ page }) => {
+test("[B9] the chat input can't be used", async ({ page }) => {
   // pointer-events-none only blocks the mouse; the keyboard needs `inert`
   await page.getByPlaceholder(/Suggest me movies/).focus();
   await page.keyboard.type("hello");

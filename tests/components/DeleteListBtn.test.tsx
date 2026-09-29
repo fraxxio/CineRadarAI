@@ -6,7 +6,12 @@ import { beforeEach, describe, expect, it, test, vi } from "vitest";
 import DeleteListBtn from "@/Components/ui/DeleteListBtn";
 import { deferred } from "../helpers/deferred";
 
-const props = { userId: "u1", movieId: 550, title: "Fight Club" };
+const props = {
+  userId: "u1",
+  movieId: 550,
+  title: "Fight Club",
+  type: "tv",
+};
 const ERROR_TEXT = "Something went wrong while removing.";
 
 let user: UserEvent;
@@ -65,7 +70,7 @@ describe("DeleteListBtn", () => {
     await dialogClosed();
   });
 
-  test("sends a DELETE with the ids in headers", async () => {
+  test("sends a DELETE with the movie id and type in headers", async () => {
     const fetch = fetchSpy().mockResolvedValue(
       Response.json({ addToListResult: "success" }),
     );
@@ -77,9 +82,12 @@ describe("DeleteListBtn", () => {
       "/api/remove-from-list",
       expect.objectContaining({
         method: "DELETE",
-        headers: expect.objectContaining({ userId: "u1", movieId: "550" }),
+        headers: expect.objectContaining({ movieId: "550", type: "tv" }),
       }),
     );
+    // the route takes the user from the session (B2)
+    const headers = fetch.mock.calls[0][1]!.headers as Record<string, string>;
+    expect(headers).not.toHaveProperty("userId");
   });
 
   test("success toast names the title", async () => {

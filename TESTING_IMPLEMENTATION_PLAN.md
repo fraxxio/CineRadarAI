@@ -15,7 +15,36 @@ Section 6 uses the same numbering as TESTING_PLAN.md (6.1.1 ↔ 1.1, 6.2.3 ↔ 2
 | 3. Core component tests | **Done** (2026-09-29, same branch) |
 | 4. Core E2E specs + variant specs | **Done** (2026-09-29, same branch) |
 | 5. Everything else | **Done** (2026-09-29, same branch) |
-| 6. Bug fixes | Not started |
+| 6. Bug fixes | **Done** (2026-09-29, same branch) |
+
+**Phase 6 checklist**
+
+Every known bug is fixed. No `test.fails`, `test.fail`, `test.fixme` or `test.todo` is left in `tests/`. The `**fails [Bn]**` labels in section 6 are kept as history.
+
+- [x] B1/B2: both list routes read the user from `auth()` and answer 401 without a session. The `userId` in the body/header is ignored, and the clients no longer send it (D34).
+- [x] B3: `DeleteUser` deletes `session.user.id`. `DeleteModal` lost its hidden `id` field and its `id` prop (D35).
+- [x] B4: entries are matched by `movieId` **and** `type`. `DELETE /api/remove-from-list` requires a `type` header, which `DeleteListBtn` sends (new `type` prop from `ListCard`) (D34).
+- [x] B5: "Next" is disabled on the last page, the next-page buttons stop at `maxPages`, and the trailing "… last" button only shows when the last page isn't already listed (D36).
+- [x] B6: `query` and `year` are `encodeURIComponent`-ed in `fetchMovies`.
+- [x] B7: `getTitle` returns "Trending TV shows" for `btn: "tv"`. `SearchResults` passes `btn`, and `generateMetadata` falls back to "Manual search" whenever there's no query.
+- [x] B8: the initial select runs inside the `try`.
+- [x] B9: `inert={"" as unknown as boolean}`. React 18 drops a boolean `inert` but renders the string. The cast is needed because the types only allow `boolean`.
+- [x] B10: `/signin` passes the middleware's `callbackUrl` to `signIn` as `redirectTo`, reduced to path + query + hash (never `//…` or `/signin…`) (D37).
+- [x] B11: `/api/assistant` and `/api/recaptcha` answer 400 for a body that isn't JSON, or is JSON `null`.
+- [x] B12: `DeleteResult` fires the toast from a `useEffect([deleteAcc])`. The `setTimeout` is kept, so the Toaster subscribes first, and the cleanup clears it, so StrictMode shows one toast.
+- [x] B13: `#reviews` (and its skeleton) has `scroll-mt-20`.
+- [x] B14: `DeleteModalBtn` closes the dialog when `pending` goes from `true` to `false`, not 300 ms after a click.
+- [x] The 3 add-to-list payload `test.todo`s are implemented: a zod schema rejects them with 400 (D38).
+- [x] The Trailer `test.todo`: only `site: "YouTube"` trailers are embedded.
+
+**Verified locally (phase 6)**
+
+- `npm run test:run` / `npm run test:coverage`: 47 files, 405 passed, no expected failures and no todos. Coverage is 92.7% lines. The new `tests/server-components/SignInPage.test.tsx` covers B10.
+- The whole `src/` diff was stashed and Vitest re-run against the old code: 55 tests fail. That covers every new or flipped bug test except the regression guards that hold on both versions (e.g. "stays open while pending", the redirect-sanitising cases). Two B6 cases (`"What?"`, `"50%"`) passed on the old code, so they were dropped.
+- `npm run test:e2e` (`next dev`): 50 passed, 0 skipped. Changed specs `--repeat-each=3`: 63 passed. `npm run test:e2e:variants`: 2 + 2 passed.
+- `CI=1 E2E_DATABASE_URL=… npm run test:e2e` and `test:e2e:variants` (production build): 50, 2 + 2 passed.
+- The tightened E2E cases were run with their fix reverted, and each fails: the single toast (B12, strict-mode violation), the dialog closing (B14), the empty confirmation keeping the dialog open (B14), the callback-url cookie (B10), the Reviews scroll offset (B13), and the injected `id` field (B3, with the old `actions.ts`).
+- `npm run lint`, `npm run typecheck:tests`, `tsc --noEmit` and `npx prettier --check tests` are clean. `src/app/api/assistant/route.ts` already failed `prettier --check` before phase 6, and is left as it was.
 
 **Phase 1 checklist**
 
@@ -136,12 +165,17 @@ The smoke tests check the infrastructure itself, not app features. They cover th
 | D30 | `EditListBtn` and `DeleteListBtn` now call `/api/add-to-list` and `/api/remove-from-list` (with a leading slash). | 6.3.6/6.3.7: fix it instead of pinning `api/...`. The relative URL only worked because `/my-list` is one level deep. |
 | D31 | The XSS review in `reviews.json` uses `<img src="data:," onerror=…>` instead of `src="x"`. | `src="x"` made the browser request `/search/movie/x`, which rendered a whole movie page and logged four TMDB 404s on every visit. `data:,` makes no request. It's still a broken image, so `onerror` still fires if sanitising is removed. This was checked: with `DOMPurify.sanitize` removed, `window.__xss` becomes `true`. |
 | D32 | Local Playwright runs use `workers: 4` (it was `undefined`, i.e. half the cores; 6 on a 12-core machine). CI stays at 2. | With 48 tests, `next dev` became flaky at 6 workers: `page.goto` was aborted ("frame was detached"), and server-action redirects got lost (the "wrong confirmation text" case stayed on `/`). The pre-existing 34 tests fail the same way under `--repeat-each=2`, so the problem is older than phase 5. The production build is fine with 4 workers and no retries. Warming up the 404 and error routes in global setup didn't help, so that change was reverted. With 4 workers, the wall time is the same (~27 s), because the dev server is the bottleneck. |
+| D34 | **API contract change.** `PUT /api/add-to-list` ignores `userId` in the body. `DELETE /api/remove-from-list` ignores the `userId` header and requires `type: movie\|tv` (400 otherwise, also for a missing or non-positive `movieId`). Both answer `401 { addToListResult: "fail" }` without a session. The integration `del()` helper sends `type: "movie"` by default and still sends `userId`, to show it's ignored. The E2E `remove()` helper sends `type` too, so the logged-in B2 case is a valid request that reaches the DB. | B1, B2, B4. |
+| D35 | The B3 E2E case adds a hidden `id` input with the victim's id to the form (it's no longer React-controlled, so it isn't rewritten). It asserts that the victim survives **and** the attacker is deleted. This replaces the `page.route` rewrite from D22. The toasts on `/?deleteAcc=…` no longer use `.first()` (D23), so a second toast fails the strict locator. | The form no longer has an `id` field to rewrite. |
+| D36 | Beyond B5, `Pages` hides the `...` when no page is skipped (e.g. page 45 of 50 lists 46–49 and then 50). | Found while testing the B5 fix. |
+| D37 | B10 has an E2E case after all: start from `/my-list`, click GitHub (the request is aborted), and check that next-auth's `authjs.callback-url` cookie points at `/my-list`. The full OAuth round trip is still out of reach. | Replaces the `test.fixme`. |
+| D38 | The add-to-list schema: `movieId` a positive integer, `title` non-empty, `status` one of the three list statuses, `rating` `""` or 1–10, `type` `movie\|tv`, and `image` a string or `null`. `null` is stored as `""`, because MovieCard/Details send `backdrop_path \|\| poster_path`, which can be `null`. | The 3 `test.todo`s, plus cheap extra cases. |
 | D33 | Small additions beyond 6.3/6.4: the ThinkingLoader per-letter/nbsp split, the 4th ChatSubmitBtn combination, the "no user id" case in DeleteListBtn, the logo link in Navbar, the mobile copy of the dropdown staying closed, a click *inside* the dropdown keeping it open, the TMDB-error rejection in every server component, the request query params (`language`, `page`) of each fetch, poster → backdrop fallbacks, and the `release_date`/`last_air_date` status line. The 6.4.5 boundary uses 861 vs 860 characters. The 6.5.1 mobile case also clicks a mobile link. The 6.5.4 anchor cases assert the target's `top` (≤ 100 px after the click, > 300 px before), instead of `not.toBeInViewport()`. | The Trailer section already shows 5% at load, so "not in viewport" was false from the start. |
 
 **Notes for the next phases**
 
 - The mock TMDB server returns 20 results per page. The 3rd review in `reviews.json` carries the XSS payloads, which set `window.__xss`.
-- `next dev` logs React's "non-boolean attribute `inert`" warning on the home page. That warning is B9.
+- `next dev` used to log React's "non-boolean attribute `inert`" warning on the home page (B9). Since phase 6 it's gone.
 - `next lint` only lints `src/`, so `tests/` isn't linted. Run `npx prettier --write tests` instead.
 - A `test.fails` passes on **any** failure, including a typo or a broken mock. After writing one, check why it fails by flipping every `test.fails(` to `test(` for a moment. In zsh/bash: `grep -rl "test.fails" tests | while read f; do cp "$f" "$f.bak"; sed -i 's/test\.fails(/test(/' "$f"; done; npx vitest run; for b in $(find tests -name "*.bak"); do mv "$b" "${b%.bak}"; done`.
 - Vitest 4: `vi.spyOn(globalThis, "fetch")` is typed as `MockInstance<typeof fetch>` (see `recaptcha.test.ts`).
@@ -180,7 +214,7 @@ Each item below was checked against the code and the installed packages (Next 14
 
 ### New issues found while planning
 
-Add these to the bug table in TESTING_PLAN.md:
+These are in the bug table in TESTING_PLAN.md. All of them were fixed in phase 6.
 
 | # | Where | Problem |
 |---|-------|---------|
@@ -1472,4 +1506,4 @@ Seed lists directly via `seedList` wherever the UI path isn't what's under test.
 3. ✅ **6.3.1, 6.3.2, 6.3.5, 6.3.10, 6.3.13** (done): chat, markdown safety, add-to-list, filters, pagination. This includes B5 ×2 under `test.fails`.
 4. ✅ **6.5.2, 6.5.3, 6.5.5, 6.5.6, 6.5.6b, 6.5.7**, then the two variant specs (done). This includes B1 ×2, B2 ×2, B3, B6 and B9 under `test.fail`.
 5. ✅ **Everything else** (done): 6.3 remainder, 6.4, 6.5.1, 6.5.4. This includes B6, B7, B9 and B12 under `test.fails`.
-6. Fix the bugs one by one. Each fix turns its `test.fails` into an unexpected pass. Flip it to a normal `test` in the same PR.
+6. ✅ **Fix the bugs** (done): B1–B14, the add-to-list payload validation and the non-YouTube trailer. Every `test.fails`/`test.fail`/`test.fixme`/`test.todo` is now a normal test.

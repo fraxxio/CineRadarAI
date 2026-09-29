@@ -12,7 +12,13 @@ export async function POST(request: NextRequest) {
   }
 
   // parse message from post
-  const { previousInteractionId, content } = await request.json();
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const { previousInteractionId, content } = payload ?? {};
 
   if (
     typeof content !== "string" ||

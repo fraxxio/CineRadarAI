@@ -9,6 +9,10 @@ describe("search page generateMetadata", () => {
     expect(title({})).toBe("Manual search | CineRadar");
   });
 
+  test("no query while browsing TV -> Manual search", () => {
+    expect(title({ btn: "tv" })).toBe("Manual search | CineRadar");
+  });
+
   test("query only (language defaults to en)", () => {
     expect(title({ query: "Fury" })).toBe(
       "Results for: Fury in EN language | CineRadar",

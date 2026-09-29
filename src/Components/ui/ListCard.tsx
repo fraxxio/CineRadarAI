@@ -83,6 +83,7 @@ export default function ListCard({ movie, index, user }: ListCardProps) {
             userId={user.id}
             movieId={movie.movieId}
             title={movie.name}
+            type={movie.type}
           />
         </div>
       </div>

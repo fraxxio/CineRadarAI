@@ -1,4 +1,4 @@
-import { describe, expect, it, test } from "vitest";
+import { describe, expect, it } from "vitest";
 import { getTitle } from "@/lib/searchTitle";
 
 describe("getTitle", () => {
@@ -18,7 +18,11 @@ describe("getTitle", () => {
     expect(getTitle(values)).toBe(expected);
   });
 
-  test.fails("[B7] no query while browsing TV mentions TV", () => {
-    expect(getTitle({ btn: "tv" })).toMatch(/tv/i);
+  it.each([
+    [{ btn: "movie" as const }, "Trending movies"],
+    [{ btn: "tv" as const }, "Trending TV shows"],
+    [{ btn: "tv" as const, query: "Fury" }, "Results for: Fury"],
+  ])("[B7] %o -> %s", (values, expected) => {
+    expect(getTitle(values)).toBe(expected);
   });
 });

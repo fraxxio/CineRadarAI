@@ -39,7 +39,7 @@ describe("DeleteResult", () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  test.fails("[B12] a re-render doesn't show the toast again", () => {
+  test("[B12] a re-render doesn't show the toast again", () => {
     const { rerender } = render(<DeleteResult deleteAcc="success" />);
     vi.runAllTimers();
     rerender(<DeleteResult deleteAcc="success" />);

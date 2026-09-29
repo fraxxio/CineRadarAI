@@ -111,8 +111,8 @@ export function describeListForm(c: ListFormConfig) {
         "/api/add-to-list",
         expect.objectContaining({ method: "PUT" }),
       );
+      // no userId: the route takes it from the session (B1)
       expect(JSON.parse(String(fetch.mock.calls[0][1]!.body))).toEqual({
-        userId: sessionUser.id,
         movieId: "550",
         title: "Fight Club",
         image: "/i.jpg",

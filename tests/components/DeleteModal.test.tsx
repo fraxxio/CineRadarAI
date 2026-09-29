@@ -10,7 +10,7 @@ import DeleteModalBtn from "@/Components/ui/DeleteModalBtn";
 afterEach(() => vi.mocked(useFormStatus).mockReset()); // D18
 
 async function open() {
-  render(<DeleteModal id="u1" />);
+  render(<DeleteModal />);
   await userEvent
     .setup()
     .click(screen.getByRole("button", { name: "Delete my account" }));
@@ -32,10 +32,9 @@ describe("DeleteModal", () => {
     expect(input).toHaveAttribute("name", "verifyInput");
   });
 
-  test("the hidden id field holds the user id", async () => {
+  test("sends no user id: the action deletes the session user (B3)", async () => {
     const dialog = await open();
-    const hidden = dialog.querySelector('input[type="hidden"][name="id"]');
-    expect(hidden).toHaveValue("u1");
+    expect(dialog.querySelector('input[name="id"]')).toBeNull();
   });
 });
 
@@ -51,5 +50,45 @@ describe("DeleteModalBtn", () => {
     vi.mocked(useFormStatus).mockReturnValue({ pending: true } as any);
     render(<DeleteModalBtn setIsOpen={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Deleting..." })).toBeDisabled();
+  });
+
+  const status = (pending: boolean) =>
+    vi.mocked(useFormStatus).mockReturnValue({ pending } as any);
+
+  test("[B14] a click alone doesn't close the dialog", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const setIsOpen = vi.fn();
+    status(false);
+    render(<DeleteModalBtn setIsOpen={setIsOpen} />);
+
+    // a blocked submit (empty required input) never starts the action
+    await userEvent
+      .setup({ advanceTimers: vi.advanceTimersByTime })
+      .click(screen.getByRole("button", { name: "Delete" }));
+    vi.advanceTimersByTime(1000);
+
+    expect(setIsOpen).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  test("[B14] stays open while the action is pending", () => {
+    const setIsOpen = vi.fn();
+    status(false);
+    const { rerender } = render(<DeleteModalBtn setIsOpen={setIsOpen} />);
+    status(true);
+    rerender(<DeleteModalBtn setIsOpen={setIsOpen} />);
+
+    expect(setIsOpen).not.toHaveBeenCalled();
+  });
+
+  test("[B14] closes once the action has finished", () => {
+    const setIsOpen = vi.fn();
+    status(true);
+    const { rerender } = render(<DeleteModalBtn setIsOpen={setIsOpen} />);
+    status(false);
+    rerender(<DeleteModalBtn setIsOpen={setIsOpen} />);
+
+    expect(setIsOpen).toHaveBeenCalledOnce();
+    expect(setIsOpen).toHaveBeenCalledWith(false);
   });
 });

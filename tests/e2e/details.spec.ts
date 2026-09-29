@@ -67,10 +67,12 @@ test("reviews are capped and sanitised", async ({ page }) => {
   expect(dialogs).toEqual([]);
 });
 
-// distance from the viewport top. Trailer and Gallery have scroll-mt-20, which keeps them
-// below the sticky nav. Reviews has none and lands at ~0, under the nav (B13).
+// distance from the viewport top. Every section has scroll-mt-20, which keeps it
+// below the sticky nav (Reviews had none and landed under the nav: B13).
 const topOf = (page: Page, selector: string) =>
   page.locator(selector).evaluate((el) => el.getBoundingClientRect().top);
+const navBottom = (page: Page) =>
+  page.locator("nav#top").evaluate((el) => el.getBoundingClientRect().bottom);
 
 for (const section of ["Trailer", "Gallery", "Reviews"]) {
   test(`the ${section} link scrolls to its section`, async ({ page }) => {
@@ -83,7 +85,10 @@ for (const section of ["Trailer", "Gallery", "Reviews"]) {
 
     await expect(page).toHaveURL(new RegExp(`${hash}$`));
     await expect.poll(() => topOf(page, hash)).toBeLessThanOrEqual(100);
-    expect(await topOf(page, hash)).toBeGreaterThan(-1); // sub-pixel rounding
+    // not hidden under the nav (-1: sub-pixel rounding)
+    expect(await topOf(page, hash)).toBeGreaterThan(
+      (await navBottom(page)) - 1,
+    );
     await expect(page.locator(hash)).toBeInViewport();
   });
 }

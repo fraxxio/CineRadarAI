@@ -196,10 +196,16 @@ describe("POST /api/assistant", () => {
     });
   });
 
-  test.fails("[B11] returns 400 for a malformed JSON body", async () => {
+  test("[B11] returns 400 for a malformed JSON body", async () => {
     const res = await POST(
       jsonRequest("POST", "/api/assistant", "{not json") as NextRequest,
     );
+    expect(res.status).toBe(400);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  test("returns 400 for a JSON null body", async () => {
+    const res = await post(null);
     expect(res.status).toBe(400);
   });
 });

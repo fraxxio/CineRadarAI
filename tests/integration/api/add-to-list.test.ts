@@ -17,8 +17,8 @@ let base: Record<string, string>;
 
 beforeEach(async () => {
   user = await seedUser();
-  // the route ignores the session today (B1); logging in keeps these tests valid after the fix
   asUser(user);
+  // userId is ignored by the route (B1); it stays in the body to prove that
   base = {
     userId: user.id,
     movieId: "550",
@@ -117,7 +117,7 @@ describe("PUT /api/add-to-list", () => {
       expect(await getMovies(user.id)).toBeUndefined();
     });
 
-    test.fails("[B8] returns fail when the initial select throws", async () => {
+    test("[B8] returns fail when the initial select throws", async () => {
       vi.spyOn(db, "select").mockImplementationOnce(() => {
         throw new Error("db down");
       });
@@ -129,27 +129,24 @@ describe("PUT /api/add-to-list", () => {
     });
   });
 
-  test.fails(
-    "[B4] adding a TV show does not overwrite a movie with the same id",
-    async () => {
-      const movie = makeMovie({ movieId: 550, type: "movie" });
-      await seedList(user.id, [movie]);
+  test("[B4] adding a TV show does not overwrite a movie with the same id", async () => {
+    const movie = makeMovie({ movieId: 550, type: "movie" });
+    await seedList(user.id, [movie]);
 
-      await put({ ...base, type: "tv", title: "Show" });
+    await put({ ...base, type: "tv", title: "Show" });
 
-      const movies = await getMovies(user.id);
-      expect(movies).toHaveLength(2);
-      expect(movies).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ movieId: 550, type: "movie" }),
-          expect.objectContaining({ movieId: 550, type: "tv" }),
-        ]),
-      );
-    },
-  );
+    const movies = await getMovies(user.id);
+    expect(movies).toHaveLength(2);
+    expect(movies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ movieId: 550, type: "movie" }),
+        expect.objectContaining({ movieId: 550, type: "tv" }),
+      ]),
+    );
+  });
 
   describe("authorization", () => {
-    test.fails("[B1] rejects a request without a session", async () => {
+    test("[B1] rejects a request without a session", async () => {
       asUser(null);
 
       const res = await put(base);
@@ -158,7 +155,7 @@ describe("PUT /api/add-to-list", () => {
       expect(await getMovies(user.id)).toBeUndefined();
     });
 
-    test.fails("[B1] ignores a foreign userId in the body", async () => {
+    test("[B1] ignores a foreign userId in the body", async () => {
       const victim = await seedUser();
       const victimMovies = [makeMovie({ movieId: 1 })];
       await seedList(victim.id, victimMovies);
@@ -171,9 +168,33 @@ describe("PUT /api/add-to-list", () => {
     });
   });
 
+  test("stores a missing image as an empty string", async () => {
+    await put({ ...base, image: null });
+    expect((await getMovies(user.id))![0].image).toBe("");
+  });
+
   describe("payload validation", () => {
-    test.todo("rejects a missing status");
-    test.todo('rejects type: "anime"');
-    test.todo('rejects rating: "11"');
+    it.each([
+      ["a missing status", { status: undefined }],
+      ['status "Dropped"', { status: "Dropped" }],
+      ['type "anime"', { type: "anime" }],
+      ['rating "11"', { rating: "11" }],
+      ['rating "0"', { rating: "0" }],
+      ['rating "abc"', { rating: "abc" }],
+      ['movieId ""', { movieId: "" }],
+      ['movieId "abc"', { movieId: "abc" }],
+      ["an empty title", { title: "" }],
+    ])("rejects %s with 400", async (_, override) => {
+      const res = await put({ ...base, ...override });
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ addToListResult: "fail" });
+      expect(await getMovies(user.id)).toBeUndefined();
+    });
+
+    test("rejects a malformed JSON body with 400", async () => {
+      const res = await put("{not json");
+      expect(res.status).toBe(400);
+    });
   });
 });

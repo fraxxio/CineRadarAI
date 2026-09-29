@@ -88,7 +88,7 @@ export default function AuthBtn({ user }: AuthBtnProps) {
           <p className="text-lg">{user.name}</p>
         </div>
         <p className="pt-1">{user.email}</p>
-        <DeleteModal id={user.id} />
+        <DeleteModal />
         <form action={SignOut}>
           <button
             type="submit"

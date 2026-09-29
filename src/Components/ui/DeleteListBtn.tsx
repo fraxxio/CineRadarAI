@@ -16,12 +16,14 @@ type DeleteListBtnProps = {
   userId: string;
   movieId: number;
   title: string;
+  type: string;
 };
 
 export default function DeleteListBtn({
   userId,
   movieId,
   title,
+  type,
 }: DeleteListBtnProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -47,8 +49,8 @@ export default function DeleteListBtn({
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
-          userId: userId,
           movieId: movieId.toString(),
+          type: type,
           redirect: "true",
         },
       });

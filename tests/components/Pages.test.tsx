@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { Pages } from "@/Components/ui/Pages";
 
 const fv = {
@@ -66,15 +66,38 @@ describe("Pages", () => {
     expect(screen.getByRole("button", { name: "Previous" })).toBeEnabled();
   });
 
-  test.fails("[B5] last page: Next disabled, no buttons past the end", () => {
+  test("[B5] last page: Next disabled, no buttons past the end", () => {
     renderPages("3", 3);
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
     expect(numbers().filter((n) => n > 3)).toEqual([]);
   });
 
-  test.fails("[B5] page 2 of 3: no button for page 4", () => {
+  test("[B5] page 2 of 3: no button for page 4", () => {
     renderPages("2", 3);
     expect(screen.queryByRole("button", { name: "4" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
+  });
+
+  it.each([
+    ["1", 3, [1, 2, 3]],
+    ["2", 3, [1, 2, 3]],
+    ["3", 3, [1, 2, 3]],
+    ["46", 50, [42, 43, 44, 45, 46, 47, 48, 49, 50]],
+    ["45", 50, [41, 42, 43, 44, 45, 46, 47, 48, 49, 50]],
+    ["500", 800, [496, 497, 498, 499, 500]],
+  ])(
+    "page %s of %i: every page once, no ... when the last is in reach",
+    (page, total, expected) => {
+      renderPages(page, total);
+      expect(numbers()).toEqual(expected);
+      expect(screen.queryByText("...")).toBeNull();
+    },
+  );
+
+  test("the ... and last page appear when the last is out of reach", () => {
+    renderPages("44", 50);
+    expect(numbers()).toEqual([40, 41, 42, 43, 44, 45, 46, 47, 48, 50]);
+    expect(screen.getByText("...")).toBeInTheDocument();
   });
 
   test("caps total pages at 500", () => {

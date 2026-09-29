@@ -4,17 +4,7 @@ import { Pages } from "./ui/Pages";
 
 type SearchResultsProps = {
   filterValues: movieFilterValues;
-  getTitle: ({
-    query,
-    language,
-    year,
-    adult,
-  }: {
-    query: string | undefined;
-    language?: string | undefined;
-    year?: string | undefined;
-    adult?: boolean | undefined;
-  }) => string;
+  getTitle: (values: movieFilterValues) => string;
 };
 
 async function fetchMovies({
@@ -35,8 +25,12 @@ async function fetchMovies({
     },
   };
 
-  const query = searchString === undefined ? "" : `query=${searchString}`;
-  const Year = year === undefined ? "" : `&year=${year}`;
+  // encode user input: "&", "#" or "?" would otherwise break the URL
+  const query =
+    searchString === undefined
+      ? ""
+      : `query=${encodeURIComponent(searchString)}`;
+  const Year = year === undefined ? "" : `&year=${encodeURIComponent(year)}`;
   const FetchType = query === "" ? "discover" : "search";
 
   const fetchURL = `${process.env.TMDB_BASE_URL}/${FetchType}/${btn}?${query}&include_adult=${adult}&language=${language}&page=${page}${Year}`;
@@ -78,7 +72,7 @@ export default async function SearchResults({
   return (
     <section className="w-full max-w-[70%] max-lg:max-w-full">
       <h1 className="pb-8 text-center text-2xl font-medium">
-        {getTitle({ query, language, year, adult })}
+        {getTitle({ query, language, year, adult, btn })}
       </h1>
       {fetchedData.results.length === 0 ? (
         <h1 className="w-full text-center text-2xl font-medium">

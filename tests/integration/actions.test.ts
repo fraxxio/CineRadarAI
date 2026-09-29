@@ -76,15 +76,12 @@ describe("DeleteUser", () => {
     expect(await userRows(a.id)).toEqual(all);
   });
 
-  test.fails(
-    "[B3] only deletes the session user, ignoring the form id",
-    async () => {
-      asUser(a);
+  test("[B3] only deletes the session user, ignoring the form id", async () => {
+    asUser(a);
 
-      await DeleteUser(form("Delete account", b.id)).catch(() => {});
+    await DeleteUser(form("Delete account", b.id)).catch(() => {});
 
-      expect(await userRows(b.id)).toEqual(all);
-      expect(await userRows(a.id)).toEqual(none);
-    },
-  );
+    expect(await userRows(b.id)).toEqual(all);
+    expect(await userRows(a.id)).toEqual(none);
+  });
 });
