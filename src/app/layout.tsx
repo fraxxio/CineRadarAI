@@ -4,7 +4,7 @@ import Navbar from "@/Components/Navbar";
 import { Toaster } from "@/Components/ui/sonner";
 import "./globals.css";
 import Footer from "@/Components/Footer";
-import { auth } from "@/auth";
+import { getSession } from "@/lib/session";
 
 const sora = Sora({ subsets: ["latin"] });
 
@@ -19,7 +19,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth();
+  const session = await getSession();
 
   return (
     <html lang="en">

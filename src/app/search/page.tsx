@@ -1,7 +1,9 @@
 import Filters from "@/Components/Filters";
 import SearchResults from "@/Components/SearchResults";
+import { SearchResultsSkeleton } from "@/Components/skeletons/SearchResultsSkeleton";
 import { movieFilterValues } from "@/lib/validation";
 import { Metadata } from "next";
+import { Suspense } from "react";
 
 type PageProps = {
   searchParams: {
@@ -64,7 +66,12 @@ export default function page({
   return (
     <main className="container flex gap-12 py-20 max-lg:flex-col">
       <Filters filterValues={filterValues} />
-      <SearchResults filterValues={filterValues} getTitle={getTitle} />
+      <Suspense
+        key={JSON.stringify(filterValues)}
+        fallback={<SearchResultsSkeleton />}
+      >
+        <SearchResults filterValues={filterValues} getTitle={getTitle} />
+      </Suspense>
     </main>
   );
 }

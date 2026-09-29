@@ -1,5 +1,6 @@
 import Markdown from "react-markdown";
 import Image from "next/image";
+import Link from "next/link";
 
 type AssistantMessageProps = {
   message: {
@@ -36,7 +37,22 @@ export function AssistantMessage({ message, children }: AssistantMessageProps) {
         {displayRole(message.role)}
       </div>
       <div className="chatLink overflow-auto text-left">
-        {children ?? <Markdown>{message.content ?? ""}</Markdown>}
+        {children ?? (
+          <Markdown
+            components={{
+              a: ({ href = "", children }) =>
+                href.startsWith("/") ? (
+                  <Link href={href}>{children}</Link>
+                ) : (
+                  <a href={href} target="_blank" rel="noreferrer">
+                    {children}
+                  </a>
+                ),
+            }}
+          >
+            {message.content ?? ""}
+          </Markdown>
+        )}
       </div>
     </div>
   );

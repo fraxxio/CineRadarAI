@@ -9,7 +9,7 @@ import {
   Star,
 } from "lucide-react";
 import AddToListBtn from "./ui/AddToListBtn";
-import { auth } from "@/auth";
+import { getSession } from "@/lib/session";
 
 type DetailsProps = {
   title: string;
@@ -86,7 +86,7 @@ export default async function Details({
     first_air_date,
     type,
   }: DetailsProps = await fetchDetails(id, mediaType);
-  const session = await auth();
+  const session = await getSession();
 
   return (
     <section className="mt-20 flex gap-32 rounded-sm border border-border-clr bg-primary-bg max-[950px]:flex-col max-[950px]:gap-4">

@@ -16,10 +16,8 @@ const config: Config = {
           "2xl": "1400px",
         },
       },
-      borderColor: {
-        "border-clr": "rgba(39, 195, 233, 0.15)",
-      },
       colors: {
+        "border-clr": "rgba(39, 195, 233, 0.15)",
         "primary-bg": "#0E1428",
         "primary-text": "#0ba6cf",
         "secondary-text": "#0C7DAD",
