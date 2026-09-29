@@ -12,7 +12,7 @@ Section 6 uses the same numbering as TESTING_PLAN.md (6.1.1 ↔ 1.1, 6.2.3 ↔ 2
 |---|---|
 | 1. Infrastructure | **Done** (2026-09-29, branch `add-unit-and-integration-tests`) |
 | 2. 6.1 + 6.2 | **Done** (2026-09-29, same branch) |
-| 3. Core component tests | Not started |
+| 3. Core component tests | **Done** (2026-09-29, same branch) |
 | 4. Core E2E specs + variant specs | Not started |
 | 5. Everything else | Not started |
 | 6. Bug fixes | Not started |
@@ -35,9 +35,25 @@ Section 6 uses the same numbering as TESTING_PLAN.md (6.1.1 ↔ 1.1, 6.2.3 ↔ 2
 - [x] Known bugs under `test.fails`: B1 ×2, B2 ×2, B3, B4 ×2, B7, B8, B11 (10 in total). Each was checked by temporarily flipping it to `test`: every one fails on the bug's own assertion (e.g. `expected 200 to be 401`), not on a setup error.
 - [x] `test.todo` × 3 for add-to-list payload validation.
 
-**Verified locally**
+**Phase 3 checklist**
 
-- `npm run test:run` / `npm run test:coverage` pass: 19 files, 165 passed + 10 expected fail + 3 todo. Stable over repeated runs.
+- [x] 6.3.1 `tests/components/ChatAssistant.test.tsx`
+- [x] 6.3.2 `tests/components/AssistantMessage.test.tsx`
+- [x] 6.3.5 `tests/components/AddToListBtn.test.tsx`
+- [x] 6.3.10 `tests/components/FiltersForm.test.tsx`
+- [x] 6.3.13 `tests/components/Pages.test.tsx`, including B5 ×2 under `test.fails`. Both were flipped to `test` and fail on the bug's own assertion (`Received element is not disabled`, `expected <button> to be null`).
+- [x] New helper `tests/helpers/deferred.ts` (D17).
+
+**Verified locally (phase 3)**
+
+- `npm run test:run` / `npm run test:coverage` pass: 23 files, 222 passed + 12 expected fail + 3 todo. Stable over 3 runs. No React `act(...)` warnings.
+- Coverage of the phase-3 targets: 100% lines for `ChatAssistant`, `AssistantMessage`, `AddToListBtn`, `FiltersForm` and `Pages` (and for `PageBtn`, `SubmitBtn`, `ChatSubmitBtn`, `ThinkingLoader`, which they render). Branches: `ChatAssistant` 97.6%, `Pages` 100%, `AssistantMessage` 88.9%, `FiltersForm` and `AddToListBtn` 75% (the non-`btn` submitter check and the `fullSize` class variants).
+- Mutation check: 31 hand-made mutants across the five components (chunk reassembly, blank lines, message cap, `previousInteractionId`, reset after failure, missing `done`, error-event handling, reCAPTCHA timing/action/result, link targets, form reset, request body, pagination limits, filter propagation...). All are killed except the removal of the `!response.body` guard. That one is an equivalent mutant: `null.getReader()` throws, so the turn fails the same way.
+- `npm run typecheck:tests`, `npm run lint` and `npx prettier --check tests` are clean.
+
+**Verified locally (phases 1–2)**
+
+- `npm run test:run` / `npm run test:coverage` pass: 18 files, 165 passed + 10 expected fail + 3 todo. Stable over repeated runs.
 - Coverage of the phase-2 targets: `src/lib` 96–98% (only `session.ts` is uncovered, because it's mocked globally), `src/auth.ts` and all four API routes at 100% lines, `actions.ts` 94% (`SignOut` is left for E2E).
 - `npm run typecheck:tests`, `tsc --noEmit` and `npm run lint` are clean.
 - `npm run test:e2e` passes (2 tests), both with `next dev` and with `CI=1` (`next build` + `next start`, DB given through `E2E_DATABASE_URL`).
@@ -66,6 +82,11 @@ The smoke tests check the infrastructure itself, not app features. They cover th
 | D14 | The non-bug add/remove tests log in as the list owner (`asUser(user)` in `beforeEach`), even though the routes ignore the session today. | Once B1/B2 are fixed and the routes read `session.user.id`, these tests keep passing unchanged. |
 | D15 | `assistant.test.ts` calls `create.mockReset()` in `beforeEach`. | `clearMocks`/`restoreMocks` don't reset the implementation of a `vi.hoisted` `vi.fn()` in Vitest 4, so a `mockResolvedValue` would leak into the next test. |
 | D16 | Small additions beyond section 6: reCAPTCHA 404 also when only the site key is missing, the `null`/missing interaction-id cases also assert `previous_interaction_id: undefined`, the NDJSON framing test uses a delta containing quotes and `\n`, and the `getTitle` matrix lives in `tests/unit/lib/searchTitle.test.ts`. | Cheap extra coverage. |
+| D17 | New `tests/helpers/deferred.ts` (`deferred<T>()` → `{ promise, resolve, reject }`). | In-flight assertions (AddToListBtn now, EditListBtn/DeleteListBtn in phase 5). `Promise.withResolvers` isn't in the `ES2022` lib. |
+| D18 | `ChatAssistant.test.tsx` calls `vi.mocked(useGoogleReCaptcha).mockReset()` and `vi.useRealTimers()` in `afterEach`. | Same reason as D15: a `mockReturnValue` on the setup file's `vi.fn()` would leak into later tests of the file. In Vitest 4, `mockReset` goes back to the original `executeRecaptcha: undefined` implementation. |
+| D19 | The ChatAssistant "error event" case pushes `start` + `error` into a `controlledStream()` that is **never closed**. | With a closed stream, the turn fails anyway ("stream ended without `done`"), so ignoring the `error` event went unnoticed. The mutation check found it. |
+| D20 | Small additions beyond 6.3: ChatAssistant covers a malformed NDJSON line, a reCAPTCHA verify request that returns 500, the prompt being kept after a failed verification or when `executeRecaptcha` isn't ready, and the submit button enabling once text is typed. AddToListBtn covers an empty rating, and "close + reset" runs for all three outcomes. Pages covers `page={undefined}` and asserts that 800 isn't rendered. | Cheap extra coverage. |
+| D21 | The "all filters" and "no empty selects" FiltersForm cases compare parsed search params, not the raw URL string. The two button cases still compare the exact URL. | The parameter order is `buildSearchURL`'s business (covered in 6.1.1). |
 
 **Notes for the next phases**
 
@@ -74,6 +95,11 @@ The smoke tests check the infrastructure itself, not app features. They cover th
 - `next lint` only lints `src/`, so `tests/` isn't linted. Run `npx prettier --write tests` instead.
 - A `test.fails` passes on **any** failure, including a typo or a broken mock. After writing one, check why it fails by flipping every `test.fails(` to `test(` for a moment. In zsh/bash: `grep -rl "test.fails" tests | while read f; do cp "$f" "$f.bak"; sed -i 's/test\.fails(/test(/' "$f"; done; npx vitest run; for b in $(find tests -name "*.bak"); do mv "$b" "${b%.bak}"; done`.
 - Vitest 4: `vi.spyOn(globalThis, "fetch")` is typed as `MockInstance<typeof fetch>` (see `recaptcha.test.ts`).
+- jsdom 30 + user-event set `SubmitEvent.submitter` correctly, so FiltersForm's movie/TV buttons work in jsdom (the open question in 6.3.10).
+- Radix `Dialog` works in jsdom. While it's open, everything outside it is `aria-hidden`, so query inside it with `within(screen.getByRole("dialog"))`. The trigger's name ("Add to list") is the same as the submit button's.
+- Mocked `vi.fn()`s from the setup files (`useGoogleReCaptcha`, `useFormStatus`) keep a `mockReturnValue` until `mockReset()`. Reset them in `afterEach` in any file that overrides them (D18). `toast.*` and the router mocks only record calls, so `clearMocks` is enough for those.
+- To check that a new test can actually fail, break the component on purpose (a `perl -0pi -e 's/.../.../'` on a copy), run the one test file, and restore the copy. This is how D19 was found.
+- For phase 5: `ThinkingLoader`, `ChatSubmitBtn`, `SubmitBtn` and `PageBtn` already have 100% line coverage through the phase-3 tests. Their own 6.3.3/6.3.4/6.3.12 cases are still worth writing, but they're low value.
 
 ---
 
@@ -1385,7 +1411,7 @@ Seed lists directly via `seedList` wherever the UI path isn't what's under test.
    - A smoke test per project: one unit, one integration (seed + read), one component, and one E2E (`/about` loads, `loginAs` shows the avatar).
    - CI (5).
 2. ✅ **6.1 + 6.2** (done). This includes the B1–B4 and B8 `test.fails` cases, which puts the security findings under test on day one.
-3. **6.3.1, 6.3.2, 6.3.5, 6.3.10, 6.3.13**: chat, markdown safety, add-to-list, filters, pagination.
+3. ✅ **6.3.1, 6.3.2, 6.3.5, 6.3.10, 6.3.13** (done): chat, markdown safety, add-to-list, filters, pagination. This includes B5 ×2 under `test.fails`.
 4. **6.5.2, 6.5.3, 6.5.5, 6.5.6, 6.5.6b, 6.5.7**, then the two variant specs.
 5. Everything else (6.3 remainder, 6.4, 6.5.1, 6.5.4).
 6. Fix the bugs one by one. Each fix turns its `test.fails` into an unexpected pass. Flip it to a normal `test` in the same PR.
