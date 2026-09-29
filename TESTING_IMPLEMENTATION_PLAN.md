@@ -13,7 +13,7 @@ Section 6 uses the same numbering as TESTING_PLAN.md (6.1.1 ↔ 1.1, 6.2.3 ↔ 2
 | 1. Infrastructure | **Done** (2026-09-29, branch `add-unit-and-integration-tests`) |
 | 2. 6.1 + 6.2 | **Done** (2026-09-29, same branch) |
 | 3. Core component tests | **Done** (2026-09-29, same branch) |
-| 4. Core E2E specs + variant specs | Not started |
+| 4. Core E2E specs + variant specs | **Done** (2026-09-29, same branch) |
 | 5. Everything else | Not started |
 | 6. Bug fixes | Not started |
 
@@ -44,6 +44,25 @@ Section 6 uses the same numbering as TESTING_PLAN.md (6.1.1 ↔ 1.1, 6.2.3 ↔ 2
 - [x] 6.3.13 `tests/components/Pages.test.tsx`, including B5 ×2 under `test.fails`. Both were flipped to `test` and fail on the bug's own assertion (`Received element is not disabled`, `expected <button> to be null`).
 - [x] New helper `tests/helpers/deferred.ts` (D17).
 
+**Phase 4 checklist**
+
+- [x] 6.5.2 `tests/e2e/chat.spec.ts`
+- [x] 6.5.3 `tests/e2e/search.spec.ts`, including B6 under `test.fail`
+- [x] 6.5.5 `tests/e2e/auth.spec.ts`, including B10 as `test.fixme`
+- [x] 6.5.6 `tests/e2e/my-list.spec.ts`
+- [x] 6.5.6b `tests/e2e/security.spec.ts`: B1 ×2, B2 ×2 under `test.fail`
+- [x] 6.5.7 `tests/e2e/account-deletion.spec.ts`, including B3 under `test.fail`
+- [x] 6.5.2b `tests/e2e/variants/chat-disabled.spec.ts` (B9 under `test.fail`) and `tests/e2e/variants/recaptcha.spec.ts`
+- [x] `--pass-with-no-tests` removed from `test:e2e:variants` (D8).
+- [x] All 7 E2E `test.fail` cases were flipped to `test`. Each fails on the bug's own assertion: the victim's list changed (B1/B2), the victim was deleted (B3), the mock received `query=Tom|` (B6), and the input got `"hello"` (B9).
+
+**Verified locally (phase 4)**
+
+- `npm run test:e2e`: 34 passed + 1 skipped (B10 fixme), with `next dev`. Stable over 2 runs and `--repeat-each=3` (102 passed).
+- `CI=1 E2E_DATABASE_URL=… npm run test:e2e` (34 passed + 1 skipped) and `npm run test:e2e:variants` (2 + 2 passed) pass with `next build` + `next start`.
+- Mutation check: 9 hand-made mutants in the app, each killed by the matching spec. They removed `router.refresh()` in EditListBtn, redirected DeleteUser to `fail`, dropped `previousInteractionId`, dropped the middleware's `callbackUrl`, flipped the rating sort, removed the input's `disabled` while loading, dropped `&page=` from the TMDB URL, replaced `signOut` with a bare redirect, and ignored `success: false` from `/api/recaptcha`.
+- `npm run typecheck:tests`, `npm run lint` and `npx prettier --check tests` are clean.
+
 **Verified locally (phase 3)**
 
 - `npm run test:run` / `npm run test:coverage` pass: 23 files, 222 passed + 12 expected fail + 3 todo. Stable over 3 runs. No React `act(...)` warnings.
@@ -73,7 +92,7 @@ The smoke tests check the infrastructure itself, not app features. They cover th
 | D5 | New `tests/helpers/migrations.ts` (`MIGRATIONS_FOLDER`, `generateTestMigrations()`), used by both global setups. | One copy of the generate command. |
 | D6 | E2E global setup **drops all tables** before migrating, instead of deleting rows. | Migrations are regenerated with a new file name and hash on every run. A reused DB therefore replayed `CREATE TABLE` and failed with `table lists already exists`. |
 | D7 | Local sqld container is started with `--name cineradar-e2e-db`. CI provides the DB as a **service container** through `E2E_DATABASE_URL`. | Playwright kills only the `docker run` client, so the container outlives the run. In CI (`reuseExistingServer: false`), the second Playwright run would find port 8089 in use and fail. |
-| D8 | `test:e2e:variants` passes `--pass-with-no-tests`. | The variant specs arrive in phase 4. Without the flag, Playwright exits 1 ("No tests found"). **Remove the flag when the variant specs land.** |
+| D8 | `test:e2e:variants` passed `--pass-with-no-tests` until phase 4. | The variant specs arrived in phase 4. Without the flag, Playwright exits 1 ("No tests found"). **Removed in phase 4.** |
 | D9 | sqld is pinned to `ghcr.io/tursodatabase/libsql-server:v0.24.33` (`LIBSQL_IMAGE` in `tests/e2e/env.ts`, and in the CI workflow). | Reproducible runs. Keep both places in sync. |
 | D10 | Optional `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` → `launchOptions.executablePath`. | The downloaded Chromium can't find system libraries on NixOS. Locally, run `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$(which chromium) npm run test:e2e`. CI leaves it unset. |
 | D11 | Small additions: `forbidOnly` in CI, `outputDir: test-results/<variant>`, `TMDB_URL` in `env.ts`, `tmdbFixture()` in `helpers/tmdb.ts`. `mockTmdb` also accepts `Request` inputs and clones `Response` routes, so a route can be hit twice. | Convenience. No design change. |
@@ -87,6 +106,13 @@ The smoke tests check the infrastructure itself, not app features. They cover th
 | D19 | The ChatAssistant "error event" case pushes `start` + `error` into a `controlledStream()` that is **never closed**. | With a closed stream, the turn fails anyway ("stream ended without `done`"), so ignoring the `error` event went unnoticed. The mutation check found it. |
 | D20 | Small additions beyond 6.3: ChatAssistant covers a malformed NDJSON line, a reCAPTCHA verify request that returns 500, the prompt being kept after a failed verification or when `executeRecaptcha` isn't ready, and the submit button enabling once text is typed. AddToListBtn covers an empty rating, and "close + reset" runs for all three outcomes. Pages covers `page={undefined}` and asserts that 800 isn't rendered. | Cheap extra coverage. |
 | D21 | The "all filters" and "no empty selects" FiltersForm cases compare parsed search params, not the raw URL string. The two button cases still compare the exact URL. | The parameter order is `buildSearchURL`'s business (covered in 6.1.1). |
+| D22 | B3 (account deletion) rewrites the server-action POST with `page.route` (the attacker's id → the victim's id) instead of editing the hidden `id` input. | React writes the controlled `value={id}` back to the hidden input during the submit, so the edited DOM value never reaches the server. With the plan's approach, the attacker deleted their **own** account and the `test.fail` passed unexpectedly. Rewriting the request is also closer to a real attack. |
+| D23 | Toast assertions on `/?deleteAcc=…` use `.first()`. | `DeleteResult` calls `toast()` from render (inside a `setTimeout`), so StrictMode in `next dev` shows the toast **twice**. Any extra re-render would do the same in production. Candidate bug **B12**: move the toast into a `useEffect` (with a ref guard). |
+| D24 | The trending case expects **20** cards, not 6. | The mock returns 20 results per page (`PAGE_SIZE`). "6" in 6.5.3 was a typo. |
+| D25 | The B6 and skeleton cases add a random suffix to the query (`unique()` in `search.spec.ts`). | The request log is shared by parallel workers, and a unique query can't be served from Next's Data Cache (F12). In practice these dynamic pages weren't cached, but the suffix costs nothing. |
+| D26 | The 6.5.6 "Count" case is folded into "Sort / filter": `expectItems()` checks the item names and `Length: N` together after every step. The walk also goes to "Movies" (after TV + Watching) to reach an empty filtered list. `Sort / filter` and `Refresh` share the same 4 seeded items. | One place for the order and count assertions. |
+| D27 | Small additions beyond 6.5: chat asserts the exact request bodies and that the input is re-enabled after an error, search checks that the language select keeps its value after a reload and that TV results have no movie links, my-list checks the DB after add/edit/remove, and the reCAPTCHA failure case asserts exactly one verify request. B9 checks the typed value first and `[inert]` second, so the user-visible failure is the one reported. | Cheap extra coverage. |
+| D28 | The reCAPTCHA stub sets `window.__grecaptchaReady` inside `ready()`, and the spec waits for it before typing. | Before the provider has its grecaptcha instance, `executeRecaptcha` is `undefined` and a submit is silently ignored. |
 
 **Notes for the next phases**
 
@@ -100,6 +126,10 @@ The smoke tests check the infrastructure itself, not app features. They cover th
 - Mocked `vi.fn()`s from the setup files (`useGoogleReCaptcha`, `useFormStatus`) keep a `mockReturnValue` until `mockReset()`. Reset them in `afterEach` in any file that overrides them (D18). `toast.*` and the router mocks only record calls, so `clearMocks` is enough for those.
 - To check that a new test can actually fail, break the component on purpose (a `perl -0pi -e 's/.../.../'` on a copy), run the one test file, and restore the copy. This is how D19 was found.
 - For phase 5: `ThinkingLoader`, `ChatSubmitBtn`, `SubmitBtn` and `PageBtn` already have 100% line coverage through the phase-3 tests. Their own 6.3.3/6.3.4/6.3.12 cases are still worth writing, but they're low value.
+- E2E iteration: start the TMDB mock and `next dev -p 3100` yourself with the `appEnv` values from `playwright.config.ts` (and `NEXT_DIST_DIR=.next-e2e-default`). `reuseExistingServer` then picks them up, and a spec runs in a few seconds. Don't `pkill -f tmdb-server.mjs` from a shell whose own command line contains that string: it kills the shell.
+- E2E locators: the navbar is a `<ul>`, so scope `listitem` queries to `getByRole("main")`. There are two `AuthBtn`s (desktop + mobile), so scope to `nav#top`. Selects without labels (language, year) are located by `select[name=…]`. A ListCard row is `main div.border-b` filtered by its item link.
+- Expected server-log noise during E2E: every visit to `/search/movie/550` logs four TMDB `404`s ("Error fetching movie details/trailer/images/reviews"). The cause is the XSS review in `reviews.json`. The sanitiser strips `onerror` from `<img src="x" onerror=…>` but keeps `src="x"`, so the browser requests `/search/movie/x`, which renders a movie page for id `x`, and the mock rejects the non-numeric id. It's harmless. If it bothers 6.5.4, point that `src` at a stubbed host (`https://image.tmdb.org/x.png`). The `500` for `__error__` is expected too.
+- The E2E `test.fail` check works like the Vitest one: `sed -i 's/^test\.fail(/test(/'` on a copy, run with `-g "B[0-9]"`, restore. In zsh, put multiple files in an array (`FILES=(a b)`), because unquoted `$FILES` isn't word-split.
 
 ---
 
@@ -132,6 +162,7 @@ Add these to the bug table in TESTING_PLAN.md:
 | B9 | [src/app/page.tsx](src/app/page.tsx) | `<div inert>` is dropped by React 18. Verified: `renderToStaticMarkup(<div inert>)` → `<div>`, and Next's bundled react-dom has no `inert` support. With the chat disabled, `pointer-events-none` blocks the mouse but the input can still be reached and typed into with the keyboard. Fix: `inert=""` (a string), or `disabled` on the input. |
 | B10 | [src/app/signin/page.tsx](src/app/signin/page.tsx) | `signIn(provider, { redirectTo: "/" })` ignores the `callbackUrl` that the middleware adds. After logging in from `/my-list`, the user lands on `/`. This is minor. |
 | B11 | `/api/assistant`, `/api/recaptcha` | A malformed JSON body makes `request.json()` throw, which returns a 500 instead of a 400. This is minor. |
+| B12 | [src/Components/ui/DeleteResult.tsx](src/Components/ui/DeleteResult.tsx) | Found in phase 4. The toast is fired from render (`setTimeout` in the component body), so every render shows it again. In `next dev` (StrictMode) the "Account deleted" / "Failed to delete" toast appears twice. Fix: fire it from a `useEffect`, guarded by a ref. This is minor. |
 
 ---
 
@@ -780,12 +811,12 @@ export const answer = (id: string, markdown: string): ChatStreamEvent[] => [
 "test:components": "vitest run --project components",
 "test:coverage": "vitest run --coverage",
 "test:e2e": "playwright test",
-"test:e2e:variants": "E2E_VARIANT=chat-disabled playwright test --pass-with-no-tests && E2E_VARIANT=recaptcha playwright test --pass-with-no-tests",
+"test:e2e:variants": "E2E_VARIANT=chat-disabled playwright test && E2E_VARIANT=recaptcha playwright test",
 "test:e2e:ui": "playwright test --ui",
 "typecheck:tests": "tsc -p tests/tsconfig.json --noEmit"
 ```
 
-(Use `cross-env` for the variants script if Windows support matters. Drop `--pass-with-no-tests` once the variant specs exist (D8).)
+(Use `cross-env` for the variants script if Windows support matters. `--pass-with-no-tests` was dropped once the variant specs existed (D8).)
 
 `.github/workflows/tests.yml`:
 
@@ -1335,7 +1366,7 @@ All specs import `{ test, expect }` from `tests/e2e/fixtures.ts`.
 
 | Case | Implementation |
 |---|---|
-| Trending | `goto("/search")` → heading "Trending movies", 6 cards (`locator('a[href^="/search/movie/"]')`), and a card titled "Trending movie p1 #1". |
+| Trending | `goto("/search")` → heading "Trending movies", 20 cards (D24) (`locator('a[href^="/search/movie/"]')`), and a card titled "Trending movie p1 #1". |
 | Full filter search | Fill "Type keywords..." with "Fury", `selectOption` language `"fr"` and year `"2014"`, click the "Include adult" label, click "Search movies" → `toHaveURL(/query=Fury&language=fr&year=2014&adult=true&btn=movie/)`. Heading "Results for: Fury in FR language, 2014 year, including adult.". `reload()` → the inputs keep their values and the checkbox is `toBeChecked()`. |
 | TV | Same query + "Search TV shows" → cards link to `/search/tv/`, titled "Fury tv p1 #1". |
 | Pagination | Query "Fury". Click "Next" → `page=2` and "Fury movie p2 #1". Click button "4" → `page=4`. "Previous" → `page=3`. |
@@ -1397,7 +1428,7 @@ Seed lists directly via `seedList` wherever the UI path isn't what's under test.
 |---|---|
 | Wrong text | Type "delete" and click "Delete" → `toHaveURL(/\/\?deleteAcc=fail/)`, toast "Failed to delete account.", `userExists(db, user.id)` is true. |
 | Correct text | Seed a list, type "Delete account", click "Delete" → `/?deleteAcc=success`, toast "Account deleted succesfully.". `userExists` is false and `getMovies` is undefined. The navbar shows "Sign In". |
-| **fails [B3]** tampering | Seed victim B. Log in as A, open the dialog, `page.locator('input[name="id"]').evaluate((el, id) => ((el as HTMLInputElement).value = id), B.id)`, submit "Delete account" → `userExists(db, B.id)` is still true. |
+| **fails [B3]** tampering | Seed victim B. Log in as A. `page.route` the server-action POST to `/` and replace A's id with B's id in the body (D22: editing the hidden input doesn't work, because React restores it). Submit "Delete account" → `userExists(db, B.id)` is still true. |
 
 ---
 
@@ -1412,6 +1443,6 @@ Seed lists directly via `seedList` wherever the UI path isn't what's under test.
    - CI (5).
 2. ✅ **6.1 + 6.2** (done). This includes the B1–B4 and B8 `test.fails` cases, which puts the security findings under test on day one.
 3. ✅ **6.3.1, 6.3.2, 6.3.5, 6.3.10, 6.3.13** (done): chat, markdown safety, add-to-list, filters, pagination. This includes B5 ×2 under `test.fails`.
-4. **6.5.2, 6.5.3, 6.5.5, 6.5.6, 6.5.6b, 6.5.7**, then the two variant specs.
+4. ✅ **6.5.2, 6.5.3, 6.5.5, 6.5.6, 6.5.6b, 6.5.7**, then the two variant specs (done). This includes B1 ×2, B2 ×2, B3, B6 and B9 under `test.fail`.
 5. Everything else (6.3 remainder, 6.4, 6.5.1, 6.5.4).
 6. Fix the bugs one by one. Each fix turns its `test.fails` into an unexpected pass. Flip it to a normal `test` in the same PR.
