@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { AssistantMessage } from "./ui/AssistantMessage";
 import { ThinkingLoader } from "./ui/ThinkingLoader";
 import { ChatSubmitBtn } from "./ui/ChatSubmitBtn";
@@ -24,10 +24,9 @@ export default function ChatAssistant({
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<Tmessage>([]);
   const [streamingContent, setStreamingContent] = useState("");
-  const [loaderWords, setLoaderWords] = useState(LOADER_WORDS);
+  // safe to shuffle during render: the loader never renders on the server
+  const [loaderWords] = useState(() => shuffle(LOADER_WORDS));
   const loaderTurn = useRef(0);
-
-  useEffect(() => setLoaderWords(shuffle(LOADER_WORDS)), []);
 
   // set default greeting Message
   const greetingMessage = {

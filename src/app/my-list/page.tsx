@@ -1,12 +1,10 @@
-import MyListItems, {
-  ListLength,
-  ListSortValues,
-} from "@/Components/MyListItems";
+import MyListItems, { ListLength } from "@/Components/MyListItems";
 import { ListLengthSkeleton } from "@/Components/skeletons/ListLengthSkeleton";
 import { ListRowsSkeleton } from "@/Components/skeletons/ListRowsSkeleton";
 import ListSortBtn from "@/Components/ui/ListSortBtn";
 import ListSortLink from "@/Components/ui/ListSortLink";
 import { getSession } from "@/lib/session";
+import { ListSortValues } from "@/lib/myList";
 import { RotateCcw } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Metadata } from "next";

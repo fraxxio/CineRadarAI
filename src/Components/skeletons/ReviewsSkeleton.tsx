@@ -2,7 +2,10 @@ import { Skeleton } from "../ui/Skeleton";
 
 export function ReviewsSkeleton() {
   return (
-    <section className="my-10 rounded-sm border border-border-clr bg-primary-bg px-16 py-4 max-[550px]:px-4">
+    <section
+      id="reviews"
+      className="my-10 rounded-sm border border-border-clr bg-primary-bg px-16 py-4 max-[550px]:px-4"
+    >
       <h1 className="pb-8 text-center text-3xl font-medium">Reviews</h1>
       {Array.from({ length: 3 }, (_, index) => (
         <div

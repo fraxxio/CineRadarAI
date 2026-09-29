@@ -20,7 +20,8 @@ export function ThinkingLoader({ words, startIndex }: ThinkingLoaderProps) {
   const word = words[index % words.length];
 
   return (
-    <p role="status" aria-label="Generating response" className="italic">
+    <p role="status" className="italic">
+      <span className="sr-only">Generating response</span>
       <span key={word} aria-hidden>
         {Array.from(word).map((char, i) => (
           <span

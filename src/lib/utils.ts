@@ -2,15 +2,6 @@ import { clsx, type ClassValue } from "clsx";
 import { movieFilterSchema } from "./validation";
 import { twMerge } from "tailwind-merge";
 
-type getNewURLProps = {
-  newPage: number;
-  filterValues: object;
-};
-
-export function getNewURL({ newPage, filterValues }: getNewURLProps) {
-  return buildSearchURL(filterValues, newPage);
-}
-
 export function buildSearchURL(values: object, page?: number) {
   const { query, language, year, adult, btn } = movieFilterSchema.parse(values);
   const searchParams = new URLSearchParams({

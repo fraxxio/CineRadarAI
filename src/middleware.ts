@@ -1,3 +1,6 @@
 export { auth as middleware } from "./auth";
 
-export const config = { matcher: ["/my-list/:path*"] };
+// runs on every page so the session cookie expiry keeps rolling
+export const config = {
+  matcher: ["/((?!api|_next/static|_next/image|.*\\..*).*)"],
+};

@@ -13,10 +13,10 @@ export function DetailsSkeleton() {
           <Skeleton className="h-5 w-full" />
           <Skeleton className="h-5 w-full" />
           <Skeleton className="h-5 w-full" />
-          <Skeleton className="h-5 w-full max-sm:block sm:hidden" />
-          <Skeleton className="h-5 w-full max-sm:block sm:hidden" />
-          <Skeleton className="h-5 w-full max-sm:block sm:hidden" />
-          <Skeleton className="h-5 w-full max-sm:block sm:hidden" />
+          <Skeleton className="h-5 w-full sm:hidden" />
+          <Skeleton className="h-5 w-full sm:hidden" />
+          <Skeleton className="h-5 w-full sm:hidden" />
+          <Skeleton className="h-5 w-full sm:hidden" />
           <Skeleton className="h-5 w-3/4" />
         </div>
         <div className="flex flex-wrap gap-2 pt-4">
