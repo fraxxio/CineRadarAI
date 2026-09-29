@@ -1,9 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AssistantMessage } from "./ui/AssistantMessage";
-import { LoaderCircle, SendHorizontal } from "lucide-react";
+import { ThinkingLoader } from "./ui/ThinkingLoader";
+import { ChatSubmitBtn } from "./ui/ChatSubmitBtn";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { MAX_PROMPT_LENGTH } from "@/lib/chatLimits";
+import { LOADER_WORDS, shuffle } from "@/lib/loaderWords";
 
 type ChatAssistantProps = {
   greeting: string;
@@ -21,10 +23,11 @@ export default function ChatAssistant({
   const [interactionId, setInteractionId] = useState<string>();
   const [prompt, setPrompt] = useState("");
   const [messages, setMessages] = useState<Tmessage>([]);
-  const [streamingMessage, setStreamingMessage] = useState({
-    role: "assistant",
-    content: "_Thinking..._",
-  });
+  const [streamingContent, setStreamingContent] = useState("");
+  const [loaderWords, setLoaderWords] = useState(LOADER_WORDS);
+  const loaderTurn = useRef(0);
+
+  useEffect(() => setLoaderWords(shuffle(LOADER_WORDS)), []);
 
   // set default greeting Message
   const greetingMessage = {
@@ -34,6 +37,10 @@ export default function ChatAssistant({
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    // reset before isLoading turns on so the loader shows during reCAPTCHA verification
+    setStreamingContent("");
+    loaderTurn.current += 1;
 
     if (recaptchaEnabled) {
       if (!executeRecaptcha) {
@@ -73,12 +80,6 @@ export default function ChatAssistant({
     } else {
       setIsLoading(true);
     }
-
-    // clear streaming message
-    setStreamingMessage({
-      role: "assistant",
-      content: "_Generating list..._",
-    });
 
     setIsError(false);
 
@@ -131,10 +132,7 @@ export default function ChatAssistant({
           // update streaming message content
           case "delta":
             contentSnapshot += serverEvent.text;
-            setStreamingMessage({
-              ...streamingMessage,
-              content: contentSnapshot,
-            });
+            setStreamingContent(contentSnapshot);
             break;
           case "done":
             newInteractionId = serverEvent.interactionId;
@@ -213,7 +211,19 @@ export default function ChatAssistant({
           {messages.map((m) => (
             <AssistantMessage key={m.id} message={m} />
           ))}
-          {isLoading && <AssistantMessage message={streamingMessage} />}
+          {isLoading &&
+            (streamingContent ? (
+              <AssistantMessage
+                message={{ role: "assistant", content: streamingContent }}
+              />
+            ) : (
+              <AssistantMessage message={{ role: "assistant" }}>
+                <ThinkingLoader
+                  words={loaderWords}
+                  startIndex={loaderTurn.current}
+                />
+              </AssistantMessage>
+            ))}
           {isError && (
             <AssistantMessage
               message={{
@@ -234,23 +244,7 @@ export default function ChatAssistant({
           required
           placeholder="Suggest me movies about war with Brad Pitt..."
         />
-        {isLoading ? (
-          <button
-            disabled
-            className="flex h-[40px] items-center gap-1 rounded-br-md rounded-tr-md border-b border-r border-t border-border-clr bg-dark-bg px-2 font-medium duration-200 hover:bg-primary-text hover:text-dark-bg"
-          >
-            <LoaderCircle size={16} className="animate-spin" />
-            Generating...
-          </button>
-        ) : (
-          <button
-            disabled={prompt.length == 0}
-            className="flex h-[40px] items-center gap-1 rounded-br-md rounded-tr-md border-b border-r border-t border-border-clr bg-dark-bg px-2 font-medium duration-200 hover:cursor-pointer hover:bg-primary-text hover:text-dark-bg"
-          >
-            Submit
-            <SendHorizontal size={16} />
-          </button>
-        )}
+        <ChatSubmitBtn isLoading={isLoading} disabled={prompt.length == 0} />
       </form>
       {recaptchaEnabled && (
         <small className="text-center text-secondary-text">

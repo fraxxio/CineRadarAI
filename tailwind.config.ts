@@ -26,6 +26,15 @@ const config: Config = {
         "dark-bg": "#060b1c",
         "blue-darker": "#116A8D",
       },
+      keyframes: {
+        "letter-bounce": {
+          "0%, 20%, 100%": { transform: "translateY(0)" },
+          "10%": { transform: "translateY(-0.35em)" },
+        },
+      },
+      animation: {
+        "letter-bounce": "letter-bounce 2s ease-in-out infinite",
+      },
     },
   },
   plugins: [],

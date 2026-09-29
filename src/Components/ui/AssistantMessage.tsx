@@ -5,10 +5,11 @@ type AssistantMessageProps = {
   message: {
     id?: string;
     role: string;
-    content: string;
+    content?: string;
   };
+  children?: React.ReactNode;
 };
-export function AssistantMessage({ message }: AssistantMessageProps) {
+export function AssistantMessage({ message, children }: AssistantMessageProps) {
   function displayRole(roleName: string) {
     switch (roleName) {
       case "user":
@@ -35,7 +36,7 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
         {displayRole(message.role)}
       </div>
       <div className="chatLink overflow-auto text-left">
-        <Markdown>{message.content}</Markdown>
+        {children ?? <Markdown>{message.content ?? ""}</Markdown>}
       </div>
     </div>
   );
