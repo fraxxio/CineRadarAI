@@ -53,7 +53,10 @@ export default async function Trailer({
   mediaType: "movie" | "tv";
 }) {
   const { results }: TrailerProps = await fetchVideos(id, mediaType);
-  const trailer = results.find((video) => video.type === "Trailer");
+  // only YouTube keys can be embedded
+  const trailer = results.find(
+    (video) => video.type === "Trailer" && video.site === "YouTube",
+  );
 
   return (
     <section

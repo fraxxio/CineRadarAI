@@ -11,7 +11,7 @@ import {
 import { useState } from "react";
 import DeleteModalBtn from "./DeleteModalBtn";
 
-export default function DeleteModal({ id }: { id: string }) {
+export default function DeleteModal() {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <>
@@ -41,7 +41,6 @@ export default function DeleteModal({ id }: { id: string }) {
               required
               className="mt-5 w-[40%] rounded-sm border border-border-clr bg-dark-bg p-1 placeholder-primary-text placeholder-opacity-45 outline-none focus:border-transparent focus:ring focus:ring-primary-text"
             />
-            <input type="hidden" name="id" value={id} />
             <DeleteModalBtn setIsOpen={setIsOpen} />
           </form>
         </DialogContent>

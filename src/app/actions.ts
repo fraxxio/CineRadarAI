@@ -14,12 +14,12 @@ export async function SignOut() {
 export async function DeleteUser(formData: FormData) {
   const session = await auth();
 
-  if (session?.user === undefined) {
+  const userId = session?.user?.id;
+  if (!userId) {
     return null;
   }
 
   if (formData.get("verifyInput") === "Delete account") {
-    const userId = formData.get("id") as string;
     try {
       await db.transaction(async (tx) => {
         // Delete related rows in accounts and lists tables first

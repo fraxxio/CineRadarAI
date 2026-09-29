@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "incremental": false
+  },
+  "include": [
+    "../next-env.d.ts",
+    "../src/**/*",
+    "**/*",
+    "../vitest.config.mts",
+    "../playwright.config.ts",
+    "../drizzle.test.config.ts"
+  ],
+  "exclude": [".generated"]
+}

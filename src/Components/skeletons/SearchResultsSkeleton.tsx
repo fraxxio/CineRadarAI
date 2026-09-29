@@ -3,7 +3,10 @@ import { MovieCardSkeleton } from "./MovieCardSkeleton";
 
 export function SearchResultsSkeleton() {
   return (
-    <section className="w-full max-w-[70%] max-lg:max-w-full">
+    <section
+      data-testid="search-results-skeleton"
+      className="w-full max-w-[70%] max-lg:max-w-full"
+    >
       <div className="pb-8">
         <Skeleton className="mx-auto h-8 w-1/2 max-[450px]:w-3/4" />
       </div>

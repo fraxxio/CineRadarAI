@@ -58,13 +58,12 @@ export default function EditListBtn({
     }
 
     try {
-      const response = await fetch("api/add-to-list", {
+      const response = await fetch("/api/add-to-list", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          userId: user.id.toString(),
           movieId: movieId.toString(),
           title: title,
           image: image,
@@ -99,7 +98,10 @@ export default function EditListBtn({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger className="h-10 w-10 rounded-md border border-border-clr bg-dark-bg px-3 py-2 font-medium duration-200 hover:bg-primary-text hover:text-dark-bg max-[840px]:h-7 max-[840px]:w-7 max-[840px]:p-1">
+      <DialogTrigger
+        aria-label="Edit list entry"
+        className="h-10 w-10 rounded-md border border-border-clr bg-dark-bg px-3 py-2 font-medium duration-200 hover:bg-primary-text hover:text-dark-bg max-[840px]:h-7 max-[840px]:w-7 max-[840px]:p-1"
+      >
         <Pencil size={16} />
       </DialogTrigger>
       <DialogContent>

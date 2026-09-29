@@ -70,7 +70,11 @@ const Navbar = ({ user }: NavbarProps) => {
               )}
             </li>
           </ul>
-          <button className="sm:hidden" onClick={hMovibileNavbar}>
+          <button
+            className="sm:hidden"
+            aria-label="Toggle menu"
+            onClick={hMovibileNavbar}
+          >
             <Menu id="menu" />
             <X id="x" className="hidden" />
           </button>

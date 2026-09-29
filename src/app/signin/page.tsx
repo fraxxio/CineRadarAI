@@ -1,7 +1,25 @@
 import { signIn } from "@/auth";
 import React from "react";
 
-export default function page() {
+// keep only the path, so the redirect can never leave the site
+function safeRedirect(callbackUrl: string | string[] | undefined) {
+  if (typeof callbackUrl !== "string") return "/";
+  try {
+    const { pathname, search, hash } = new URL(callbackUrl, "http://n");
+    const path = `${pathname}${search}${hash}`;
+    return path.startsWith("//") || path.startsWith("/signin") ? "/" : path;
+  } catch {
+    return "/";
+  }
+}
+
+export default function page({
+  searchParams,
+}: {
+  searchParams: { callbackUrl?: string | string[] };
+}) {
+  const redirectTo = safeRedirect(searchParams.callbackUrl);
+
   return (
     <main className="container my-auto">
       <section className="border border-border-clr bg-primary-bg pb-8 pt-4">
@@ -11,7 +29,7 @@ export default function page() {
             "use server";
             const provider = formData.get("provider") as string;
             try {
-              await signIn(provider, { redirectTo: "/" });
+              await signIn(provider, { redirectTo });
             } catch (error) {
               throw error;
             }

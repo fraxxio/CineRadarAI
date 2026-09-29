@@ -13,7 +13,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const { recaptchaToken } = await request.json();
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const { recaptchaToken } = payload ?? {};
 
   const fetchURL = `https://www.google.com/recaptcha/api/siteverify?secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`;
 

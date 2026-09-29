@@ -29,7 +29,8 @@ export default function Home({
         )
       ) : (
         <div className="relative overflow-hidden">
-          <div inert className="pointer-events-none">
+          {/* React 18 drops a boolean `inert`; the string "" renders it */}
+          <div inert={"" as unknown as boolean} className="pointer-events-none">
             <ChatAssistant
               greeting={greeting}
               recaptchaEnabled={recaptchaEnabled}

@@ -43,7 +43,10 @@ export default function AuthBtn({ user }: AuthBtnProps) {
 
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setIsOpen((prevState) => !prevState)}>
+      <button
+        aria-label="Account menu"
+        onClick={() => setIsOpen((prevState) => !prevState)}
+      >
         <Image
           alt="Profile"
           width={35}
@@ -85,7 +88,7 @@ export default function AuthBtn({ user }: AuthBtnProps) {
           <p className="text-lg">{user.name}</p>
         </div>
         <p className="pt-1">{user.email}</p>
-        <DeleteModal id={user.id} />
+        <DeleteModal />
         <form action={SignOut}>
           <button
             type="submit"
