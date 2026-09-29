@@ -11,7 +11,7 @@ Section 6 uses the same numbering as TESTING_PLAN.md (6.1.1 ↔ 1.1, 6.2.3 ↔ 2
 | Phase (section 7) | State |
 |---|---|
 | 1. Infrastructure | **Done** (2026-09-29, branch `add-unit-and-integration-tests`) |
-| 2. 6.1 + 6.2 | Not started |
+| 2. 6.1 + 6.2 | **Done** (2026-09-29, same branch) |
 | 3. Core component tests | Not started |
 | 4. Core E2E specs + variant specs | Not started |
 | 5. Everything else | Not started |
@@ -28,9 +28,17 @@ Section 6 uses the same numbering as TESTING_PLAN.md (6.1.1 ↔ 1.1, 6.2.3 ↔ 2
 - [x] Smoke tests: `tests/unit/smoke.test.ts`, `tests/integration/smoke.test.ts`, `tests/components/smoke.test.tsx`, `tests/e2e/smoke.spec.ts`
 - [x] Scripts and CI (5): `.github/workflows/tests.yml`
 
+**Phase 2 checklist**
+
+- [x] 6.1 unit: `tests/unit/lib/{utils,validation,myList,loaderWords,chatConfig,recaptcha,searchTitle}.test.ts`, `tests/unit/auth.test.ts`, `tests/unit/app/search-metadata.test.ts`
+- [x] 6.2 integration: `tests/integration/api/{add-to-list,remove-from-list,assistant,recaptcha}.test.ts`, `tests/integration/actions.test.ts`, `tests/integration/lib/myList.test.ts`
+- [x] Known bugs under `test.fails`: B1 ×2, B2 ×2, B3, B4 ×2, B7, B8, B11 (10 in total). Each was checked by temporarily flipping it to `test`: every one fails on the bug's own assertion (e.g. `expected 200 to be 401`), not on a setup error.
+- [x] `test.todo` × 3 for add-to-list payload validation.
+
 **Verified locally**
 
-- `npm run test:run` / `npm run test:coverage` pass: 3 files, 10 tests.
+- `npm run test:run` / `npm run test:coverage` pass: 19 files, 165 passed + 10 expected fail + 3 todo. Stable over repeated runs.
+- Coverage of the phase-2 targets: `src/lib` 96–98% (only `session.ts` is uncovered, because it's mocked globally), `src/auth.ts` and all four API routes at 100% lines, `actions.ts` 94% (`SignOut` is left for E2E).
 - `npm run typecheck:tests`, `tsc --noEmit` and `npm run lint` are clean.
 - `npm run test:e2e` passes (2 tests), both with `next dev` and with `CI=1` (`next build` + `next start`, DB given through `E2E_DATABASE_URL`).
 - `npm run test:e2e:variants` passes with `CI=1`. It has no specs yet (see "Deviations").
@@ -53,12 +61,19 @@ The smoke tests check the infrastructure itself, not app features. They cover th
 | D9 | sqld is pinned to `ghcr.io/tursodatabase/libsql-server:v0.24.33` (`LIBSQL_IMAGE` in `tests/e2e/env.ts`, and in the CI workflow). | Reproducible runs. Keep both places in sync. |
 | D10 | Optional `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` → `launchOptions.executablePath`. | The downloaded Chromium can't find system libraries on NixOS. Locally, run `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$(which chromium) npm run test:e2e`. CI leaves it unset. |
 | D11 | Small additions: `forbidOnly` in CI, `outputDir: test-results/<variant>`, `TMDB_URL` in `env.ts`, `tmdbFixture()` in `helpers/tmdb.ts`. `mockTmdb` also accepts `Request` inputs and clones `Response` routes, so a route can be hit twice. | Convenience. No design change. |
+| D12 | New `tests/helpers/auth.ts` with a shared `asUser()`, instead of a copy in each file (6.2). It only works in files that `vi.mock("@/auth", ...)`. | Three files need it. It also hides the cast that `auth`'s overloaded type needs. |
+| D13 | `tests/helpers/db.ts` gains `seedFullUser()` (planned in 6.2.5) and `userRows(id)`, which returns `{ users, accounts, sessions, lists }` row counts. | One assertion covers all four tables for DeleteUser. |
+| D14 | The non-bug add/remove tests log in as the list owner (`asUser(user)` in `beforeEach`), even though the routes ignore the session today. | Once B1/B2 are fixed and the routes read `session.user.id`, these tests keep passing unchanged. |
+| D15 | `assistant.test.ts` calls `create.mockReset()` in `beforeEach`. | `clearMocks`/`restoreMocks` don't reset the implementation of a `vi.hoisted` `vi.fn()` in Vitest 4, so a `mockResolvedValue` would leak into the next test. |
+| D16 | Small additions beyond section 6: reCAPTCHA 404 also when only the site key is missing, the `null`/missing interaction-id cases also assert `previous_interaction_id: undefined`, the NDJSON framing test uses a delta containing quotes and `\n`, and the `getTitle` matrix lives in `tests/unit/lib/searchTitle.test.ts`. | Cheap extra coverage. |
 
 **Notes for the next phases**
 
 - The mock TMDB server returns 20 results per page. The 3rd review in `reviews.json` carries the XSS payloads, which set `window.__xss`.
 - `next dev` logs React's "non-boolean attribute `inert`" warning on the home page. That warning is B9.
-- `next lint` only lints `src/`, so `tests/` isn't linted.
+- `next lint` only lints `src/`, so `tests/` isn't linted. Run `npx prettier --write tests` instead.
+- A `test.fails` passes on **any** failure, including a typo or a broken mock. After writing one, check why it fails by flipping every `test.fails(` to `test(` for a moment. In zsh/bash: `grep -rl "test.fails" tests | while read f; do cp "$f" "$f.bak"; sed -i 's/test\.fails(/test(/' "$f"; done; npx vitest run; for b in $(find tests -name "*.bak"); do mv "$b" "${b%.bak}"; done`.
+- Vitest 4: `vi.spyOn(globalThis, "fetch")` is typed as `MockInstance<typeof fetch>` (see `recaptcha.test.ts`).
 
 ---
 
@@ -885,9 +900,8 @@ Import `generateMetadata` from `@/app/search/page`. That also imports the compon
 The common setup comes from `tests/setup/integration.ts`: migrations, a reset before each test, and the `next/cache` mock. Each file that needs a session adds:
 
 ```ts
+import { asUser } from "../../helpers/auth"; // D12: shared helper
 vi.mock("@/auth", () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }));
-const asUser = (u: { id: string } | null) =>
-  vi.mocked(auth).mockResolvedValue((u && makeSession(u)) as any);
 ```
 
 #### 6.2.1 `tests/integration/api/add-to-list.test.ts`
@@ -1370,7 +1384,7 @@ Seed lists directly via `seedList` wherever the UI path isn't what's under test.
    - Repo changes (4.8).
    - A smoke test per project: one unit, one integration (seed + read), one component, and one E2E (`/about` loads, `loginAs` shows the avatar).
    - CI (5).
-2. **6.1 + 6.2.** This includes the B1–B4 and B8 `test.fails` cases, which puts the security findings under test on day one.
+2. ✅ **6.1 + 6.2** (done). This includes the B1–B4 and B8 `test.fails` cases, which puts the security findings under test on day one.
 3. **6.3.1, 6.3.2, 6.3.5, 6.3.10, 6.3.13**: chat, markdown safety, add-to-list, filters, pagination.
 4. **6.5.2, 6.5.3, 6.5.5, 6.5.6, 6.5.6b, 6.5.7**, then the two variant specs.
 5. Everything else (6.3 remainder, 6.4, 6.5.1, 6.5.4).

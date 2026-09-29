@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { accounts, sessions, users } from "@/db/schema/users";
 import { lists } from "@/db/schema/lists";
+import { makeMovie } from "./factories";
 import { MIGRATIONS_FOLDER } from "./migrations";
 
 export type ListMovie = NonNullable<typeof lists.$inferSelect.movies>[number];
@@ -57,3 +58,39 @@ export const forceFailure = (
       `create trigger "force_fail_${op}_${table}" before ${op} on "${table}" begin select raise(abort, 'forced failure'); end`,
     ),
   );
+
+// user + account + session + list row, for DeleteUser
+export async function seedFullUser(
+  overrides: Partial<typeof users.$inferInsert> = {},
+) {
+  const user = await seedUser(overrides);
+  await db.insert(accounts).values({
+    userId: user.id,
+    type: "oauth",
+    provider: "github",
+    providerAccountId: user.id,
+  });
+  await db.insert(sessions).values({
+    sessionToken: crypto.randomUUID(),
+    userId: user.id,
+    expires: new Date(Date.now() + 86_400_000),
+  });
+  await seedList(user.id, [makeMovie()]);
+  return user;
+}
+
+// row counts per table for one user
+export async function userRows(userId: string) {
+  const [u, a, s, l] = await Promise.all([
+    db.select().from(users).where(eq(users.id, userId)),
+    db.select().from(accounts).where(eq(accounts.userId, userId)),
+    db.select().from(sessions).where(eq(sessions.userId, userId)),
+    db.select().from(lists).where(eq(lists.userId, userId)),
+  ]);
+  return {
+    users: u.length,
+    accounts: a.length,
+    sessions: s.length,
+    lists: l.length,
+  };
+}
