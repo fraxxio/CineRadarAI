@@ -2,8 +2,12 @@ import Details from "@/Components/Details";
 import Gallery from "@/Components/Gallery";
 import Reviews from "@/Components/Reviews";
 import Trailer from "@/Components/Trailer";
+import { DetailsSkeleton } from "@/Components/skeletons/DetailsSkeleton";
+import { GallerySkeleton } from "@/Components/skeletons/GallerySkeleton";
+import { ReviewsSkeleton } from "@/Components/skeletons/ReviewsSkeleton";
+import { TrailerSkeleton } from "@/Components/skeletons/TrailerSkeleton";
 import { Metadata } from "next";
-import React from "react";
+import { Suspense } from "react";
 
 async function fetchDetails(id: string) {
   "use server";
@@ -48,10 +52,18 @@ export async function generateMetadata({
 export default function page({ params }: { params: { id: number } }) {
   return (
     <main className="container">
-      <Details id={params.id} mediaType="tv" />
-      <Trailer id={params.id} mediaType="tv" />
-      <Gallery id={params.id} mediaType="tv" />
-      <Reviews id={params.id} mediaType="tv" />
+      <Suspense fallback={<DetailsSkeleton />}>
+        <Details id={params.id} mediaType="tv" />
+      </Suspense>
+      <Suspense fallback={<TrailerSkeleton />}>
+        <Trailer id={params.id} mediaType="tv" />
+      </Suspense>
+      <Suspense fallback={<GallerySkeleton />}>
+        <Gallery id={params.id} mediaType="tv" />
+      </Suspense>
+      <Suspense fallback={<ReviewsSkeleton />}>
+        <Reviews id={params.id} mediaType="tv" />
+      </Suspense>
     </main>
   );
 }

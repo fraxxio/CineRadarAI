@@ -1,14 +1,32 @@
-import Markdown from "react-markdown";
+import Markdown, { Components } from "react-markdown";
 import Image from "next/image";
+import Link from "next/link";
 
 type AssistantMessageProps = {
   message: {
     id?: string;
     role: string;
-    content: string;
+    content?: string;
   };
+  children?: React.ReactNode;
 };
-export function AssistantMessage({ message }: AssistantMessageProps) {
+
+// has a scheme (https:, mailto:) or is protocol-relative (//host)
+const isExternalHref = (href: string) =>
+  /^([a-z][a-z\d+.-]*:|\/\/)/i.test(href);
+
+const markdownComponents: Components = {
+  a: ({ href = "", children }) =>
+    isExternalHref(href) ? (
+      <a href={href} target="_blank" rel="noreferrer">
+        {children}
+      </a>
+    ) : (
+      <Link href={href}>{children}</Link>
+    ),
+};
+
+export function AssistantMessage({ message, children }: AssistantMessageProps) {
   function displayRole(roleName: string) {
     switch (roleName) {
       case "user":
@@ -35,7 +53,11 @@ export function AssistantMessage({ message }: AssistantMessageProps) {
         {displayRole(message.role)}
       </div>
       <div className="chatLink overflow-auto text-left">
-        <Markdown>{message.content}</Markdown>
+        {children ?? (
+          <Markdown components={markdownComponents}>
+            {message.content ?? ""}
+          </Markdown>
+        )}
       </div>
     </div>
   );

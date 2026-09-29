@@ -1,18 +1,17 @@
 "use client";
 import { LoaderCircle } from "lucide-react";
-import { useFormStatus } from "react-dom";
 
-type BtnProps = {
+type BtnProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   searchTarget: string;
-  children: React.ReactNode;
+  pending?: boolean;
 };
 
-const SubmitBtn = (
-  { searchTarget, children }: BtnProps,
-  props: React.ButtonHTMLAttributes<HTMLButtonElement>,
-) => {
-  const { pending } = useFormStatus();
-
+const SubmitBtn = ({
+  searchTarget,
+  pending = false,
+  children,
+  ...props
+}: BtnProps) => {
   return (
     <button
       name="btn"

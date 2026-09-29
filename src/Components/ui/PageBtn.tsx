@@ -1,4 +1,4 @@
-import { getNewURL } from "@/lib/utils";
+import { buildSearchURL } from "@/lib/utils";
 import Link from "next/link";
 
 type PageBtnProps = {
@@ -14,7 +14,7 @@ export const PageBtn = ({
   ...props
 }: PageBtnProps) => {
   return (
-    <Link href={getNewURL({ newPage: value, filterValues })}>
+    <Link href={buildSearchURL(filterValues, value)}>
       <button
         {...props}
         disabled={current}

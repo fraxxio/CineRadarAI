@@ -6,6 +6,9 @@ type ListSortBtnProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   isChecked?: boolean;
 };
 
+export const listSortBtnClassName =
+  "rounded-md border border-border-clr bg-dark-bg px-2 py-1 duration-200 hover:bg-primary-text hover:text-dark-bg disabled:bg-primary-text disabled:text-dark-bg";
+
 export default function ListSortBtn({
   children,
   withIcon = false,
@@ -18,7 +21,7 @@ export default function ListSortBtn({
       {...props}
       name={name}
       disabled={isChecked}
-      className={`rounded-md border border-border-clr bg-dark-bg px-2 py-1 duration-200 hover:bg-primary-text hover:text-dark-bg disabled:bg-primary-text disabled:text-dark-bg
+      className={`${listSortBtnClassName}
       ${withIcon && "flex items-center gap-2"}
       `}
     >

@@ -52,7 +52,7 @@ const Navbar = ({ user }: NavbarProps) => {
             <Image src="/CineRadarLogo.png" width={35} height={35} alt="Logo" />
             CineRadar
           </Link>
-          <ul className="flex items-center gap-4 font-medium max-[640px]:hidden">
+          <ul className="flex items-center gap-4 font-medium max-sm:hidden">
             <li>
               <Link href="/search">Manual Search</Link>
             </li>
@@ -70,7 +70,7 @@ const Navbar = ({ user }: NavbarProps) => {
               )}
             </li>
           </ul>
-          <button className="min-[640px]:hidden" onClick={hMovibileNavbar}>
+          <button className="sm:hidden" onClick={hMovibileNavbar}>
             <Menu id="menu" />
             <X id="x" className="hidden" />
           </button>
@@ -80,12 +80,12 @@ const Navbar = ({ user }: NavbarProps) => {
         id="MobileNav"
         className="fixed z-[1] w-full -translate-y-[10rem] border-b border-border-clr bg-primary-bg duration-[400ms] ease-in"
       >
-        <ul className="flex flex-col items-center gap-4 py-4 font-medium min-[510px]:hidden">
+        <ul className="flex flex-col items-center gap-4 py-4 font-medium sm:hidden">
           <li>
             <Link href="/search">Manual Search</Link>
           </li>
           <li>
-            <Link href="/mylist">My list</Link>
+            <Link href="/my-list">My list</Link>
           </li>
           <li>
             <Link href="/about">About</Link>

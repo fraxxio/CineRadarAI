@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import React from "react";
 import { PageBtn } from "./PageBtn";
 import Link from "next/link";
-import { getNewURL } from "@/lib/utils";
+import { buildSearchURL } from "@/lib/utils";
 
 type PagesProps = {
   totalResults: number;
@@ -28,12 +28,7 @@ export const Pages = ({
 
   return (
     <div className="col-span-full flex items-end justify-center gap-8 pt-8 max-[700px]:flex-col max-[700px]:items-center">
-      <Link
-        href={getNewURL({
-          newPage: Number(page) - 1,
-          filterValues,
-        })}
-      >
+      <Link href={buildSearchURL(filterValues, Number(page) - 1)}>
         <button
           disabled={canPrevious}
           type="submit"
@@ -72,12 +67,7 @@ export const Pages = ({
           <PageBtn value={maxPages} filterValues={filterValues} />
         </div>
       </div>
-      <Link
-        href={getNewURL({
-          newPage: Number(page) + 1,
-          filterValues,
-        })}
-      >
+      <Link href={buildSearchURL(filterValues, Number(page) + 1)}>
         <button
           disabled={canNext}
           className="flex items-center rounded-sm border border-border-clr bg-primary-bg py-1 pl-2 duration-300 hover:border-primary-text disabled:bg-dark-bg disabled:text-slate-500 disabled:hover:border-border-clr"

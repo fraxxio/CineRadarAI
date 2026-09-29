@@ -3,7 +3,7 @@ import Image from "next/image";
 import { NoImage } from "./NoImage";
 import Link from "next/link";
 import AddToListBtn from "./AddToListBtn";
-import { auth } from "@/auth";
+import { getSession } from "@/lib/session";
 
 type MovieCardProps = {
   movie: {
@@ -48,7 +48,7 @@ export default async function MovieCard({
   },
   type,
 }: MovieCardProps) {
-  const session = await auth();
+  const session = await getSession();
   return (
     <div className="relative w-full border border-border-clr bg-primary-bg duration-300 hover:border-primary-text hover:shadow-md hover:shadow-primary-text">
       <AddToListBtn
