@@ -14,7 +14,7 @@ Section 6 uses the same numbering as TESTING_PLAN.md (6.1.1 ↔ 1.1, 6.2.3 ↔ 2
 | 2. 6.1 + 6.2 | **Done** (2026-09-29, same branch) |
 | 3. Core component tests | **Done** (2026-09-29, same branch) |
 | 4. Core E2E specs + variant specs | **Done** (2026-09-29, same branch) |
-| 5. Everything else | Not started |
+| 5. Everything else | **Done** (2026-09-29, same branch) |
 | 6. Bug fixes | Not started |
 
 **Phase 1 checklist**
@@ -55,6 +55,25 @@ Section 6 uses the same numbering as TESTING_PLAN.md (6.1.1 ↔ 1.1, 6.2.3 ↔ 2
 - [x] 6.5.2b `tests/e2e/variants/chat-disabled.spec.ts` (B9 under `test.fail`) and `tests/e2e/variants/recaptcha.spec.ts`
 - [x] `--pass-with-no-tests` removed from `test:e2e:variants` (D8).
 - [x] All 7 E2E `test.fail` cases were flipped to `test`. Each fails on the bug's own assertion: the victim's list changed (B1/B2), the victim was deleted (B3), the mock received `query=Tom|` (B6), and the input got `"hello"` (B9).
+
+**Phase 5 checklist**
+
+- [x] 6.3.3 `ThinkingLoader`, 6.3.4 `ChatSubmitBtn`, 6.3.7 `DeleteListBtn`, 6.3.8 `DeleteModal` (+ `DeleteModalBtn`), 6.3.11 `Navbar` (+ `AuthBtn`)
+- [x] 6.3.6 `EditListBtn` through the new shared `describeListForm()` (`tests/helpers/listForm.tsx`). `AddToListBtn.test.tsx` now uses it too (D29).
+- [x] 6.3.9 `DeleteResult`, including B12 under `test.fails`
+- [x] 6.3.12 `tests/components/small/{ListCard,ListSortLink,ListTypeSelect,RatingSelect,SelectYear,SubmitBtn,PageBtn}.test.tsx`
+- [x] 6.4 `tests/server-components/{SearchResults,Details,Trailer,Gallery,Reviews,MovieCard,LangSelect,detail-metadata,HomePage}.test.tsx`, including B6, B7 and B9 under `test.fails`, and `test.todo` for non-YouTube trailers
+- [x] 6.5.1 `tests/e2e/navigation.spec.ts` and 6.5.4 `tests/e2e/details.spec.ts`
+- [x] The relative `api/...` URLs in `EditListBtn` and `DeleteListBtn` are fixed (6.3.6/6.3.7 said to fix rather than pin them).
+- [x] The 4 new `test.fails` were flipped to `test`. Each fails on the bug's own assertion: `toast.success` called 2 times (B12), `expected 'Tom|' to be 'Tom|&|Jerry'` (B6), the "Trending movies" `<h1>` is present (B7), and `[inert]` is `null` (B9).
+
+**Verified locally (phase 5)**
+
+- `npm run test:run` / `npm run test:coverage` pass: 46 files, 345 passed + 16 expected fail + 4 todo. Stable over 3 runs. No React `act(...)` warnings.
+- Coverage: 90.6% lines overall. 100% lines for every 6.3/6.4 target except `AuthBtn` (92%: its logged-out branch, which `Navbar` never reaches), `DeleteModalBtn` (40%: the `onClick`, see B14), and the two detail pages (93%: the default export, which only E2E renders).
+- Mutation check: 37 hand-made mutants across the phase-5 components, all killed. They covered the interval cleanup, the rotation step, `disabled` on each button, `router.refresh`, the form reset, closing the dialog, the DELETE headers, the hidden id, the toast conditions, the click-outside handler, the mobile-nav classes, ListCard's capitalisation and icons, the active sort link, the year range, the `|` join, `&page=`, the empty-results check, the image fallback, `toFixed`, the release/air date, `find` → `findLast`, the 9-image and 10-review caps, `w1280`, sanitising, the 860-character boundary, the title fallback, NoImage, the language option value, the TV metadata title, and the reCAPTCHA branch. 2 E2E mutants were killed as well: no sanitising, and a broken mobile-nav slide.
+- `npm run test:e2e`: 48 passed + 1 skipped (B10). Stable over 3 runs and `--repeat-each=2` ×2 (96 passed each time) with `next dev` and 4 workers (D32). `CI=1 E2E_DATABASE_URL=… npm run test:e2e`: 48 + 1 skipped, twice. `npm run test:e2e:variants`: 2 + 2 passed.
+- `npm run typecheck:tests`, `npm run lint` and `npx prettier --check tests` are clean.
 
 **Verified locally (phase 4)**
 
@@ -113,6 +132,11 @@ The smoke tests check the infrastructure itself, not app features. They cover th
 | D26 | The 6.5.6 "Count" case is folded into "Sort / filter": `expectItems()` checks the item names and `Length: N` together after every step. The walk also goes to "Movies" (after TV + Watching) to reach an empty filtered list. `Sort / filter` and `Refresh` share the same 4 seeded items. | One place for the order and count assertions. |
 | D27 | Small additions beyond 6.5: chat asserts the exact request bodies and that the input is re-enabled after an error, search checks that the language select keeps its value after a reload and that TV results have no movie links, my-list checks the DB after add/edit/remove, and the reCAPTCHA failure case asserts exactly one verify request. B9 checks the typed value first and `[inert]` second, so the user-visible failure is the one reported. | Cheap extra coverage. |
 | D28 | The reCAPTCHA stub sets `window.__grecaptchaReady` inside `ready()`, and the spec waits for it before typing. | Before the provider has its grecaptcha instance, `executeRecaptcha` is `undefined` and a submit is silently ignored. |
+| D29 | 6.3.5 and 6.3.6 share `describeListForm(config)` in `tests/helpers/listForm.tsx`. `config` holds the element factory, trigger, dialog title, submit/loading text, toast texts, and `refreshes`. Only EditListBtn asserts `router.refresh` (after success, fail and a network error). | One suite for the shared form, as 6.3.6 asked. It also gives EditListBtn every AddToListBtn case (in-flight, reset, empty rating). |
+| D30 | `EditListBtn` and `DeleteListBtn` now call `/api/add-to-list` and `/api/remove-from-list` (with a leading slash). | 6.3.6/6.3.7: fix it instead of pinning `api/...`. The relative URL only worked because `/my-list` is one level deep. |
+| D31 | The XSS review in `reviews.json` uses `<img src="data:," onerror=…>` instead of `src="x"`. | `src="x"` made the browser request `/search/movie/x`, which rendered a whole movie page and logged four TMDB 404s on every visit. `data:,` makes no request. It's still a broken image, so `onerror` still fires if sanitising is removed. This was checked: with `DOMPurify.sanitize` removed, `window.__xss` becomes `true`. |
+| D32 | Local Playwright runs use `workers: 4` (it was `undefined`, i.e. half the cores; 6 on a 12-core machine). CI stays at 2. | With 48 tests, `next dev` became flaky at 6 workers: `page.goto` was aborted ("frame was detached"), and server-action redirects got lost (the "wrong confirmation text" case stayed on `/`). The pre-existing 34 tests fail the same way under `--repeat-each=2`, so the problem is older than phase 5. The production build is fine with 4 workers and no retries. Warming up the 404 and error routes in global setup didn't help, so that change was reverted. With 4 workers, the wall time is the same (~27 s), because the dev server is the bottleneck. |
+| D33 | Small additions beyond 6.3/6.4: the ThinkingLoader per-letter/nbsp split, the 4th ChatSubmitBtn combination, the "no user id" case in DeleteListBtn, the logo link in Navbar, the mobile copy of the dropdown staying closed, a click *inside* the dropdown keeping it open, the TMDB-error rejection in every server component, the request query params (`language`, `page`) of each fetch, poster → backdrop fallbacks, and the `release_date`/`last_air_date` status line. The 6.4.5 boundary uses 861 vs 860 characters. The 6.5.1 mobile case also clicks a mobile link. The 6.5.4 anchor cases assert the target's `top` (≤ 100 px after the click, > 300 px before), instead of `not.toBeInViewport()`. | The Trailer section already shows 5% at load, so "not in viewport" was false from the start. |
 
 **Notes for the next phases**
 
@@ -128,7 +152,8 @@ The smoke tests check the infrastructure itself, not app features. They cover th
 - For phase 5: `ThinkingLoader`, `ChatSubmitBtn`, `SubmitBtn` and `PageBtn` already have 100% line coverage through the phase-3 tests. Their own 6.3.3/6.3.4/6.3.12 cases are still worth writing, but they're low value.
 - E2E iteration: start the TMDB mock and `next dev -p 3100` yourself with the `appEnv` values from `playwright.config.ts` (and `NEXT_DIST_DIR=.next-e2e-default`). `reuseExistingServer` then picks them up, and a spec runs in a few seconds. Don't `pkill -f tmdb-server.mjs` from a shell whose own command line contains that string: it kills the shell.
 - E2E locators: the navbar is a `<ul>`, so scope `listitem` queries to `getByRole("main")`. There are two `AuthBtn`s (desktop + mobile), so scope to `nav#top`. Selects without labels (language, year) are located by `select[name=…]`. A ListCard row is `main div.border-b` filtered by its item link.
-- Expected server-log noise during E2E: every visit to `/search/movie/550` logs four TMDB `404`s ("Error fetching movie details/trailer/images/reviews"). The cause is the XSS review in `reviews.json`. The sanitiser strips `onerror` from `<img src="x" onerror=…>` but keeps `src="x"`, so the browser requests `/search/movie/x`, which renders a movie page for id `x`, and the mock rejects the non-numeric id. It's harmless. If it bothers 6.5.4, point that `src` at a stubbed host (`https://image.tmdb.org/x.png`). The `500` for `__error__` is expected too.
+- Expected server-log noise during E2E: the `500`s for `__error__` and for `/search/movie/999999` (6.5.4). The four TMDB `404`s per visit to `/search/movie/550` are gone (D31).
+- Local E2E runs use 4 workers (D32). If an aborted `page.goto` or a lost server-action redirect shows up again, try `--workers=2` before debugging the spec. CI runs a production build and isn't affected.
 - The E2E `test.fail` check works like the Vitest one: `sed -i 's/^test\.fail(/test(/'` on a copy, run with `-g "B[0-9]"`, restore. In zsh, put multiple files in an array (`FILES=(a b)`), because unquoted `$FILES` isn't word-split.
 
 ---
@@ -163,6 +188,8 @@ Add these to the bug table in TESTING_PLAN.md:
 | B10 | [src/app/signin/page.tsx](src/app/signin/page.tsx) | `signIn(provider, { redirectTo: "/" })` ignores the `callbackUrl` that the middleware adds. After logging in from `/my-list`, the user lands on `/`. This is minor. |
 | B11 | `/api/assistant`, `/api/recaptcha` | A malformed JSON body makes `request.json()` throw, which returns a 500 instead of a 400. This is minor. |
 | B12 | [src/Components/ui/DeleteResult.tsx](src/Components/ui/DeleteResult.tsx) | Found in phase 4. The toast is fired from render (`setTimeout` in the component body), so every render shows it again. In `next dev` (StrictMode) the "Account deleted" / "Failed to delete" toast appears twice. Fix: fire it from a `useEffect`, guarded by a ref. This is minor. |
+| B13 | [src/Components/Reviews.tsx](src/Components/Reviews.tsx) | Found in phase 5. The `#reviews` section has no `scroll-mt-20` (Trailer and Gallery do), so the "Reviews" link scrolls its heading under the sticky navbar. This is minor. |
+| B14 | [src/Components/ui/DeleteModalBtn.tsx](src/Components/ui/DeleteModalBtn.tsx) | Found in phase 5. The `onClick` closes the dialog 300 ms after every click, because the `pending` in its `setTimeout` is the stale value from the click. The dialog closes even when the browser blocked the submit (the empty required input), and while the action is still pending, so "Deleting..." is shown for at most 300 ms. Left untested on purpose. Fix: close only on success, or drop the timer. This is minor. |
 
 ---
 
@@ -1171,7 +1198,7 @@ Parametrise the AddToListBtn suite through a shared `describeListForm({ Componen
 |---|---|
 | success / fail | `toast.success("Account deleted succesfully.", …)` / `toast.error("Failed to delete account.", …)`, each called once. |
 | No toast | `it.each([undefined, "other"])` → neither toast is called. |
-| Re-render | **fails [3.9]:** `rerender(<DeleteResult deleteAcc="success" />)` + `runAllTimers` → `toast.success` called only once. Today it's called twice. |
+| Re-render | **fails [B12]:** `rerender(<DeleteResult deleteAcc="success" />)` + `runAllTimers` → `toast.success` called only once. Today it's called twice. |
 
 #### 6.3.10 `tests/components/FiltersForm.test.tsx`
 
@@ -1444,5 +1471,5 @@ Seed lists directly via `seedList` wherever the UI path isn't what's under test.
 2. ✅ **6.1 + 6.2** (done). This includes the B1–B4 and B8 `test.fails` cases, which puts the security findings under test on day one.
 3. ✅ **6.3.1, 6.3.2, 6.3.5, 6.3.10, 6.3.13** (done): chat, markdown safety, add-to-list, filters, pagination. This includes B5 ×2 under `test.fails`.
 4. ✅ **6.5.2, 6.5.3, 6.5.5, 6.5.6, 6.5.6b, 6.5.7**, then the two variant specs (done). This includes B1 ×2, B2 ×2, B3, B6 and B9 under `test.fail`.
-5. Everything else (6.3 remainder, 6.4, 6.5.1, 6.5.4).
+5. ✅ **Everything else** (done): 6.3 remainder, 6.4, 6.5.1, 6.5.4. This includes B6, B7, B9 and B12 under `test.fails`.
 6. Fix the bugs one by one. Each fix turns its `test.fails` into an unexpected pass. Flip it to a normal `test` in the same PR.

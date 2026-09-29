@@ -43,7 +43,7 @@ export default function DeleteListBtn({
     }
 
     try {
-      const response = await fetch("api/remove-from-list", {
+      const response = await fetch("/api/remove-from-list", {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",

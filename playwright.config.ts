@@ -41,7 +41,9 @@ export default defineConfig({
   fullyParallel: true, // safe: every test seeds its own user (4.6)
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
-  workers: isCI ? 2 : undefined,
+  // local `next dev` gets flaky above ~4 parallel pages (aborted navigations, lost
+  // server-action redirects); more workers don't make it faster anyway
+  workers: isCI ? 2 : 4,
   reporter: [
     ["html", { outputFolder: `playwright-report/${VARIANT}`, open: "never" }],
     ["list"],
