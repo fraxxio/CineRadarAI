@@ -43,7 +43,10 @@ export default function AuthBtn({ user }: AuthBtnProps) {
 
   return (
     <div className="relative" ref={ref}>
-      <button onClick={() => setIsOpen((prevState) => !prevState)}>
+      <button
+        aria-label="Account menu"
+        onClick={() => setIsOpen((prevState) => !prevState)}
+      >
         <Image
           alt="Profile"
           width={35}

@@ -1,6 +1,7 @@
 import Filters from "@/Components/Filters";
 import SearchResults from "@/Components/SearchResults";
 import { SearchResultsSkeleton } from "@/Components/skeletons/SearchResultsSkeleton";
+import { getTitle } from "@/lib/searchTitle";
 import { movieFilterValues } from "@/lib/validation";
 import { Metadata } from "next";
 import { Suspense } from "react";
@@ -15,17 +16,6 @@ type PageProps = {
     page?: string;
   };
 };
-
-function getTitle({ query, language, year, adult }: movieFilterValues) {
-  const lang = language ? ` in ${language.toUpperCase()} language` : "";
-  const Year = year ? `, ${year} year` : "";
-  const including = adult ? `, including adult.` : "";
-  const title = query
-    ? `Results for: ${query}${lang}${Year}${including}`
-    : "Trending movies";
-
-  return title;
-}
 
 export function generateMetadata({
   searchParams: { query, language = "en", year, adult, btn = "movie" },

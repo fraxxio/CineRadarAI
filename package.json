@@ -8,7 +8,17 @@
     "start": "next start",
     "lint": "next lint",
     "generate": "drizzle-kit generate:sqlite",
-    "push": "drizzle-kit push:sqlite"
+    "push": "drizzle-kit push:sqlite",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:components": "vitest run --project components",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:variants": "E2E_VARIANT=chat-disabled playwright test --pass-with-no-tests && E2E_VARIANT=recaptcha playwright test --pass-with-no-tests",
+    "test:e2e:ui": "playwright test --ui",
+    "typecheck:tests": "tsc -p tests/tsconfig.json --noEmit"
   },
   "dependencies": {
     "@auth/core": "^0.30.0",
@@ -33,17 +43,26 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@vitejs/plugin-react": "^6.1.1",
+    "@vitest/coverage-v8": "^4.1.11",
     "autoprefixer": "^10.0.1",
     "drizzle-kit": "^0.20.14",
     "eslint": "^8",
     "eslint-config-next": "14.1.3",
+    "jsdom": "^30.1.1",
     "postcss": "^8",
     "prettier": "^3.2.5",
     "prettier-plugin-tailwindcss": "^0.5.13",
     "tailwindcss": "^3.3.0",
-    "typescript": "^5"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   }
 }
