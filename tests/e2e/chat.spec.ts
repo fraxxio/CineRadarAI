@@ -118,7 +118,34 @@ test("Stop keeps the turn and shares it with the model", async ({ page }) => {
   await expect(page.getByText("Platoon")).toBeVisible();
   expect(calls[1]).toEqual({
     content: "something older",
-    stoppedTurn: { prompt: "war movies", partialText: "" },
+    stoppedTurns: [{ prompt: "war movies", partialText: "" }],
+  });
+});
+
+test("two stops in a row are both shared with the model", async ({ page }) => {
+  const holds = [deferred<void>(), deferred<void>()];
+  const calls = await stubAssistant(page, (_body, n) =>
+    n <= 2
+      ? { events: answer(`i${n}`, FURY), hold: holds[n - 1].promise }
+      : { events: answer(`i${n}`, "Also try **Platoon**.") },
+  );
+
+  for (const [i, prompt] of ["war movies", "comedies"].entries()) {
+    await send(page, prompt);
+    await expect(page.getByRole("status")).toBeVisible();
+    await page.getByRole("button", { name: "Stop" }).click();
+    holds[i].resolve();
+    await expect(page.getByText("Stopped")).toHaveCount(i + 1);
+  }
+
+  await send(page, "something older");
+  await expect(page.getByText("Platoon")).toBeVisible();
+  expect(calls[2]).toEqual({
+    content: "something older",
+    stoppedTurns: [
+      { prompt: "war movies", partialText: "" },
+      { prompt: "comedies", partialText: "" },
+    ],
   });
 });
 

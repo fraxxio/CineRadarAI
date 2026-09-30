@@ -1,3 +1,22 @@
 {
-  "extends": "next/core-web-vitals"
+  "extends": "next/core-web-vitals",
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "@google/genai",
+            "message": "Only src/lib/llm/ may talk to Gemini, use llmService instead."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/lib/llm/**"],
+      "rules": { "no-restricted-imports": "off" }
+    }
+  ]
 }

@@ -3,7 +3,11 @@ import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import ChatAssistant from "@/Components/ChatAssistant";
-import { MAX_PROMPT_LENGTH, MAX_STOPPED_TEXT_LENGTH } from "@/lib/chatLimits";
+import {
+  MAX_PROMPT_LENGTH,
+  MAX_STOPPED_TEXT_LENGTH,
+  MAX_STOPPED_TURNS,
+} from "@/lib/chatLimits";
 import { controlledStream, ndjson, streamResponse } from "../helpers/stream";
 
 const GREETING = "Hi! What would you like to watch?";
@@ -285,10 +289,108 @@ describe("ChatAssistant", () => {
       expect(third).toEqual({
         content: "p3",
         previousInteractionId: "i1",
-        stoppedTurn: { prompt: "p2", partialText: "partial" },
+        stoppedTurns: [{ prompt: "p2", partialText: "partial" }],
       });
       // the model has seen it now
       expect(fourth).toEqual({ content: "p4", previousInteractionId: "i3" });
+    });
+
+    test("two stops in a row: the next turn shares both, oldest first", async () => {
+      const stopped2 = controlledStream();
+      const stopped3 = controlledStream();
+      const { bodies } = routeFetch({
+        "/api/assistant": [
+          answer("i1", "a1"),
+          stopped2.response,
+          stopped3.response,
+          answer("i4", "a4"),
+          answer("i5", "a5"),
+        ],
+      });
+      renderChat();
+      await send("p1");
+      await settled();
+      await send("p2");
+      stopped2.push(ndjson(start("i2"), delta("A")));
+      await screen.findByText("A");
+      await user.click(stopBtn());
+      await send("p3");
+      stopped3.push(ndjson(start("i3"), delta("B")));
+      await screen.findByText("B");
+      await user.click(stopBtn());
+
+      await send("p4");
+      await settled();
+      await send("p5");
+      await settled();
+
+      const [, second, third, fourth, fifth] = bodies("/api/assistant");
+      expect(second.stoppedTurns).toBeUndefined();
+      // the stopped interaction i2 isn't continued
+      expect(third).toEqual({
+        content: "p3",
+        previousInteractionId: "i1",
+        stoppedTurns: [{ prompt: "p2", partialText: "A" }],
+      });
+      expect(fourth).toEqual({
+        content: "p4",
+        previousInteractionId: "i1",
+        stoppedTurns: [
+          { prompt: "p2", partialText: "A" },
+          { prompt: "p3", partialText: "B" },
+        ],
+      });
+      expect(fifth).toEqual({ content: "p5", previousInteractionId: "i4" });
+    });
+
+    test(`shares at most the last ${MAX_STOPPED_TURNS} stopped turns`, async () => {
+      const count = MAX_STOPPED_TURNS + 1;
+      const streams = Array.from({ length: count }, () => controlledStream());
+      const { bodies } = routeFetch({
+        "/api/assistant": [
+          ...streams.map((s) => s.response),
+          answer("i1", "a1"),
+        ],
+      });
+      renderChat();
+      for (let i = 1; i <= count; i++) {
+        await send(`p${i}`);
+        await user.click(stopBtn());
+      }
+
+      await send("last");
+      await settled();
+
+      const { stoppedTurns } = bodies("/api/assistant")[count] as {
+        stoppedTurns: StoppedTurn[];
+      };
+      expect(stoppedTurns.map((t) => t.prompt)).toEqual(
+        Array.from({ length: MAX_STOPPED_TURNS }, (_, i) => `p${i + 2}`),
+      );
+    });
+
+    test("a failed turn drops the stopped turns", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const stopped = controlledStream();
+      const { bodies } = routeFetch({
+        "/api/assistant": [
+          stopped.response,
+          new Response("", { status: 400 }),
+          answer("i3", "a3"),
+        ],
+      });
+      renderChat();
+      await send("p1");
+      await user.click(stopBtn());
+      await send("p2");
+      await screen.findByText(ERROR_TEXT);
+      await settled();
+
+      await send("p3");
+      await settled();
+
+      expect(bodies("/api/assistant")[1].stoppedTurns).toHaveLength(1);
+      expect(bodies("/api/assistant")[2]).toEqual({ content: "p3" });
     });
 
     test("a stop before any text shares an empty partial answer", async () => {
@@ -305,7 +407,7 @@ describe("ChatAssistant", () => {
 
       expect(bodies("/api/assistant")[1]).toEqual({
         content: "p2",
-        stoppedTurn: { prompt: "p1", partialText: "" },
+        stoppedTurns: [{ prompt: "p1", partialText: "" }],
       });
     });
 
@@ -323,10 +425,10 @@ describe("ChatAssistant", () => {
       await send("p2");
       await settled();
 
-      const { stoppedTurn } = bodies("/api/assistant")[1] as {
-        stoppedTurn: StoppedTurn;
+      const { stoppedTurns } = bodies("/api/assistant")[1] as {
+        stoppedTurns: StoppedTurn[];
       };
-      expect(stoppedTurn.partialText).toHaveLength(MAX_STOPPED_TEXT_LENGTH);
+      expect(stoppedTurns[0].partialText).toHaveLength(MAX_STOPPED_TEXT_LENGTH);
     });
 
     test("during reCAPTCHA verification: nothing is sent and the prompt is kept", async () => {

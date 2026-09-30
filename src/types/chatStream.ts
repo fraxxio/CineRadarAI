@@ -12,5 +12,6 @@ type StoppedTurn = { prompt: string; partialText: string };
 type ChatRequest = {
   content: string;
   previousInteractionId?: string;
-  stoppedTurn?: StoppedTurn;
+  // oldest first
+  stoppedTurns?: StoppedTurn[];
 };

@@ -1,9 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
-import { CHAT_MODEL, buildSystemInstruction } from "@/lib/chatConfig";
-import { MAX_PROMPT_LENGTH } from "@/lib/chatLimits";
+import { z } from "zod";
+import {
+  MAX_PROMPT_LENGTH,
+  MAX_STOPPED_TEXT_LENGTH,
+  MAX_STOPPED_TURNS,
+} from "@/lib/chatLimits";
+import { streamChatReply } from "@/lib/llm/llmService";
 
 export const runtime = "edge";
+
+const promptSchema = z
+  .string()
+  .max(MAX_PROMPT_LENGTH)
+  .refine((prompt) => prompt.trim().length > 0);
+
+const chatRequestSchema = z.object({
+  content: promptSchema,
+  previousInteractionId: z.string().nullish(),
+  stoppedTurns: z
+    .array(
+      z.object({
+        prompt: promptSchema,
+        // empty when stopped before any text arrived
+        partialText: z.string().max(MAX_STOPPED_TEXT_LENGTH),
+      }),
+    )
+    .max(MAX_STOPPED_TURNS)
+    .optional(),
+});
 
 // post a new message and stream Gemini response
 export async function POST(request: NextRequest) {
@@ -18,83 +42,67 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const { previousInteractionId, content } = payload ?? {};
-
-  if (
-    typeof content !== "string" ||
-    content.trim().length === 0 ||
-    content.length > MAX_PROMPT_LENGTH
-  ) {
-    return NextResponse.json({ error: "Invalid message" }, { status: 400 });
+  const parsed = chatRequestSchema.safeParse(payload);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
+  const { content, previousInteractionId, stoppedTurns = [] } = parsed.data;
 
-  if (
-    previousInteractionId != null &&
-    typeof previousInteractionId !== "string"
-  ) {
-    return NextResponse.json(
-      { error: "Invalid interaction id" },
-      { status: 400 },
-    );
-  }
+  // stops the Gemini request when the client leaves: cancel() below is the
+  // reliable trigger, request.signal may not abort on every runtime
+  const abort = new AbortController();
+  request.signal.addEventListener("abort", () => abort.abort());
 
-  // create Gemini client
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-  let stream;
+  let events: AsyncIterable<ChatStreamEvent>;
   try {
-    stream = await ai.interactions.create({
-      model: CHAT_MODEL,
-      input: content,
-      previous_interaction_id: previousInteractionId ?? undefined,
-      // interaction-scoped: must be resent every turn
-      system_instruction: buildSystemInstruction(),
-      generation_config: { thinking_level: "minimal" },
-      stream: true,
+    events = await streamChatReply({
+      prompt: content,
+      stoppedTurns,
+      previousInteractionId: previousInteractionId ?? undefined,
+      signal: abort.signal,
     });
   } catch (error) {
+    // the client is already gone, nobody reads this response
+    if (abort.signal.aborted) {
+      return new Response(null, { status: 499 });
+    }
     // e.g. expired/unknown previous_interaction_id, invalid key, quota
     console.error("Gemini interaction error:", error);
     return NextResponse.json({ error: "Failed to start chat" }, { status: 502 });
   }
 
-  // convert Gemini events to our own NDJSON protocol
+  // encode events as NDJSON
   const encoder = new TextEncoder();
+  // after a cancel, enqueue() and close() throw
+  let closed = false;
   const body = new ReadableStream({
     async start(controller) {
-      const send = (event: ChatStreamEvent) =>
-        controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+      const send = (event: ChatStreamEvent) => {
+        if (!closed) {
+          controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+        }
+      };
       try {
-        for await (const event of stream) {
-          switch (event.event_type) {
-            case "interaction.created":
-              send({ type: "start", interactionId: event.interaction.id });
-              break;
-            case "step.delta":
-              // skip thought and other non-text deltas
-              if (event.delta.type === "text") {
-                send({ type: "delta", text: event.delta.text });
-              }
-              break;
-            case "interaction.completed":
-              send(
-                event.interaction.status === "completed"
-                  ? { type: "done", interactionId: event.interaction.id }
-                  : { type: "error" },
-              );
-              break;
-            case "error":
-              console.error("Gemini stream error event:", event);
-              send({ type: "error" });
-              break;
-          }
+        for await (const event of events) {
+          send(event);
         }
       } catch (error) {
-        console.error("Gemini stream error:", error);
-        send({ type: "error" });
+        // an abort makes the Gemini stream throw, that's not an error
+        if (!abort.signal.aborted) {
+          console.error("Gemini stream error:", error);
+          send({ type: "error" });
+        }
       } finally {
-        controller.close();
+        if (!closed) {
+          closed = true;
+          controller.close();
+        }
       }
+    },
+    cancel() {
+      closed = true;
+      abort.abort();
+      console.info("Chat stream cancelled by the client");
     },
   });
 

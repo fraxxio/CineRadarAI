@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { MAX_STOPPED_TEXT_LENGTH } from "@/lib/chatLimits";
+import { MAX_STOPPED_TEXT_LENGTH, MAX_STOPPED_TURNS } from "@/lib/chatLimits";
 
 export type ChatStatus = "idle" | "loading" | "streaming" | "error";
 
@@ -29,7 +29,8 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
   const turnRef = useRef<Turn | null>(null);
   // last completed turn, the next request continues from it
   const interactionIdRef = useRef<string>();
-  const stoppedTurnRef = useRef<StoppedTurn>();
+  // stopped since the last completed turn, the model hasn't seen them yet
+  const stoppedTurnsRef = useRef<StoppedTurn[]>([]);
   const messageCount = useRef(0);
 
   const nextId = () => `m${++messageCount.current}`;
@@ -93,7 +94,9 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
       const request: ChatRequest = {
         content: turn.prompt,
         previousInteractionId: interactionIdRef.current,
-        stoppedTurn: stoppedTurnRef.current,
+        stoppedTurns: stoppedTurnsRef.current.length
+          ? stoppedTurnsRef.current
+          : undefined,
       };
       // post new message to server and stream Gemini response
       const response = await fetch("/api/assistant", {
@@ -173,8 +176,8 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
       }
 
       interactionIdRef.current = newInteractionId;
-      // the model has now seen the stopped turn as part of this interaction
-      stoppedTurnRef.current = undefined;
+      // the model has now seen the stopped turns as part of this interaction
+      stoppedTurnsRef.current = [];
       setMessages((prev) =>
         capped([
           ...prev,
@@ -190,10 +193,10 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
       console.error("AI chat error:", error);
       setStatus("error");
       // turn was never created (e.g. expired interaction or rejected stopped
-      // turn), start a new conversation next time
+      // turns), start a new conversation next time
       if (!newInteractionId) {
         interactionIdRef.current = undefined;
-        stoppedTurnRef.current = undefined;
+        stoppedTurnsRef.current = [];
       }
     }
 
@@ -213,10 +216,14 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
     if (turn.accepted) {
       // don't continue from the stopped interaction: its state on Google's side
       // is unreliable, so interactionId stays on the last completed turn
-      stoppedTurnRef.current = {
-        prompt: turn.prompt,
-        partialText: turn.text.slice(0, MAX_STOPPED_TEXT_LENGTH),
-      };
+      // keep the newest ones so the request stays within the server limit
+      stoppedTurnsRef.current = [
+        ...stoppedTurnsRef.current,
+        {
+          prompt: turn.prompt,
+          partialText: turn.text.slice(0, MAX_STOPPED_TEXT_LENGTH),
+        },
+      ].slice(-MAX_STOPPED_TURNS);
       setMessages((prev) =>
         capped([
           ...prev,
@@ -238,7 +245,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
     turnRef.current?.controller.abort();
     turnRef.current = null;
     interactionIdRef.current = undefined;
-    stoppedTurnRef.current = undefined;
+    stoppedTurnsRef.current = [];
     setMessages([]);
     setStreamingContent("");
     setStatus("idle");
