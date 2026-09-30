@@ -3,7 +3,7 @@ import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import ChatAssistant from "@/Components/ChatAssistant";
-import { MAX_PROMPT_LENGTH } from "@/lib/chatLimits";
+import { MAX_PROMPT_LENGTH, MAX_STOPPED_TEXT_LENGTH } from "@/lib/chatLimits";
 import { controlledStream, ndjson, streamResponse } from "../helpers/stream";
 
 const GREETING = "Hi! What would you like to watch?";
@@ -54,8 +54,8 @@ const renderChat = ({ recaptchaEnabled = false } = {}) =>
     <ChatAssistant greeting={GREETING} recaptchaEnabled={recaptchaEnabled} />,
   );
 const input = () => screen.getByPlaceholderText(/Suggest me movies/);
-const submitBtn = () =>
-  screen.getByRole("button", { name: /submit|generating/i });
+const submitBtn = () => screen.getByRole("button", { name: /submit|stop/i });
+const newChatBtn = () => screen.getByRole("button", { name: "New chat" });
 
 async function send(text: string) {
   await user.type(input(), text);
@@ -90,7 +90,7 @@ describe("ChatAssistant", () => {
     expect(input()).toHaveValue("");
     expect(input()).toBeDisabled();
     expect(screen.getByRole("status")).toBeInTheDocument();
-    expect(submitBtn()).toHaveTextContent("Generating...");
+    expect(submitBtn()).toHaveTextContent("Stop");
   });
 
   test("renders deltas as they arrive", async () => {
@@ -194,6 +194,229 @@ describe("ChatAssistant", () => {
     expect(screen.getByText("p2")).toBeInTheDocument();
     expect(screen.getByText("a6")).toBeInTheDocument();
     expect(screen.getByText(GREETING)).toBeInTheDocument();
+  });
+
+  describe("stop", () => {
+    const stopBtn = () => screen.getByRole("button", { name: "Stop" });
+
+    test("mid-stream: keeps the partial answer marked as stopped", async () => {
+      const stream = controlledStream();
+      const { calls } = routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("war films");
+      stream.push(ndjson(start("i1"), delta("Watch Fu")));
+      await screen.findByText("Watch Fu");
+
+      await user.click(stopBtn());
+
+      expect(screen.getByText("Watch Fu")).toBeInTheDocument();
+      expect(screen.getByText("Stopped")).toBeInTheDocument();
+      expect(input()).toBeEnabled();
+      expect(submitBtn()).toHaveTextContent("Submit");
+      expect(screen.queryByText(ERROR_TEXT)).toBeNull();
+      expect(calls).toHaveLength(1); // Stop didn't submit the form again
+    });
+
+    test("while the loader shows: stops without an error", async () => {
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("war films");
+      expect(screen.getByRole("status")).toBeInTheDocument();
+
+      await user.click(stopBtn());
+
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.getByText("war films")).toBeInTheDocument();
+      expect(screen.getByText("Stopped")).toBeInTheDocument();
+      expect(screen.queryByText(ERROR_TEXT)).toBeNull();
+    });
+
+    test("aborts the request", async () => {
+      const stream = controlledStream();
+      const { spy } = routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("hi");
+
+      await user.click(stopBtn());
+
+      expect(spy.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    });
+
+    test("cancels the response stream", async () => {
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("hi");
+      stream.push(ndjson(start("i1"), delta("part")));
+      await screen.findByText("part");
+
+      await user.click(stopBtn());
+
+      // the reader cancelled the stream, so no late events can arrive
+      expect(() => stream.push(ndjson(delta(" more")))).toThrow();
+      expect(screen.getByText("part")).toBeInTheDocument();
+    });
+
+    test("the next turn shares the stopped turn and continues from the last completed one", async () => {
+      const stopped = controlledStream();
+      const { bodies } = routeFetch({
+        "/api/assistant": [
+          answer("i1", "a1"),
+          stopped.response,
+          answer("i3", "a3"),
+          answer("i4", "a4"),
+        ],
+      });
+      renderChat();
+      await send("p1");
+      await settled();
+      await send("p2");
+      stopped.push(ndjson(start("i2"), delta("partial")));
+      await screen.findByText("partial");
+      await user.click(stopBtn());
+
+      await send("p3");
+      await settled();
+      await send("p4");
+      await settled();
+
+      const [, , third, fourth] = bodies("/api/assistant");
+      expect(third).toEqual({
+        content: "p3",
+        previousInteractionId: "i1",
+        stoppedTurn: { prompt: "p2", partialText: "partial" },
+      });
+      // the model has seen it now
+      expect(fourth).toEqual({ content: "p4", previousInteractionId: "i3" });
+    });
+
+    test("a stop before any text shares an empty partial answer", async () => {
+      const stopped = controlledStream();
+      const { bodies } = routeFetch({
+        "/api/assistant": [stopped.response, answer("i2", "a2")],
+      });
+      renderChat();
+      await send("p1");
+      await user.click(stopBtn());
+
+      await send("p2");
+      await settled();
+
+      expect(bodies("/api/assistant")[1]).toEqual({
+        content: "p2",
+        stoppedTurn: { prompt: "p1", partialText: "" },
+      });
+    });
+
+    test("the shared partial answer is capped", async () => {
+      const stopped = controlledStream();
+      const { bodies } = routeFetch({
+        "/api/assistant": [stopped.response, answer("i2", "a2")],
+      });
+      renderChat();
+      await send("p1");
+      stopped.push(ndjson(delta("x".repeat(MAX_STOPPED_TEXT_LENGTH + 5))));
+      await screen.findByText(/^x+$/);
+      await user.click(stopBtn());
+
+      await send("p2");
+      await settled();
+
+      const { stoppedTurn } = bodies("/api/assistant")[1] as {
+        stoppedTurn: StoppedTurn;
+      };
+      expect(stoppedTurn.partialText).toHaveLength(MAX_STOPPED_TEXT_LENGTH);
+    });
+
+    test("during reCAPTCHA verification: nothing is sent and the prompt is kept", async () => {
+      mockRecaptcha(async () => "tok");
+      const verification = controlledStream();
+      const { calls } = routeFetch({
+        "/api/recaptcha": [verification.response],
+      });
+      renderChat({ recaptchaEnabled: true });
+      await send("hi");
+      await waitFor(() => expect(calls).toHaveLength(1));
+
+      await user.click(stopBtn());
+
+      expect(screen.queryByText("Stopped")).toBeNull();
+      expect(input()).toHaveValue("hi");
+      expect(calls.map((c) => c.url)).toEqual(["/api/recaptcha"]);
+    });
+  });
+
+  describe("new chat", () => {
+    test("is disabled while the chat is empty", async () => {
+      routeFetch({ "/api/assistant": [answer("i1", "a1")] });
+      renderChat();
+      expect(newChatBtn()).toBeDisabled();
+
+      await send("hi");
+      await settled();
+
+      expect(newChatBtn()).toBeEnabled();
+    });
+
+    test("clears the chat and starts a new conversation", async () => {
+      const stopped = controlledStream();
+      const { bodies } = routeFetch({
+        "/api/assistant": [
+          answer("i1", "a1"),
+          stopped.response,
+          answer("i3", "a3"),
+        ],
+      });
+      renderChat();
+      await send("p1");
+      await settled();
+      await send("p2");
+      await user.click(screen.getByRole("button", { name: "Stop" }));
+
+      await user.click(newChatBtn());
+
+      expect(screen.queryByText("p1")).toBeNull();
+      expect(screen.queryByText("a1")).toBeNull();
+      expect(screen.queryByText("Stopped")).toBeNull();
+      expect(screen.getByText(GREETING)).toBeInTheDocument();
+      expect(newChatBtn()).toBeDisabled();
+
+      await send("p3");
+      await settled();
+      // no interaction id, no stopped turn
+      expect(bodies("/api/assistant")[2]).toEqual({ content: "p3" });
+    });
+
+    test("mid-stream: aborts and leaves nothing behind", async () => {
+      const stream = controlledStream();
+      const { spy } = routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("hi");
+      stream.push(ndjson(start("i1"), delta("part")));
+      await screen.findByText("part");
+
+      await user.click(newChatBtn());
+
+      expect(spy.mock.calls[0][1]?.signal?.aborted).toBe(true);
+      expect(screen.queryByText(/part/)).toBeNull();
+      expect(screen.queryByText("hi")).toBeNull();
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(input()).toBeEnabled();
+      expect(submitBtn()).toHaveTextContent("Submit");
+    });
+
+    test("clears the error message", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      routeFetch({ "/api/assistant": [new Response("", { status: 500 })] });
+      renderChat();
+      await send("hi");
+      await screen.findByText(ERROR_TEXT);
+
+      await user.click(newChatBtn());
+
+      expect(screen.queryByText(ERROR_TEXT)).toBeNull();
+    });
   });
 
   describe("errors", () => {

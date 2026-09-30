@@ -7,6 +7,7 @@ type AssistantMessageProps = {
     id?: string;
     role: string;
     content?: string;
+    stopped?: boolean;
   };
   children?: React.ReactNode;
 };
@@ -59,6 +60,9 @@ export function AssistantMessage({ message, children }: AssistantMessageProps) {
           </Markdown>
         )}
       </div>
+      {message.stopped && (
+        <small className="italic text-secondary-text">Stopped</small>
+      )}
     </div>
   );
 }
