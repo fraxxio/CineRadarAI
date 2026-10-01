@@ -1,32 +1,43 @@
-import { LoaderCircle, SendHorizontal } from "lucide-react";
+import { SendHorizontal, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type ChatSubmitBtnProps = {
-  isLoading: boolean;
+  isBusy: boolean;
   disabled: boolean;
+  onStop: () => void;
 };
 
-export function ChatSubmitBtn({ isLoading, disabled }: ChatSubmitBtnProps) {
-  return (
+const btnClassName =
+  "flex h-[40px] items-center gap-1 rounded-br-md rounded-tr-md border-b border-r border-t border-border-clr bg-dark-bg px-2 font-medium duration-200";
+const hoverClassName =
+  "hover:cursor-pointer hover:bg-primary-text hover:text-dark-bg";
+
+export function ChatSubmitBtn({
+  isBusy,
+  disabled,
+  onStop,
+}: ChatSubmitBtnProps) {
+  // separate keys: React must not turn the clicked Stop button into a submit
+  // button before the click finishes, or the form would be submitted again
+  return isBusy ? (
     <button
-      disabled={isLoading || disabled}
-      className={cn(
-        "flex h-[40px] items-center gap-1 rounded-br-md rounded-tr-md border-b border-r border-t border-border-clr bg-dark-bg px-2 font-medium duration-200",
-        !isLoading &&
-          "hover:cursor-pointer hover:bg-primary-text hover:text-dark-bg",
-      )}
+      key="stop"
+      type="button"
+      onClick={onStop}
+      className={cn(btnClassName, hoverClassName)}
     >
-      {isLoading ? (
-        <>
-          <LoaderCircle size={16} className="animate-spin" />
-          Generating...
-        </>
-      ) : (
-        <>
-          Submit
-          <SendHorizontal size={16} />
-        </>
-      )}
+      Stop
+      <Square size={14} className="fill-current" />
+    </button>
+  ) : (
+    <button
+      key="submit"
+      type="submit"
+      disabled={disabled}
+      className={cn(btnClassName, !disabled && hoverClassName)}
+    >
+      Submit
+      <SendHorizontal size={16} />
     </button>
   );
 }

@@ -45,9 +45,7 @@ test("shows the loader and disables the input while waiting", async ({
 
   await expect(page.getByRole("status")).toBeVisible();
   await expect(promptInput(page)).toBeDisabled();
-  await expect(
-    page.getByRole("button", { name: "Generating..." }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
 
   hold.resolve();
 
@@ -94,4 +92,79 @@ test("a failed request shows the error message", async ({ page }) => {
     page.getByText("Unfortunately an error occurred. Try again later."),
   ).toBeVisible();
   await expect(promptInput(page)).toBeEnabled();
+});
+
+test("Stop keeps the turn and shares it with the model", async ({ page }) => {
+  const hold = deferred<void>();
+  const calls = await stubAssistant(page, (_body, n) =>
+    n === 1
+      ? { events: answer("i1", FURY), hold: hold.promise }
+      : { events: answer("i2", "Also try **Platoon**.") },
+  );
+
+  await send(page, "war movies");
+  await expect(page.getByRole("status")).toBeVisible();
+  await page.getByRole("button", { name: "Stop" }).click();
+  hold.resolve();
+
+  await expect(page.getByText("Stopped")).toBeVisible();
+  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(promptInput(page)).toBeEnabled();
+  await expect(
+    page.getByText("Unfortunately an error occurred. Try again later."),
+  ).toHaveCount(0);
+
+  await send(page, "something older");
+  await expect(page.getByText("Platoon")).toBeVisible();
+  expect(calls[1]).toEqual({
+    content: "something older",
+    stoppedTurns: [{ prompt: "war movies", partialText: "" }],
+  });
+});
+
+test("two stops in a row are both shared with the model", async ({ page }) => {
+  const holds = [deferred<void>(), deferred<void>()];
+  const calls = await stubAssistant(page, (_body, n) =>
+    n <= 2
+      ? { events: answer(`i${n}`, FURY), hold: holds[n - 1].promise }
+      : { events: answer(`i${n}`, "Also try **Platoon**.") },
+  );
+
+  for (const [i, prompt] of ["war movies", "comedies"].entries()) {
+    await send(page, prompt);
+    await expect(page.getByRole("status")).toBeVisible();
+    await page.getByRole("button", { name: "Stop" }).click();
+    holds[i].resolve();
+    await expect(page.getByText("Stopped")).toHaveCount(i + 1);
+  }
+
+  await send(page, "something older");
+  await expect(page.getByText("Platoon")).toBeVisible();
+  expect(calls[2]).toEqual({
+    content: "something older",
+    stoppedTurns: [
+      { prompt: "war movies", partialText: "" },
+      { prompt: "comedies", partialText: "" },
+    ],
+  });
+});
+
+test("New chat clears the conversation", async ({ page }) => {
+  const calls = await stubAssistant(page, (_body, n) => ({
+    events: answer(`i${n}`, n === 1 ? FURY : "Also try **Platoon**."),
+  }));
+  const newChat = page.getByRole("button", { name: "New chat" });
+  await expect(newChat).toBeDisabled();
+
+  await send(page, "war movies");
+  await expect(answerItem(page)).toContainText("Fury");
+  await newChat.click();
+
+  await expect(answerItem(page)).toHaveCount(0);
+  await expect(page.getByText("war movies")).toHaveCount(0);
+  await expect(newChat).toBeDisabled();
+
+  await send(page, "something older");
+  await expect(page.getByText("Platoon")).toBeVisible();
+  expect(calls[1]).toEqual({ content: "something older" });
 });

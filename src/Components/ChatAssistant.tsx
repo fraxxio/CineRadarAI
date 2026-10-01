@@ -1,9 +1,11 @@
 "use client";
 import { useRef, useState } from "react";
+import { SquarePen } from "lucide-react";
 import { AssistantMessage } from "./ui/AssistantMessage";
 import { ThinkingLoader } from "./ui/ThinkingLoader";
 import { ChatSubmitBtn } from "./ui/ChatSubmitBtn";
-import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
+import { useChat } from "@/hooks/useChat";
+import { useRecaptchaCheck } from "@/hooks/useRecaptchaCheck";
 import { MAX_PROMPT_LENGTH } from "@/lib/chatLimits";
 import { LOADER_WORDS, shuffle } from "@/lib/loaderWords";
 
@@ -16,17 +18,17 @@ export default function ChatAssistant({
   greeting = "Ask me for movie or TV show suggestions. Describe what would you like to watch, for example: genre, actors, style...",
   recaptchaEnabled,
 }: ChatAssistantProps) {
-  const { executeRecaptcha } = useGoogleReCaptcha();
-  const [isLoading, setIsLoading] = useState(false);
-  const [isError, setIsError] = useState(false);
-  const [captchaFailed, setCaptchaFailed] = useState(false);
-  const [interactionId, setInteractionId] = useState<string>();
+  const recaptcha = useRecaptchaCheck(recaptchaEnabled);
+  const { messages, streamingContent, status, send, stop, reset } = useChat({
+    beforeSend: recaptcha.verify,
+  });
   const [prompt, setPrompt] = useState("");
-  const [messages, setMessages] = useState<Tmessage>([]);
-  const [streamingContent, setStreamingContent] = useState("");
   // safe to shuffle during render: the loader never renders on the server
   const [loaderWords] = useState(() => shuffle(LOADER_WORDS));
   const loaderTurn = useRef(0);
+
+  const isBusy = status === "loading" || status === "streaming";
+  const isEmpty = messages.length === 0 && status === "idle";
 
   // set default greeting Message
   const greetingMessage = {
@@ -36,162 +38,10 @@ export default function ChatAssistant({
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-
-    // reset before isLoading turns on so the loader shows during reCAPTCHA verification
-    setStreamingContent("");
     loaderTurn.current += 1;
-
-    if (recaptchaEnabled) {
-      if (!executeRecaptcha) {
-        console.log("Execute recaptcha not yet available");
-        return;
-      }
-      const recaptchaToken = await executeRecaptcha("AIchatSubmit");
-      setIsLoading(true);
-      try {
-        const response = await fetch("/api/recaptcha", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ recaptchaToken }),
-        });
-        if (!response.ok) {
-          const error = new Error(
-            `Failed to verify captcha. (Status: ${response.status})`,
-          );
-          throw error;
-        }
-        const res = await response.json();
-        if (res.success === false) {
-          setCaptchaFailed(true);
-          setTimeout(() => {
-            setCaptchaFailed(false);
-          }, 3000);
-          setIsLoading(false);
-          return;
-        }
-      } catch (error) {
-        console.error("Recaptcha verify error (Client):", error);
-        setIsLoading(false);
-        return;
-      }
-    } else {
-      setIsLoading(true);
-    }
-
-    setIsError(false);
-
-    const userPrompt = prompt;
-    const tempId = `temp_user_${Date.now()}`;
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: tempId,
-        role: "user",
-        content: userPrompt,
-      },
-    ]);
-    setPrompt("");
-
-    let contentSnapshot = "";
-    let newInteractionId = "";
-
-    try {
-      // post new message to server and stream Gemini response
-      const response = await fetch("/api/assistant", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          previousInteractionId: interactionId,
-          content: userPrompt,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `Network response was not ok. (Status: ${response.status})`,
-        );
-      }
-
-      if (!response.body) {
-        throw new Error("Response body is null.");
-      }
-
-      let completed = false;
-
-      const handleServerEvent = (serverEvent: ChatStreamEvent) => {
-        switch (serverEvent.type) {
-          case "start":
-            newInteractionId = serverEvent.interactionId;
-            break;
-
-          // update streaming message content
-          case "delta":
-            contentSnapshot += serverEvent.text;
-            setStreamingContent(contentSnapshot);
-            break;
-          case "done":
-            newInteractionId = serverEvent.interactionId;
-            completed = true;
-            break;
-          case "error":
-            throw new Error("Chat response failed.");
-        }
-      };
-
-      // this code can be simplified when more browsers support async iteration
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { value, done } = await reader.read();
-
-        // keep the last (possibly partial) line in the buffer for the next read
-        buffer += decoder.decode(value, { stream: !done });
-        const lines = done ? [buffer] : buffer.split("\n");
-        buffer = done ? "" : lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (line.trim()) {
-            handleServerEvent(JSON.parse(line));
-          }
-        }
-
-        if (done) {
-          break;
-        }
-      }
-
-      if (!completed) {
-        throw new Error("Chat stream ended unexpectedly.");
-      }
-
-      setInteractionId(newInteractionId);
-
-      // keep only the last 10 messages
-      setMessages((prev) =>
-        [
-          ...prev.filter((m) => m.id !== tempId),
-          { id: `${newInteractionId}-user`, role: "user", content: userPrompt },
-          {
-            id: `${newInteractionId}-model`,
-            role: "assistant",
-            content: contentSnapshot,
-          },
-        ].slice(-10),
-      );
-    } catch (error) {
-      console.error("AI chat error:", error);
-      setIsError(true);
-      // turn was never created (e.g. expired interaction), start a new conversation next time
-      if (!newInteractionId) {
-        setInteractionId(undefined);
-      }
-    } finally {
-      setIsLoading(false);
+    // the prompt stays in the input for a retry if the send is cancelled
+    if (await send(prompt)) {
+      setPrompt("");
     }
   }
 
@@ -201,16 +51,27 @@ export default function ChatAssistant({
 
   return (
     <div className="relative flex h-[80vh] flex-col rounded-sm border border-border-clr bg-primary-bg">
-      <h1 className="pb-2 pt-4 text-center text-2xl font-medium max-[380px]:text-xl">
-        Chat with CineRadarAI
-      </h1>
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 pb-2 pt-4">
+        <h1 className="col-start-2 text-center text-2xl font-medium max-[380px]:text-xl">
+          Chat with CineRadarAI
+        </h1>
+        <button
+          type="button"
+          onClick={reset}
+          disabled={isEmpty}
+          className="flex items-center gap-1 justify-self-end rounded-md border border-border-clr bg-dark-bg px-2 py-1 text-sm font-medium duration-200 enabled:hover:bg-primary-text enabled:hover:text-dark-bg disabled:text-slate-500"
+        >
+          <SquarePen size={16} />
+          <span className="max-sm:sr-only">New chat</span>
+        </button>
+      </div>
       <div className="flex max-h-full flex-col-reverse overflow-y-auto">
         <div>
           <AssistantMessage message={greetingMessage} />
           {messages.map((m) => (
             <AssistantMessage key={m.id} message={m} />
           ))}
-          {isLoading &&
+          {isBusy &&
             (streamingContent ? (
               <AssistantMessage
                 message={{ role: "assistant", content: streamingContent }}
@@ -223,7 +84,7 @@ export default function ChatAssistant({
                 />
               </AssistantMessage>
             ))}
-          {isError && (
+          {status === "error" && (
             <AssistantMessage
               message={{
                 role: "assistant",
@@ -235,7 +96,7 @@ export default function ChatAssistant({
       </div>
       <form onSubmit={handleSubmit} className="mt-auto flex px-4 py-2">
         <input
-          disabled={isLoading}
+          disabled={isBusy}
           className="h-[40px] w-full rounded-bl-md rounded-tl-md border border-border-clr bg-dark-bg px-3 py-2 text-primary-text outline-none placeholder:text-secondary-text focus:ring-1 focus:ring-primary-text"
           onChange={handlePromptChange}
           value={prompt}
@@ -243,7 +104,11 @@ export default function ChatAssistant({
           required
           placeholder="Suggest me movies about war with Brad Pitt..."
         />
-        <ChatSubmitBtn isLoading={isLoading} disabled={prompt.length == 0} />
+        <ChatSubmitBtn
+          isBusy={isBusy}
+          disabled={prompt.length == 0}
+          onStop={stop}
+        />
       </form>
       {recaptchaEnabled && (
         <small className="text-center text-secondary-text">
@@ -258,7 +123,7 @@ export default function ChatAssistant({
           apply.
         </small>
       )}
-      {captchaFailed && (
+      {recaptcha.failed && (
         <div className="text-center font-medium text-red-600">
           Recaptcha failed to verify!
         </div>

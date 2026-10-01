@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import type { NextRequest } from "next/server";
 import { POST } from "@/app/api/assistant/route";
 import { CHAT_MODEL, buildSystemInstruction } from "@/lib/chatConfig";
-import { MAX_PROMPT_LENGTH } from "@/lib/chatLimits";
+import {
+  MAX_PROMPT_LENGTH,
+  MAX_STOPPED_TEXT_LENGTH,
+  MAX_STOPPED_TURNS,
+} from "@/lib/chatLimits";
 import { jsonRequest } from "../../helpers/requests";
 import { geminiEvents, readNdjson } from "../../helpers/stream";
 
@@ -38,6 +42,28 @@ const completed = (id = "i1", status = "completed") => ({
   event_type: "interaction.completed",
   interaction: { id, status },
 });
+
+// the signal passed to the last interactions.create call
+const geminiSignal = () => create.mock.lastCall?.[1]?.signal as AbortSignal;
+
+// Gemini stream that starts, then hangs until the request is aborted and
+// throws like the SDK does
+async function* startedThenAborted() {
+  yield created();
+  const signal = geminiSignal();
+  await new Promise((_, reject) =>
+    signal.addEventListener("abort", () =>
+      reject(new DOMException("aborted", "AbortError")),
+    ),
+  );
+}
+
+// lets the route's stream finish handling an abort
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+const decoder = new TextDecoder();
+const readLine = async (reader: ReadableStreamDefaultReader<Uint8Array>) =>
+  JSON.parse(decoder.decode((await reader.read()).value));
 
 describe("POST /api/assistant", () => {
   it.each(["", "false", "TRUE"])(
@@ -86,7 +112,76 @@ describe("POST /api/assistant", () => {
     expect(res.status).toBe(200);
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ previous_interaction_id: undefined }),
+      expect.anything(),
     );
+  });
+
+  describe("stopped turns", () => {
+    const turn = (prompt: unknown = "p1", partialText: unknown = "A") => ({
+      prompt,
+      partialText,
+    });
+
+    it.each([
+      ["not an array", turn()],
+      ["more than MAX_STOPPED_TURNS", Array(MAX_STOPPED_TURNS + 1).fill(turn())],
+      ["a prompt that isn't a string", [turn(42)]],
+      ["a whitespace-only prompt", [turn("   ")]],
+      ["a prompt over MAX_PROMPT_LENGTH", [turn("a".repeat(MAX_PROMPT_LENGTH + 1))]],
+      ["a missing partialText", [{ prompt: "p1" }]],
+      ["a partialText that isn't a string", [turn("p1", null)]],
+      [
+        "a partialText over MAX_STOPPED_TEXT_LENGTH",
+        [turn("p1", "a".repeat(MAX_STOPPED_TEXT_LENGTH + 1))],
+      ],
+    ])("returns 400 for %s", async (_, stoppedTurns) => {
+      const res = await post({ content: "hi", stoppedTurns });
+      expect(res.status).toBe(400);
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    test("accepts the exact limits", async () => {
+      create.mockResolvedValue(geminiEvents([]));
+      const stoppedTurns = Array(MAX_STOPPED_TURNS).fill(
+        turn("a".repeat(MAX_PROMPT_LENGTH), "b".repeat(MAX_STOPPED_TEXT_LENGTH)),
+      );
+      const res = await post({ content: "hi", stoppedTurns });
+      expect(res.status).toBe(200);
+    });
+
+    test("an empty list sends the plain prompt", async () => {
+      create.mockResolvedValue(geminiEvents([]));
+      await post({ content: "hi", stoppedTurns: [] });
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ input: "hi" }),
+        expect.anything(),
+      );
+    });
+
+    test("are passed to Gemini as steps before the prompt, with the history", async () => {
+      create.mockResolvedValue(geminiEvents([]));
+      const text = (t: string) => [{ type: "text", text: t }];
+
+      const res = await post({
+        content: "p3",
+        previousInteractionId: "i1",
+        stoppedTurns: [turn("p1", "A"), turn("p2", "")],
+      });
+
+      expect(res.status).toBe(200);
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          previous_interaction_id: "i1",
+          input: [
+            { type: "user_input", content: text("p1") },
+            { type: "model_output", content: text("A") },
+            { type: "user_input", content: text("p2") },
+            { type: "user_input", content: text("p3") },
+          ],
+        }),
+        expect.anything(),
+      );
+    });
   });
 
   test("passes the prompt, model, history and system instruction to Gemini", async () => {
@@ -107,6 +202,7 @@ describe("POST /api/assistant", () => {
           new Date("2026-05-01T10:00:00Z"),
         ),
       }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 
@@ -193,6 +289,67 @@ describe("POST /api/assistant", () => {
       const lines = text.split("\n").slice(0, -1);
       expect(lines).toHaveLength(3);
       for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
+    });
+  });
+
+  describe("client disconnect", () => {
+    beforeEach(() => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.spyOn(console, "info").mockImplementation(() => {});
+    });
+
+    test("cancelling the response aborts the Gemini request quietly", async () => {
+      create.mockImplementation(async () => startedThenAborted());
+      const res = await post({ content: "hi" });
+      const reader = res.body!.getReader();
+      expect(await readLine(reader)).toEqual({
+        type: "start",
+        interactionId: "i1",
+      });
+
+      await reader.cancel();
+      await flush();
+
+      expect(geminiSignal().aborted).toBe(true);
+      expect(console.info).toHaveBeenCalledWith(
+        "Chat stream cancelled by the client",
+      );
+      expect(console.error).not.toHaveBeenCalled();
+    });
+
+    test("an aborted request aborts the Gemini request, with no error line or log", async () => {
+      create.mockImplementation(async () => startedThenAborted());
+      const client = new AbortController();
+      const request = new Request(
+        jsonRequest("POST", "/api/assistant", { content: "hi" }),
+        { signal: client.signal },
+      );
+      const res = await POST(request as NextRequest);
+      const reader = res.body!.getReader();
+      await readLine(reader); // start
+
+      client.abort();
+
+      expect((await reader.read()).done).toBe(true);
+      expect(geminiSignal().aborted).toBe(true);
+      expect(console.error).not.toHaveBeenCalled();
+    });
+
+    test("an abort while Gemini is starting doesn't log a 502", async () => {
+      const client = new AbortController();
+      create.mockImplementation(async () => {
+        client.abort();
+        throw new DOMException("aborted", "AbortError");
+      });
+      const request = new Request(
+        jsonRequest("POST", "/api/assistant", { content: "hi" }),
+        { signal: client.signal },
+      );
+
+      const res = await POST(request as NextRequest);
+
+      expect(res.status).toBe(499);
+      expect(console.error).not.toHaveBeenCalled();
     });
   });
 

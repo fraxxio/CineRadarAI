@@ -16,11 +16,13 @@ export async function stubAssistant(
     calls.push(body);
     const { status = 200, events = [], hold } = await reply(body, calls.length);
     await hold; // lets a test observe the loading state
-    await route.fulfill({
-      status,
-      contentType: "application/x-ndjson",
-      body: events.map((e) => JSON.stringify(e) + "\n").join(""),
-    });
+    await route
+      .fulfill({
+        status,
+        contentType: "application/x-ndjson",
+        body: events.map((e) => JSON.stringify(e) + "\n").join(""),
+      })
+      .catch(() => {}); // the page aborted the request (Stop, New chat)
   });
   return calls;
 }
