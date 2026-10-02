@@ -1,17 +1,3 @@
-export const LOADER_WORDS = [
-  "Thinking...",
-  "Pondering...",
-  "Curating...",
-  "Screening...",
-  "Rewinding...",
-  "Casting...",
-  "Popcorning...",
-  "Brainstorming...",
-  "Directing...",
-  "Scouting...",
-  "Projecting...",
-];
-
 export function shuffle<T>(items: T[]): T[] {
   const result = [...items];
   for (let i = result.length - 1; i > 0; i--) {

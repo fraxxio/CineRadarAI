@@ -2,13 +2,14 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
-import ChatAssistant from "@/Components/ChatAssistant";
+import ChatAssistant from "./ChatAssistant";
 import {
   MAX_PROMPT_LENGTH,
   MAX_STOPPED_TEXT_LENGTH,
   MAX_STOPPED_TURNS,
-} from "@/lib/chatLimits";
-import { controlledStream, ndjson, streamResponse } from "../helpers/stream";
+} from "./chatLimits";
+import type { StoppedTurn } from "./protocol";
+import { controlledStream, ndjson, streamResponse } from "./testing/stream";
 
 const GREETING = "Hi! What would you like to watch?";
 const ERROR_TEXT = "Unfortunately an error occurred. Try again later.";

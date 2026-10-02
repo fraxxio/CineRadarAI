@@ -1,6 +1,12 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { MAX_STOPPED_TEXT_LENGTH, MAX_STOPPED_TURNS } from "@/lib/chatLimits";
+import { MAX_STOPPED_TEXT_LENGTH, MAX_STOPPED_TURNS } from "./chatLimits";
+import type {
+  ChatRequest,
+  ChatStreamEvent,
+  StoppedTurn,
+  Tmessage,
+} from "./protocol";
 
 export type ChatStatus = "idle" | "loading" | "streaming" | "error";
 

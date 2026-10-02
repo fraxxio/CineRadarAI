@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { buildChatInput } from "@/lib/llm/llmService";
+import { buildChatInput } from "./llmService";
 
 const user = (text: string) => ({
   type: "user_input",

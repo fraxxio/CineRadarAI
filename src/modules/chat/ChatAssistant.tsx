@@ -1,13 +1,14 @@
 "use client";
 import { useRef, useState } from "react";
 import { SquarePen } from "lucide-react";
-import { AssistantMessage } from "./ui/AssistantMessage";
-import { ThinkingLoader } from "./ui/ThinkingLoader";
-import { ChatSubmitBtn } from "./ui/ChatSubmitBtn";
-import { useChat } from "@/hooks/useChat";
+import { AssistantMessage } from "./AssistantMessage";
+import { ThinkingLoader } from "./ThinkingLoader";
+import { ChatSubmitBtn } from "./ChatSubmitBtn";
+import { useChat } from "./useChat";
 import { useRecaptchaCheck } from "@/infra/recaptcha/useRecaptchaCheck";
-import { MAX_PROMPT_LENGTH } from "@/lib/chatLimits";
-import { LOADER_WORDS, shuffle } from "@/lib/loaderWords";
+import { MAX_PROMPT_LENGTH } from "./chatLimits";
+import { LOADER_WORDS } from "./loaderWords";
+import { shuffle } from "@/shared/lib/shuffle";
 
 type ChatAssistantProps = {
   greeting: string;

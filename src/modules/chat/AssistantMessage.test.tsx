@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, test } from "vitest";
-import { AssistantMessage } from "@/Components/ui/AssistantMessage";
+import { AssistantMessage } from "./AssistantMessage";
 
 const assistant = (content: string) =>
   render(<AssistantMessage message={{ role: "assistant", content }} />);

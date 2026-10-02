@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import type { NextRequest } from "next/server";
 import { POST } from "@/app/api/assistant/route";
-import { CHAT_MODEL, buildSystemInstruction } from "@/lib/chatConfig";
+import { CHAT_MODEL, buildSystemInstruction } from "./chatConfig";
 import {
   MAX_PROMPT_LENGTH,
   MAX_STOPPED_TEXT_LENGTH,
   MAX_STOPPED_TURNS,
-} from "@/lib/chatLimits";
-import { jsonRequest } from "../../helpers/requests";
-import { geminiEvents, readNdjson } from "../../helpers/stream";
+} from "./chatLimits";
+import { jsonRequest } from "@test/helpers/requests";
+import { geminiEvents, readNdjson } from "./testing/stream";
 
 const { create, ctor } = vi.hoisted(() => ({ create: vi.fn(), ctor: vi.fn() }));
 vi.mock("@google/genai", () => ({

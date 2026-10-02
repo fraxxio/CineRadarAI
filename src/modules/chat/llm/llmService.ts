@@ -1,6 +1,7 @@
 // the only module that talks to Gemini, the rest of the app uses our own types
 import { GoogleGenAI, type Interactions } from "@google/genai";
-import { CHAT_MODEL, buildSystemInstruction } from "@/lib/chatConfig";
+import { CHAT_MODEL, buildSystemInstruction } from "../chatConfig";
+import type { ChatStreamEvent, StoppedTurn } from "../protocol";
 
 type ChatReplyParams = {
   prompt: string;

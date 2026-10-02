@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { buildSystemInstruction } from "@/lib/chatConfig";
+import { buildSystemInstruction } from "./chatConfig";
 import { movieFilterSchema } from "@/modules/search";
 
 describe("buildSystemInstruction", () => {
@@ -36,14 +36,14 @@ describe("CHAT_MODEL", () => {
   test("falls back to the default when GEMINI_MODEL is unset", async () => {
     vi.resetModules();
     vi.stubEnv("GEMINI_MODEL", "");
-    const { CHAT_MODEL } = await import("@/lib/chatConfig");
+    const { CHAT_MODEL } = await import("./chatConfig");
     expect(CHAT_MODEL).toBe("gemini-3.5-flash-lite");
   });
 
   test("uses GEMINI_MODEL when set", async () => {
     vi.resetModules();
     vi.stubEnv("GEMINI_MODEL", "custom-model");
-    const { CHAT_MODEL } = await import("@/lib/chatConfig");
+    const { CHAT_MODEL } = await import("./chatConfig");
     expect(CHAT_MODEL).toBe("custom-model");
   });
 });

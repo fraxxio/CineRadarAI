@@ -1,17 +1,25 @@
 // newline-delimited JSON events streamed by POST /api/assistant
-type ChatStreamEvent =
+export type ChatStreamEvent =
   | { type: "start"; interactionId: string }
   | { type: "delta"; text: string }
   | { type: "done"; interactionId: string }
   | { type: "error" };
 
 // a turn the user stopped mid-answer; the model hasn't seen it yet
-type StoppedTurn = { prompt: string; partialText: string };
+export type StoppedTurn = { prompt: string; partialText: string };
 
 // JSON body of POST /api/assistant
-type ChatRequest = {
+export type ChatRequest = {
   content: string;
   previousInteractionId?: string;
   // oldest first
   stoppedTurns?: StoppedTurn[];
 };
+
+export type Tmessage = {
+  id: string;
+  role: string;
+  content: string;
+  // the user stopped this answer before it finished
+  stopped?: boolean;
+}[];

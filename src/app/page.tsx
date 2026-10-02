@@ -1,4 +1,4 @@
-import ChatAssistant from "@/Components/ChatAssistant";
+import { ChatAssistant } from "@/modules/chat";
 import RecaptchaWrapper from "@/infra/recaptcha/RecaptchaWrapper";
 import { DeleteResult } from "@/modules/account";
 import { isRecaptchaEnabled } from "@/infra/recaptcha/recaptcha";

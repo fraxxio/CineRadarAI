@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { ThinkingLoader } from "@/Components/ui/ThinkingLoader";
+import { ThinkingLoader } from "./ThinkingLoader";
 
 // single-character words, so getByText matches the per-letter span
 const WORDS = ["A", "B", "C"];

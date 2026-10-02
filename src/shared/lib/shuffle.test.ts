@@ -1,9 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
-import { LOADER_WORDS, shuffle } from "@/lib/loaderWords";
+import { shuffle } from "./shuffle";
 
 describe("shuffle", () => {
   test("returns a new array with the same elements", () => {
-    const input = [...LOADER_WORDS];
+    const input = ["Thinking...", "Pondering...", "Curating...", "Casting..."];
     const out = shuffle(input);
     expect(out).not.toBe(input);
     expect(out).toHaveLength(input.length);

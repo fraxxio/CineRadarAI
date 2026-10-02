@@ -7,7 +7,7 @@
         "paths": [
           {
             "name": "@google/genai",
-            "message": "Only src/lib/llm/ may talk to Gemini, use llmService instead."
+            "message": "Only src/modules/chat/llm/ may talk to Gemini, use llmService instead."
           }
         ],
         "patterns": [
@@ -29,7 +29,7 @@
             "paths": [
               {
                 "name": "@google/genai",
-                "message": "Only src/lib/llm/ may talk to Gemini, use llmService instead."
+                "message": "Only src/modules/chat/llm/ may talk to Gemini, use llmService instead."
               }
             ],
             "patterns": [
@@ -51,7 +51,7 @@
             "paths": [
               {
                 "name": "@google/genai",
-                "message": "Only src/lib/llm/ may talk to Gemini, use llmService instead."
+                "message": "Only src/modules/chat/llm/ may talk to Gemini, use llmService instead."
               }
             ],
             "patterns": [
@@ -69,7 +69,7 @@
       }
     },
     {
-      "files": ["src/lib/llm/**"],
+      "files": ["src/modules/chat/llm/**"],
       "rules": {
         "no-restricted-imports": [
           "error",
