@@ -1,4 +1,4 @@
 export { default as MyListItems, ListLength } from "./components/MyListItems";
-export { getListMovies } from "./myList";
+export { clearList, getEntries, removeEntry, saveEntry } from "./store";
 export { entryInput } from "./entry";
 export { lists } from "./schema";

@@ -1,18 +1,18 @@
 import ListCard from "./ListCard";
 import { getSession } from "@/infra/auth/session";
-import { getListMovies } from "../myList";
+import { getEntries } from "../store";
 import { viewEntries, type ListView } from "../view";
 
 export async function ListLength(view: ListView) {
   const session = (await getSession())!;
-  const movies = viewEntries(await getListMovies(session.user.id), view);
+  const movies = viewEntries(await getEntries(session.user.id), view);
 
   return <p className="text-lg">Length: {movies.length}</p>;
 }
 
 export default async function MyListItems(view: ListView) {
   const session = (await getSession())!;
-  const movies = viewEntries(await getListMovies(session.user.id), view);
+  const movies = viewEntries(await getEntries(session.user.id), view);
 
   return (
     <div className="border-t border-border-clr">
