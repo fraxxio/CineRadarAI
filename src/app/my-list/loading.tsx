@@ -1,6 +1,6 @@
 import { ListLengthSkeleton } from "@/Components/skeletons/ListLengthSkeleton";
 import { ListRowsSkeleton } from "@/Components/skeletons/ListRowsSkeleton";
-import { Skeleton } from "@/Components/ui/Skeleton";
+import { Skeleton } from "@/shared/ui/Skeleton";
 
 const sortGroups = [
   { label: "Sort by rating:", widths: ["w-24", "w-28"] },

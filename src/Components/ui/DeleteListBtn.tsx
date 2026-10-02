@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "./Modal";
+} from "@/shared/ui/Modal";
 import { toast } from "sonner";
 
 type DeleteListBtnProps = {

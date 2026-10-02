@@ -2,7 +2,7 @@ import { test as base, expect } from "@playwright/test";
 import { createClient } from "@libsql/client";
 import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
 import { randomUUID } from "node:crypto";
-import { sessions, users } from "../../src/db/schema/users";
+import { sessions, users } from "../../src/infra/db/schema/users";
 import { BASE_URL, DB_URL } from "./env";
 
 export type TestUser = {

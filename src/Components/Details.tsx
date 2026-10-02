@@ -9,7 +9,7 @@ import {
   Star,
 } from "lucide-react";
 import AddToListBtn from "./ui/AddToListBtn";
-import { getSession } from "@/lib/session";
+import { getSession } from "@/infra/auth/session";
 
 type DetailsProps = {
   title: string;

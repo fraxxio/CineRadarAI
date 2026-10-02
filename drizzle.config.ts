@@ -2,7 +2,7 @@ import { Config } from "drizzle-kit";
 import "dotenv/config";
 
 export default {
-  schema: "./src/db/schema/*",
+  schema: "./src/infra/db/schema/*",
   driver: "turso",
   dbCredentials: {
     url: process.env.DATABASE_URL!,

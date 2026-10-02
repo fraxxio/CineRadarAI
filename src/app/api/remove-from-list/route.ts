@@ -1,6 +1,6 @@
-import { auth } from "@/auth";
-import { db } from "@/db";
-import { lists } from "@/db/schema/lists";
+import { auth } from "@/infra/auth/auth";
+import { db } from "@/infra/db";
+import { lists } from "@/infra/db/schema/lists";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 

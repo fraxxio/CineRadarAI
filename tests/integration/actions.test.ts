@@ -4,7 +4,7 @@ import { DeleteUser } from "@/app/actions";
 import { asUser } from "../helpers/auth";
 import { forceFailure, seedFullUser, userRows } from "../helpers/db";
 
-vi.mock("@/auth", () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }));
+vi.mock("@/infra/auth/auth", () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }));
 vi.mock("next/navigation", async () => {
   const { RedirectError } = await import("../helpers/next");
   return {

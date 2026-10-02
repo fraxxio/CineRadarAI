@@ -1,7 +1,7 @@
 import { describe, expect, it, test, vi } from "vitest";
-import { authConfig } from "@/auth";
+import { authConfig } from "./auth";
 
-vi.mock("@/db", () => ({ db: {} }));
+vi.mock("@/infra/db", () => ({ db: {} }));
 // DrizzleAdapter({}) would throw on the unknown DB type
 vi.mock("@auth/drizzle-adapter", () => ({ DrizzleAdapter: vi.fn(() => ({})) }));
 

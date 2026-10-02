@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { db } from "@/db";
-import { lists } from "@/db/schema/lists";
+import { db } from "@/infra/db";
+import { lists } from "@/infra/db/schema/lists";
 import { getListMovies } from "@/lib/myList";
 import { forceFailure, getMovies, seedList, seedUser } from "../helpers/db";
 import { makeMovie } from "../helpers/factories";

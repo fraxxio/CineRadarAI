@@ -1,9 +1,9 @@
 import { isValidElement, type ReactNode } from "react";
 import { describe, expect, it, test, vi } from "vitest";
-import { signIn } from "@/auth";
+import { signIn } from "@/infra/auth/auth";
 import SignInPage from "@/app/signin/page";
 
-vi.mock("@/auth", () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }));
+vi.mock("@/infra/auth/auth", () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }));
 
 type Action = (formData: FormData) => Promise<void>;
 

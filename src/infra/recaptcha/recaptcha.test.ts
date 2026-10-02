@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { isRecaptchaEnabled } from "@/lib/recaptcha";
+import { isRecaptchaEnabled } from "./recaptcha";
 
 describe("isRecaptchaEnabled", () => {
   it.each([

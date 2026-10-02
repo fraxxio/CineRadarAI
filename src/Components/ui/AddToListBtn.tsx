@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "./Modal";
+} from "@/shared/ui/Modal";
 import ListTypeSelect from "./ListTypeSelect";
 import RatingSelect from "./RatingSelect";
 import { FormEvent, useState } from "react";

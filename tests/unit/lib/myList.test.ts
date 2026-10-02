@@ -3,7 +3,7 @@ import { filteredMovies, type ListSortValues } from "@/lib/myList";
 import { makeMovie } from "../../helpers/factories";
 
 // the module imports the DB, but filteredMovies never touches it
-vi.mock("@/db", () => ({ db: {} }));
+vi.mock("@/infra/db", () => ({ db: {} }));
 
 const fixture = [
   makeMovie({

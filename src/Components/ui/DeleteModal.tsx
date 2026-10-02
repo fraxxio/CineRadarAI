@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "./Modal";
+} from "@/shared/ui/Modal";
 import { useState } from "react";
 import DeleteModalBtn from "./DeleteModalBtn";
 

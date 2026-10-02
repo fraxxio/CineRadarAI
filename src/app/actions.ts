@@ -1,9 +1,9 @@
 "use server";
 
-import { auth, signOut } from "@/auth";
-import { db } from "@/db";
-import { lists } from "@/db/schema/lists";
-import { accounts, sessions, users } from "@/db/schema/users";
+import { auth, signOut } from "@/infra/auth/auth";
+import { db } from "@/infra/db";
+import { lists } from "@/infra/db/schema/lists";
+import { accounts, sessions, users } from "@/infra/db/schema/users";
 import { eq } from "drizzle-orm/sqlite-core/expressions";
 import { redirect } from "next/navigation";
 

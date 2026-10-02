@@ -1,6 +1,4 @@
-import { clsx, type ClassValue } from "clsx";
 import { movieFilterSchema } from "./validation";
-import { twMerge } from "tailwind-merge";
 
 export function buildSearchURL(values: object, page?: number) {
   const { query, language, year, adult, btn } = movieFilterSchema.parse(values);
@@ -26,8 +24,4 @@ export function formatCurrency(amount: number) {
     return "$" + (amount / 1e3).toFixed(1) + "k";
   }
   return "$" + amount.toString();
-}
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
 }

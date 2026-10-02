@@ -5,7 +5,7 @@ import { asUser } from "../../helpers/auth";
 import { forceFailure, getMovies, seedList, seedUser } from "../../helpers/db";
 import { makeMovie } from "../../helpers/factories";
 
-vi.mock("@/auth", () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }));
+vi.mock("@/infra/auth/auth", () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }));
 
 // userId is ignored by the route (B2); it's sent to prove that
 const del = (

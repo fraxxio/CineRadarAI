@@ -1,6 +1,6 @@
 import { describe, expect, it, test } from "vitest";
 import { ZodError } from "zod";
-import { buildSearchURL, cn, formatCurrency } from "@/lib/utils";
+import { buildSearchURL, formatCurrency } from "@/lib/utils";
 
 const qp = (url: string) => new URL(url, "http://x").searchParams;
 
@@ -82,15 +82,5 @@ describe("formatCurrency", () => {
   // If the rounding gets fixed, change this to "$1.0M".
   test("999_999 -> $1000.0k", () => {
     expect(formatCurrency(999_999)).toBe("$1000.0k");
-  });
-});
-
-describe("cn", () => {
-  test("the last conflicting Tailwind class wins", () => {
-    expect(cn("p-2", "p-4")).toBe("p-4");
-  });
-
-  test("drops falsy values", () => {
-    expect(cn("a", false, null, undefined, "c")).toBe("a c");
   });
 });

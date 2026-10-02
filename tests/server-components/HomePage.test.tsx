@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import Home from "@/app/page";
 
-vi.mock("@/Components/RecaptchaWrapper", () => ({
+vi.mock("@/infra/recaptcha/RecaptchaWrapper", () => ({
   default: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="recaptcha-wrapper">{children}</div>
   ),

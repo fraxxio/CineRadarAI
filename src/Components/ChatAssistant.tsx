@@ -5,7 +5,7 @@ import { AssistantMessage } from "./ui/AssistantMessage";
 import { ThinkingLoader } from "./ui/ThinkingLoader";
 import { ChatSubmitBtn } from "./ui/ChatSubmitBtn";
 import { useChat } from "@/hooks/useChat";
-import { useRecaptchaCheck } from "@/hooks/useRecaptchaCheck";
+import { useRecaptchaCheck } from "@/infra/recaptcha/useRecaptchaCheck";
 import { MAX_PROMPT_LENGTH } from "@/lib/chatLimits";
 import { LOADER_WORDS, shuffle } from "@/lib/loaderWords";
 

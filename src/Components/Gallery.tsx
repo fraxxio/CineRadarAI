@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/Components/ui/Modal";
+} from "@/shared/ui/Modal";
 
 type GalleryProps = {
   backdrops: [
