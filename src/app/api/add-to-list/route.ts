@@ -3,20 +3,7 @@ import { db } from "@/infra/db";
 import { lists } from "@/infra/db/schema/lists";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
-
-const addToListSchema = z.object({
-  movieId: z.coerce.number().int().positive(),
-  title: z.string().min(1),
-  // MovieCard/Details send null when TMDB has no poster or backdrop
-  image: z
-    .string()
-    .nullable()
-    .transform((image) => image ?? ""),
-  status: z.enum(["Planning to watch", "Completed", "Watching"]),
-  rating: z.union([z.literal(""), z.coerce.number().int().min(1).max(10)]),
-  type: z.enum(["movie", "tv"]),
-});
+import { entryInput } from "@/modules/my-list/server";
 
 export async function PUT(request: Request) {
   const session = await auth();
@@ -25,22 +12,11 @@ export async function PUT(request: Request) {
     return Response.json({ addToListResult: "fail" }, { status: 401 });
   }
 
-  const parsed = addToListSchema.safeParse(
-    await request.json().catch(() => null),
-  );
+  const parsed = entryInput.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return Response.json({ addToListResult: "fail" }, { status: 400 });
   }
-  const requestData = parsed.data;
-
-  const newMovie = {
-    name: requestData.title,
-    image: requestData.image,
-    status: requestData.status,
-    rating: requestData.rating === "" ? 0 : requestData.rating,
-    movieId: requestData.movieId,
-    type: requestData.type,
-  };
+  const newMovie = parsed.data;
 
   try {
     //Find the existing row

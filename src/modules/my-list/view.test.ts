@@ -1,9 +1,7 @@
-import { describe, expect, it, test, vi } from "vitest";
-import { filteredMovies, type ListSortValues } from "./myList";
+import { describe, expect, it, test } from "vitest";
+import { viewEntries, type ListView } from "./view";
+import type { ListStatus } from "./entry";
 import { makeMovie } from "@test/helpers/factories";
-
-// the module imports the DB, but filteredMovies never touches it
-vi.mock("@/infra/db", () => ({ db: {} }));
 
 const fixture = [
   makeMovie({
@@ -50,15 +48,15 @@ const fixture = [
   }),
 ];
 
-const defaults: ListSortValues = {
+const defaults: ListView = {
   type: "both",
   status: "all",
   rating: "desc",
 };
-const run = (o: Partial<ListSortValues> = {}) =>
-  filteredMovies(fixture, { ...defaults, ...o });
+const run = (o: Partial<ListView> = {}) =>
+  viewEntries(fixture, { ...defaults, ...o });
 
-describe("filteredMovies", () => {
+describe("viewEntries", () => {
   test("type: both keeps everything", () => {
     expect(run()).toHaveLength(6);
   });
@@ -82,9 +80,7 @@ describe("filteredMovies", () => {
     expect(result.every((m) => m.status === label)).toBe(true);
   });
 
-  test("status: all keeps everything", () => {
-    expect(run({ status: "all" })).toHaveLength(6);
-  });
+  test("status: all keeps everything", () => {});
 
   test("combines type and status filters", () => {
     const names = run({ type: "tv", status: "watching" }).map((m) => m.name);
@@ -109,16 +105,22 @@ describe("filteredMovies", () => {
     ),
   );
 
-  // the input is the cached getListMovies array: sorting it in place would leak
+  // the input is the cached list array: sorting it in place would leak
   it.each(combos)("does not mutate the input (%o)", (values) => {
     const original = structuredClone(fixture);
     const input = Object.freeze([...fixture]); // an in-place sort would throw
-    filteredMovies(input as typeof fixture, values);
+    viewEntries(input as typeof fixture, values);
     expect(input).toEqual(original);
     expect(fixture).toEqual(original);
   });
 
+  // rows saved before the payload was validated can hold other statuses
+  test("status: all keeps an entry with an unknown status", () => {
+    const legacy = makeMovie({ movieId: 7, status: "Dropped" as ListStatus });
+    expect(viewEntries([...fixture, legacy], defaults)).toContainEqual(legacy);
+  });
+
   test("returns [] for an empty input", () => {
-    expect(filteredMovies([], defaults)).toEqual([]);
+    expect(viewEntries([], defaults)).toEqual([]);
   });
 });

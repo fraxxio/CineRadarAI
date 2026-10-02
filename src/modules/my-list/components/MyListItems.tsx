@@ -1,23 +1,18 @@
 import ListCard from "./ListCard";
 import { getSession } from "@/infra/auth/session";
-import { ListSortValues, filteredMovies, getListMovies } from "../myList";
+import { getListMovies } from "../myList";
+import { viewEntries, type ListView } from "../view";
 
-export async function ListLength(sortValues: ListSortValues) {
+export async function ListLength(view: ListView) {
   const session = (await getSession())!;
-  const movies = filteredMovies(
-    await getListMovies(session.user.id),
-    sortValues,
-  );
+  const movies = viewEntries(await getListMovies(session.user.id), view);
 
   return <p className="text-lg">Length: {movies.length}</p>;
 }
 
-export default async function MyListItems(sortValues: ListSortValues) {
+export default async function MyListItems(view: ListView) {
   const session = (await getSession())!;
-  const movies = filteredMovies(
-    await getListMovies(session.user.id),
-    sortValues,
-  );
+  const movies = viewEntries(await getListMovies(session.user.id), view);
 
   return (
     <div className="border-t border-border-clr">

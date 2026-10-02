@@ -1,16 +1,16 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
-import ListTypeSelect from "./ListTypeSelect";
+import StatusSelect from "./StatusSelect";
 
 const values = () =>
   Array.from(screen.getByRole("combobox").querySelectorAll("option")).map(
     (o) => o.value,
   );
 
-describe("ListTypeSelect", () => {
+describe("StatusSelect", () => {
   test("options and required", () => {
-    render(<ListTypeSelect status="" setStatus={vi.fn()} />);
+    render(<StatusSelect status="" setStatus={vi.fn()} />);
     expect(values()).toEqual([
       "",
       "Planning to watch",
@@ -22,7 +22,7 @@ describe("ListTypeSelect", () => {
 
   test("selecting calls setStatus", async () => {
     const setStatus = vi.fn();
-    render(<ListTypeSelect status="" setStatus={setStatus} />);
+    render(<StatusSelect status="" setStatus={setStatus} />);
 
     await userEvent
       .setup()
@@ -32,7 +32,7 @@ describe("ListTypeSelect", () => {
   });
 
   test("shows the controlled value", () => {
-    render(<ListTypeSelect status="Completed" setStatus={vi.fn()} />);
+    render(<StatusSelect status="Completed" setStatus={vi.fn()} />);
     expect(screen.getByRole("combobox")).toHaveValue("Completed");
   });
 });

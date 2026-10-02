@@ -9,24 +9,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/shared/ui/Modal";
-import ListTypeSelect from "./ListTypeSelect";
+import StatusSelect from "./StatusSelect";
+import type { ListStatus } from "../entry";
+import type { MediaType } from "@/infra/tmdb";
+import type { Session } from "next-auth";
 import RatingSelect from "./RatingSelect";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
 type EditListBtnProps = {
-  user:
-    | {
-        id: string;
-        name: string;
-        email: string;
-        image: string;
-      }
-    | undefined;
+  user: Session["user"] | undefined;
   movieId: number;
   title: string;
   image: string;
-  type: string;
+  type: MediaType;
 };
 
 export default function EditListBtn({
@@ -37,7 +33,7 @@ export default function EditListBtn({
   type,
 }: EditListBtnProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState<ListStatus | "">("");
   const [rating, setRating] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -118,7 +114,7 @@ export default function EditListBtn({
         <form className="flex flex-col gap-8" onSubmit={hAddToList}>
           <div className="flex flex-col">
             <label htmlFor="status">Status:</label>
-            <ListTypeSelect status={status} setStatus={setStatus} />
+            <StatusSelect status={status} setStatus={setStatus} />
           </div>
           <div className="flex flex-col">
             <label htmlFor="rating">Rating (optional):</label>

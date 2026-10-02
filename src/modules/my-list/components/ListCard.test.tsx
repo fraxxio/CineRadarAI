@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, test } from "vitest";
 import ListCard from "./ListCard";
+import type { ListStatus } from "../entry";
 import { makeMovie, makeUser } from "@test/helpers/factories";
 
 const renderCard = (overrides: Parameters<typeof makeMovie>[0] = {}) =>
@@ -60,7 +61,9 @@ describe("ListCard", () => {
     ["Watching", "lucide-eye"],
     ["Completed", "lucide-circle-check"],
     ["Planning to watch", "lucide-notebook-pen"],
-  ])("status %s -> %s icon", (status, icon) => {
+    // rows saved before the payload was validated
+    ["Dropped", "lucide-notebook-pen"],
+  ] as [ListStatus, string][])("status %s -> %s icon", (status, icon) => {
     const { container } = renderCard({ status });
     expect(screen.getByText(status)).toBeInTheDocument();
     expect(container.querySelector(`svg.${icon}`)).not.toBeNull();

@@ -4,16 +4,10 @@ import Image from "next/image";
 import Link from "next/link";
 import React, { useState } from "react";
 import { AuthBtn } from "@/modules/account";
+import type { Session } from "next-auth";
 
 type NavbarProps = {
-  user:
-    | {
-        id: string;
-        name: string;
-        email: string;
-        image: string;
-      }
-    | undefined;
+  user: Session["user"] | undefined;
 };
 
 const Navbar = ({ user }: NavbarProps) => {

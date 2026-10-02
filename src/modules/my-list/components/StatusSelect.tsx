@@ -1,17 +1,17 @@
-import React, { Dispatch, SetStateAction } from "react";
+import React from "react";
+import { LIST_STATUSES, type ListStatus } from "../entry";
 
-type ListTypeSelectProps = {
+type StatusSelectProps = {
   props?: React.HTMLProps<HTMLSelectElement>;
-  setStatus: Dispatch<SetStateAction<string>>;
-  status: string;
+  setStatus: (status: ListStatus | "") => void;
+  status: ListStatus | "";
 };
 
-export default function ListTypeSelect({
+export default function StatusSelect({
   props,
   setStatus,
   status,
-}: ListTypeSelectProps) {
-  const statusTypes = ["Planning to watch", "Completed", "Watching"];
+}: StatusSelectProps) {
   return (
     <select
       id="status"
@@ -19,7 +19,7 @@ export default function ListTypeSelect({
       {...props}
       value={status}
       required
-      onChange={(e) => setStatus(e.target.value)}
+      onChange={(e) => setStatus(e.target.value as ListStatus | "")}
       className="rounded-sm border border-border-clr bg-dark-bg p-2 outline-1 outline-primary-text duration-200 focus:outline max-lg:w-[12rem] max-[480px]:w-full"
     >
       <option
@@ -28,14 +28,14 @@ export default function ListTypeSelect({
       >
         Choose status
       </option>
-      {statusTypes.map((statusType: string) => {
+      {LIST_STATUSES.map(({ value }) => {
         return (
           <option
-            value={statusType}
+            value={value}
             className="bg-primary-text text-primary-bg last:rounded-md"
-            key={statusType}
+            key={value}
           >
-            {statusType}
+            {value}
           </option>
         );
       })}

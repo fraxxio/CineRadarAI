@@ -1,7 +1,7 @@
 import type { Session } from "next-auth";
-import type { ListMovie } from "./db";
+import type { ListEntry } from "@/modules/my-list";
 
-export const makeMovie = (overrides: Partial<ListMovie> = {}): ListMovie => ({
+export const makeMovie = (overrides: Partial<ListEntry> = {}): ListEntry => ({
   image: "/img.jpg",
   name: "Fury",
   movieId: 1,

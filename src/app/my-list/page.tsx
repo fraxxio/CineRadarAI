@@ -4,7 +4,7 @@ import {
   ListRowsSkeleton,
   ListSortBtn,
   ListSortLink,
-  type ListSortValues,
+  type ListView,
 } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
 import { RotateCcw } from "lucide-react";
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 };
 
 type UrlParams = {
-  searchParams: Partial<ListSortValues>;
+  searchParams: Partial<ListView>;
 };
 
 export default async function page({
@@ -33,7 +33,7 @@ export default async function page({
 
   const sortValues = { rating, status, type };
   const sortKey = `${type}-${status}-${rating}`;
-  const sortHref = (value: Partial<ListSortValues>) =>
+  const sortHref = (value: Partial<ListView>) =>
     `/my-list?${new URLSearchParams({ ...sortValues, ...value })}`;
 
   return (

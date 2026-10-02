@@ -1,32 +1,37 @@
-import { CircleCheck, Eye, ImageOff, NotebookPen, Star } from "lucide-react";
+import {
+  CircleCheck,
+  Eye,
+  ImageOff,
+  NotebookPen,
+  Star,
+  type LucideIcon,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import React from "react";
+import type { Session } from "next-auth";
 import EditListBtn from "./EditListBtn";
 import DeleteListBtn from "./DeleteListBtn";
+import type { ListEntry, ListStatus } from "../entry";
 import { tmdbImageUrl } from "@/infra/tmdb";
 
 type ListCardProps = {
-  movie: {
-    image: string;
-    name: string;
-    movieId: number;
-    rating: number;
-    status: string;
-    type: string;
-  };
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    image: string;
-  };
+  movie: ListEntry;
+  user: Session["user"];
   index: number;
+};
+
+const STATUS_ICONS: Record<ListStatus, LucideIcon> = {
+  "Planning to watch": NotebookPen,
+  Completed: CircleCheck,
+  Watching: Eye,
 };
 
 export default function ListCard({ movie, index, user }: ListCardProps) {
   // entries saved without a poster or backdrop have an empty image
   const poster = tmdbImageUrl(movie.image, "w500");
+  // rows saved before the payload was validated can hold other statuses
+  const StatusIcon = STATUS_ICONS[movie.status] ?? NotebookPen;
 
   return (
     <div className="relative flex gap-8 border-b border-border-clr last:border-none max-[480px]:flex-col max-[480px]:gap-0">
@@ -70,13 +75,7 @@ export default function ListCard({ movie, index, user }: ListCardProps) {
           <div className="flex items-center gap-4 pt-8 text-lg max-[840px]:text-base">
             <p>Status: </p>
             <div className="flex items-center gap-1">
-              {movie.status === "Watching" ? (
-                <Eye size={20} />
-              ) : movie.status === "Completed" ? (
-                <CircleCheck size={20} />
-              ) : (
-                <NotebookPen size={20} />
-              )}
+              <StatusIcon size={20} />
               <p>{movie.status}</p>
             </div>
           </div>

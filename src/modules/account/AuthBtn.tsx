@@ -5,16 +5,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import DeleteModal from "./DeleteModal";
+import type { Session } from "next-auth";
 
 type AuthBtnProps = {
-  user:
-    | {
-        id: string;
-        name: string;
-        email: string;
-        image: string;
-      }
-    | undefined;
+  user: Session["user"] | undefined;
 };
 
 export default function AuthBtn({ user }: AuthBtnProps) {
