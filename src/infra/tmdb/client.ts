@@ -1,3 +1,5 @@
+import "server-only";
+
 export class TmdbError extends Error {
   constructor(
     message: string,

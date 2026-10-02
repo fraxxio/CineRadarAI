@@ -1,4 +1,5 @@
 // server-only: every TMDB request goes through these queries
+import "server-only";
 import { tmdbFetch } from "./client";
 import {
   toDetails,

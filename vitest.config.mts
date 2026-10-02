@@ -8,6 +8,10 @@ export default defineConfig({
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
       "@test": fileURLToPath(new URL("./tests", import.meta.url)),
+      // tests aren't run under the react-server condition, so use its no-op build
+      "server-only": fileURLToPath(
+        new URL("./node_modules/server-only/empty.js", import.meta.url),
+      ),
     },
   },
   test: {
