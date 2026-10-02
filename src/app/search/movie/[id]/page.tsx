@@ -5,44 +5,16 @@ import {
   ReviewsSkeleton,
   TrailerSkeleton,
 } from "@/modules/title";
+import { getTitle } from "@/infra/tmdb/server";
 import { Metadata } from "next";
 import { Suspense } from "react";
-
-async function fetchDetails(id: string) {
-  "use server";
-
-  const options = {
-    method: "GET",
-    headers: {
-      accept: "application/json",
-      Authorization: `Bearer ${process.env.TMDB_ACCESS_TOKEN}`,
-    },
-  };
-
-  const fetchURL = `${process.env.TMDB_BASE_URL}/movie/${id}?language=en-US`;
-
-  try {
-    const response = await fetch(fetchURL, options);
-    if (!response.ok) {
-      const error = new Error(
-        `Failed to fetch movie details (Status: ${response.status})`,
-      );
-      throw error;
-    }
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error("Error fetching movie details:", error);
-    throw error;
-  }
-}
 
 export async function generateMetadata({
   params,
 }: {
   params: { id: number };
 }): Promise<Metadata> {
-  const details = await fetchDetails(params.id.toString());
+  const details = await getTitle("movie", params.id);
   return {
     title: `${details.title} | CineRadar`,
   };

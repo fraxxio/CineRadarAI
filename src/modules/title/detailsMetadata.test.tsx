@@ -20,7 +20,7 @@ describe("details page generateMetadata", () => {
 
   test.each([
     ["movie", movieMetadata, "/3/movie/1", "Failed to fetch movie details"],
-    ["tv", tvMetadata, "/3/tv/1", "Failed to fetch TV details"],
+    ["tv", tvMetadata, "/3/tv/1", "Failed to fetch tv details"],
   ] as const)(
     "%s: a TMDB error rejects",
     async (_, metadata, path, message) => {

@@ -10,90 +10,36 @@ import {
 } from "lucide-react";
 import { AddToListBtn } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
-
-type DetailsProps = {
-  title: string;
-  name: string;
-  status: string;
-  release_date: string;
-  genres: [{ name: string; id: number }];
-  overview: string;
-  vote_average: number;
-  vote_count: number;
-  poster_path: string;
-  backdrop_path: string;
-  runtime: number;
-  budget: number;
-  revenue: number;
-  last_air_date: string;
-  first_air_date: number;
-  number_of_seasons: number;
-  type: string;
-};
-
-async function fetchDetails(id: number, mediaType: "movie" | "tv") {
-  "use server";
-
-  const options = {
-    method: "GET",
-    headers: {
-      accept: "application/json",
-      Authorization: `Bearer ${process.env.TMDB_ACCESS_TOKEN}`,
-    },
-  };
-
-  const fetchURL = `${process.env.TMDB_BASE_URL}/${mediaType}/${id}?language=en-US`;
-
-  try {
-    const response = await fetch(fetchURL, options);
-    if (!response.ok) {
-      const error = new Error(
-        `Failed to fetch ${mediaType} details (Status: ${response.status})`,
-      );
-      throw error;
-    }
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`Error fetching ${mediaType} details:`, error);
-    throw error;
-  }
-}
+import type { MediaType } from "@/infra/tmdb";
+import { getTitle } from "@/infra/tmdb/server";
 
 export default async function Details({
   mediaType,
   id,
 }: {
   id: number;
-  mediaType: "movie" | "tv";
+  mediaType: MediaType;
 }) {
+  const details = await getTitle(mediaType, id);
   const {
     title,
-    name,
-    poster_path,
-    backdrop_path,
+    posterPath,
+    backdropPath,
     overview,
-    release_date,
+    releaseDate,
     genres,
-    runtime,
-    revenue,
-    budget,
-    vote_average,
-    vote_count,
+    voteAverage,
+    voteCount,
     status,
-    last_air_date,
-    number_of_seasons,
-    first_air_date,
-    type,
-  }: DetailsProps = await fetchDetails(id, mediaType);
+  } = details;
   const session = await getSession();
 
   return (
     <section className="mt-20 flex gap-32 rounded-sm border border-border-clr bg-primary-bg max-[950px]:flex-col max-[950px]:gap-4">
-      {poster_path || backdrop_path ? (
+      {posterPath || backdropPath ? (
         <Image
-          src={`https://image.tmdb.org/t/p/w500${poster_path || backdrop_path}`}
-          alt={title || name}
+          src={`https://image.tmdb.org/t/p/w500${posterPath || backdropPath}`}
+          alt={title}
           width={650}
           height={366}
           className="w-[30%] border-b border-border-clr object-cover max-[950px]:max-h-[30rem] max-[950px]:w-full"
@@ -109,17 +55,18 @@ export default async function Details({
       <div className="items-startp-4 my-auto p-8">
         <div className="flex items-end justify-between max-[930px]:flex-col max-[930px]:items-start">
           <h1 className="max-w-[35rem] text-3xl font-medium max-[930px]:text-xl">
-            {title || name}
+            {title}
           </h1>
           <p className="pb-1 max-[930px]:text-sm">
-            {status}: {release_date || last_air_date}
+            {status}:{" "}
+            {details.mediaType === "movie" ? releaseDate : details.lastAirDate}
           </p>
         </div>
         <p className=" pt-4 text-lg text-secondary-text max-[930px]:text-[1rem]">
           {overview}
         </p>
         <div className="flex flex-wrap gap-2 pt-4">
-          {genres.map((genre: { name: string; id: number }) => {
+          {genres.map((genre) => {
             return (
               <p
                 key={genre.id}
@@ -134,35 +81,33 @@ export default async function Details({
           <div className="flex items-center gap-2 text-yellow-600">
             <Star size={18} />
             <p>
-              {vote_average.toFixed(1)} / {vote_count}
+              {voteAverage.toFixed(1)} / {voteCount}
             </p>
           </div>
-          {mediaType === "movie" ? (
-            <p>
-              Duration: <b>{runtime} min.</b>
-            </p>
+          {details.mediaType === "movie" ? (
+            <>
+              <p>
+                Duration: <b>{details.runtime} min.</b>
+              </p>
+              <p>
+                Budget: <b>{formatCurrency(details.budget)}</b>
+              </p>
+              <p>
+                Revenue: <b>{formatCurrency(details.revenue)}</b>
+              </p>
+            </>
           ) : (
-            <p>
-              Seasons: <b>{number_of_seasons}</b>
-            </p>
-          )}
-          {mediaType === "movie" ? (
-            <p>
-              Budget: <b>{formatCurrency(budget)}</b>
-            </p>
-          ) : (
-            <p>
-              First air date: <b>{first_air_date}</b>
-            </p>
-          )}
-          {mediaType === "movie" ? (
-            <p>
-              Revenue: <b>{formatCurrency(revenue)}</b>
-            </p>
-          ) : (
-            <p>
-              Show type: <b>{type}</b>
-            </p>
+            <>
+              <p>
+                Seasons: <b>{details.numberOfSeasons}</b>
+              </p>
+              <p>
+                First air date: <b>{releaseDate}</b>
+              </p>
+              <p>
+                Show type: <b>{details.showType}</b>
+              </p>
+            </>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -194,8 +139,8 @@ export default async function Details({
           movieId={id}
           fullSize={true}
           user={session?.user}
-          title={title || name}
-          image={backdrop_path || poster_path}
+          title={title}
+          image={backdropPath || posterPath || ""}
           type={mediaType}
         />
       </div>
