@@ -1,14 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import Details from "./Details";
-import { AddToListBtn } from "@/modules/my-list";
+import { ListEntryDialog } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
 import { makeSession } from "@test/helpers/factories";
 import { mockTmdb, tmdbFixture } from "@test/helpers/tmdb";
 
 vi.mock("@/modules/my-list", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/modules/my-list")>()),
-  AddToListBtn: vi.fn(() => null),
+  ListEntryDialog: vi.fn(() => null),
 }));
 
 const movie = tmdbFixture("movie-550");
@@ -104,13 +104,13 @@ describe("Details", () => {
     }
   });
 
-  test("passes the session user and the entry to AddToListBtn", async () => {
-    const session = makeSession();
-    vi.mocked(getSession).mockResolvedValue(session as any);
+  test("signed in -> an add ListEntryDialog with the entry", async () => {
+    vi.mocked(getSession).mockResolvedValue(makeSession() as any);
     await renderMovie();
 
-    expect(vi.mocked(AddToListBtn).mock.lastCall![0]).toEqual({
-      user: session.user,
+    expect(vi.mocked(ListEntryDialog).mock.lastCall![0]).toEqual({
+      mode: "add",
+      signedIn: true,
       movieId: 550,
       title: "Fight Club",
       image: movie.backdrop_path,
@@ -119,10 +119,10 @@ describe("Details", () => {
     });
   });
 
-  test("logged out -> AddToListBtn gets no user; TV uses the name", async () => {
+  test("logged out -> ListEntryDialog is not signed in; TV uses the name", async () => {
     await renderTv();
-    expect(vi.mocked(AddToListBtn).mock.lastCall![0]).toMatchObject({
-      user: undefined,
+    expect(vi.mocked(ListEntryDialog).mock.lastCall![0]).toMatchObject({
+      signedIn: false,
       title: "Game of Thrones",
       type: "tv",
     });

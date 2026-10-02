@@ -8,7 +8,7 @@ import {
   MessageCircleMore,
   Star,
 } from "lucide-react";
-import { AddToListBtn } from "@/modules/my-list";
+import { ListEntryDialog } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
 import { tmdbImageUrl, tmdbWatchUrl, type MediaType } from "@/infra/tmdb";
 import { getTitle } from "@/infra/tmdb/server";
@@ -136,10 +136,11 @@ export default async function Details({
             <a href="#reviews">Reviews</a>
           </div>
         </div>
-        <AddToListBtn
+        <ListEntryDialog
+          mode="add"
           movieId={id}
           fullSize={true}
-          user={session?.user}
+          signedIn={session?.user !== undefined}
           title={title}
           image={backdropPath || posterPath || ""}
           type={mediaType}

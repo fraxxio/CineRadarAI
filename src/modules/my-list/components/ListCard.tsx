@@ -9,15 +9,13 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import React from "react";
-import type { Session } from "next-auth";
-import EditListBtn from "./EditListBtn";
-import DeleteListBtn from "./DeleteListBtn";
+import ListEntryDialog from "./ListEntryDialog";
+import RemoveEntryButton from "./RemoveEntryButton";
 import type { ListEntry, ListStatus } from "../entry";
 import { tmdbImageUrl } from "@/infra/tmdb";
 
 type ListCardProps = {
   movie: ListEntry;
-  user: Session["user"];
   index: number;
 };
 
@@ -27,7 +25,7 @@ const STATUS_ICONS: Record<ListStatus, LucideIcon> = {
   Watching: Eye,
 };
 
-export default function ListCard({ movie, index, user }: ListCardProps) {
+export default function ListCard({ movie, index }: ListCardProps) {
   // entries saved without a poster or backdrop have an empty image
   const poster = tmdbImageUrl(movie.image, "w500");
   // rows saved before the payload was validated can hold other statuses
@@ -82,15 +80,16 @@ export default function ListCard({ movie, index, user }: ListCardProps) {
         </div>
         <div className="flex flex-col items-end justify-between gap-4 max-[610px]:flex-row-reverse max-[610px]:pt-4">
           <p className=" text-lg text-secondary-text">#{index + 1}</p>
-          <EditListBtn
-            user={user}
+          {/* the list page is only shown to signed-in users */}
+          <ListEntryDialog
+            mode="edit"
+            signedIn
             movieId={movie.movieId}
             title={movie.name}
             image={movie.image}
             type={movie.type}
           />
-          <DeleteListBtn
-            userId={user.id}
+          <RemoveEntryButton
             movieId={movie.movieId}
             title={movie.name}
             type={movie.type}

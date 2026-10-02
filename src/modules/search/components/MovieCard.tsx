@@ -2,7 +2,7 @@ import { Star } from "lucide-react";
 import Image from "next/image";
 import { NoImage } from "./NoImage";
 import Link from "next/link";
-import { AddToListBtn } from "@/modules/my-list";
+import { ListEntryDialog } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
 import { tmdbImageUrl, type MediaType, type TitleSummary } from "@/infra/tmdb";
 
@@ -27,8 +27,9 @@ export default async function MovieCard({
   const session = await getSession();
   return (
     <div className="relative w-full border border-border-clr bg-primary-bg duration-300 hover:border-primary-text hover:shadow-md hover:shadow-primary-text">
-      <AddToListBtn
-        user={session?.user}
+      <ListEntryDialog
+        mode="add"
+        signedIn={session?.user !== undefined}
         movieId={id}
         title={title}
         image={backdropPath || posterPath || ""}

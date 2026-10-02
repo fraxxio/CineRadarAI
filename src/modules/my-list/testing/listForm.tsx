@@ -5,9 +5,6 @@ import type { ReactElement } from "react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, test, vi } from "vitest";
 import { deferred } from "@test/helpers/deferred";
-import { makeUser } from "@test/helpers/factories";
-
-type SessionUser = ReturnType<typeof makeUser>;
 
 export const LIST_ENTRY = {
   movieId: 550,
@@ -18,8 +15,8 @@ export const LIST_ENTRY = {
 
 export type ListFormConfig = {
   name: string;
-  // renders the component with LIST_ENTRY and the given session user
-  element: (user: SessionUser | undefined) => ReactElement;
+  // renders the component with LIST_ENTRY, signed in or not
+  element: (signedIn: boolean) => ReactElement;
   trigger: string | RegExp;
   dialogTitle: string;
   submitText: string;
@@ -29,9 +26,8 @@ export type ListFormConfig = {
   refreshes: boolean;
 };
 
-// the add/edit list dialogs share one form: status + rating -> PUT /api/add-to-list
+// both ListEntryDialog modes share one form: status + rating -> PUT /api/add-to-list
 export function describeListForm(c: ListFormConfig) {
-  const sessionUser = makeUser();
   let user: UserEvent;
   beforeEach(() => {
     user = userEvent.setup();
@@ -70,13 +66,13 @@ export function describeListForm(c: ListFormConfig) {
 
   describe(c.name, () => {
     test("opens the dialog", async () => {
-      render(c.element(sessionUser));
+      render(c.element(true));
       const dialog = await open();
       expect(dialog.getByText(c.dialogTitle)).toBeInTheDocument();
     });
 
     test("status is required, rating is optional", async () => {
-      render(c.element(sessionUser));
+      render(c.element(true));
       const dialog = await open();
 
       const status = dialog.getByLabelText("Status:");
@@ -87,7 +83,7 @@ export function describeListForm(c: ListFormConfig) {
 
     test("logged out: warns, sends nothing and closes", async () => {
       const fetch = fetchSpy();
-      render(c.element(undefined));
+      render(c.element(false));
 
       await fillAndSubmit();
 
@@ -103,7 +99,7 @@ export function describeListForm(c: ListFormConfig) {
       const fetch = fetchSpy().mockResolvedValue(
         Response.json({ addToListResult: "success" }),
       );
-      render(c.element(sessionUser));
+      render(c.element(true));
 
       await fillAndSubmit("Completed", "8");
 
@@ -126,7 +122,7 @@ export function describeListForm(c: ListFormConfig) {
       const fetch = fetchSpy().mockResolvedValue(
         Response.json({ addToListResult: "success" }),
       );
-      render(c.element(sessionUser));
+      render(c.element(true));
 
       await fillAndSubmit("Watching");
 
@@ -140,7 +136,7 @@ export function describeListForm(c: ListFormConfig) {
       fetchSpy().mockResolvedValue(
         Response.json({ addToListResult: "success" }),
       );
-      render(c.element(sessionUser));
+      render(c.element(true));
 
       await fillAndSubmit();
 
@@ -156,7 +152,7 @@ export function describeListForm(c: ListFormConfig) {
     it.each(replies.slice(1))("error toast on %s", async (_, reply) => {
       vi.spyOn(console, "error").mockImplementation(() => {});
       fetchSpy().mockImplementation(reply);
-      render(c.element(sessionUser));
+      render(c.element(true));
 
       await fillAndSubmit();
 
@@ -172,7 +168,7 @@ export function describeListForm(c: ListFormConfig) {
     test(`shows ${c.loadingText} and disables submit while in flight`, async () => {
       const response = deferred<Response>();
       fetchSpy().mockReturnValue(response.promise);
-      render(c.element(sessionUser));
+      render(c.element(true));
 
       await fillAndSubmit();
 
@@ -191,7 +187,7 @@ export function describeListForm(c: ListFormConfig) {
       async (_, reply) => {
         vi.spyOn(console, "error").mockImplementation(() => {});
         fetchSpy().mockImplementation(reply);
-        render(c.element(sessionUser));
+        render(c.element(true));
 
         await fillAndSubmit("Completed", "8");
         await dialogClosed();
@@ -206,7 +202,7 @@ export function describeListForm(c: ListFormConfig) {
       it.each(replies)("refreshes the page after %s", async (_, reply) => {
         vi.spyOn(console, "error").mockImplementation(() => {});
         fetchSpy().mockImplementation(reply);
-        render(c.element(sessionUser));
+        render(c.element(true));
 
         await fillAndSubmit();
 

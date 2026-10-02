@@ -1,5 +1,6 @@
 "use client";
-import { BookmarkPlus, LoaderCircle } from "lucide-react";
+import { BookmarkPlus, LoaderCircle, Pencil } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -10,14 +11,33 @@ import {
   DialogTrigger,
 } from "@/shared/ui/Modal";
 import StatusSelect from "./StatusSelect";
+import RatingSelect from "./RatingSelect";
 import type { ListStatus } from "../entry";
 import type { MediaType } from "@/infra/tmdb";
-import type { Session } from "next-auth";
-import RatingSelect from "./RatingSelect";
 import { FormEvent, useState } from "react";
 
-type AddToListBtnProps = {
-  user: Session["user"] | undefined;
+const COPY = {
+  add: {
+    title: "Choose options to add to the list.",
+    submit: "Add to list",
+    loading: "Adding...",
+    success: (title: string) => `${title} was added to the list.`,
+    error: "Something went wrong while adding to the list.",
+  },
+  edit: {
+    title: "Edit the list",
+    submit: "Edit",
+    loading: "Editing...",
+    success: (title: string) => `${title} was updated.`,
+    error: "Something went wrong while editing the list.",
+  },
+};
+
+type ListEntryDialogProps = {
+  // add: from search results and details pages; edit: from the list itself
+  mode: "add" | "edit";
+  signedIn: boolean;
+  // add mode only: a full-width trigger instead of the card corner button
   fullSize?: boolean;
   movieId: number;
   title: string;
@@ -25,23 +45,26 @@ type AddToListBtnProps = {
   type: MediaType;
 };
 
-export default function AddToListBtn({
-  user,
+export default function ListEntryDialog({
+  mode,
+  signedIn,
   fullSize,
   movieId,
   title,
   image,
   type,
-}: AddToListBtnProps) {
+}: ListEntryDialogProps) {
+  const [isOpen, setIsOpen] = useState(false);
   const [status, setStatus] = useState<ListStatus | "">("");
   const [rating, setRating] = useState("");
   const [loading, setLoading] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
+  const router = useRouter();
+  const copy = COPY[mode];
 
-  async function hAddToList(e: FormEvent) {
+  async function hSaveEntry(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
-    if (user === undefined) {
+    if (!signedIn) {
       toast.warning("Failed to add", {
         description: "You need to be logged in!",
         style: {
@@ -70,17 +93,17 @@ export default function AddToListBtn({
       });
       const data = await response.json();
       if (data.addToListResult === "success") {
-        toast.success(`${title} was added to the list.`, {
+        toast.success(copy.success(title), {
           style: { color: "green" },
         });
       } else {
-        toast.error("Something went wrong while adding to the list.", {
+        toast.error(copy.error, {
           style: { color: "red" },
         });
       }
     } catch (error) {
       console.error("/api/add-to-list ERROR:", error);
-      toast.error("Something went wrong while adding to the list.", {
+      toast.error(copy.error, {
         style: { color: "red" },
       });
     } finally {
@@ -88,29 +111,42 @@ export default function AddToListBtn({
       setIsOpen(false);
       setStatus("");
       setRating("");
+      // the list page shows the entry, so it needs the new data
+      if (mode === "edit") {
+        router.refresh();
+      }
     }
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger
-        className={`${fullSize ? "mt-6 block py-1" : "absolute right-2 top-2 border border-border-clr bg-primary-bg p-2 hover:pl-24 [&_span]:pointer-events-none [&_span]:opacity-0 [&_span]:hover:opacity-100 [&_span]:hover:duration-200"} flex items-center gap-2 rounded-md duration-200 hover:bg-primary-text hover:text-primary-bg`}
-      >
-        <div
-          className={`relative ${fullSize && "flex flex-row-reverse items-center gap-2"}`}
+      {mode === "add" ? (
+        <DialogTrigger
+          className={`${fullSize ? "mt-6 block py-1" : "absolute right-2 top-2 border border-border-clr bg-primary-bg p-2 hover:pl-24 [&_span]:pointer-events-none [&_span]:opacity-0 [&_span]:hover:opacity-100 [&_span]:hover:duration-200"} flex items-center gap-2 rounded-md duration-200 hover:bg-primary-text hover:text-primary-bg`}
         >
-          <span
-            className={`${fullSize ? "pr-1" : "absolute right-6 top-0 w-[6rem] text-primary-bg"}`}
+          <div
+            className={`relative ${fullSize && "flex flex-row-reverse items-center gap-2"}`}
           >
-            Add to list
-          </span>
-          <BookmarkPlus />
-        </div>
-      </DialogTrigger>
+            <span
+              className={`${fullSize ? "pr-1" : "absolute right-6 top-0 w-[6rem] text-primary-bg"}`}
+            >
+              Add to list
+            </span>
+            <BookmarkPlus />
+          </div>
+        </DialogTrigger>
+      ) : (
+        <DialogTrigger
+          aria-label="Edit list entry"
+          className="h-10 w-10 rounded-md border border-border-clr bg-dark-bg px-3 py-2 font-medium duration-200 hover:bg-primary-text hover:text-dark-bg max-[840px]:h-7 max-[840px]:w-7 max-[840px]:p-1"
+        >
+          <Pencil size={16} />
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="max-w-[85%] text-2xl">
-            Choose options to add to the list.
+            {copy.title}
           </DialogTitle>
           <DialogDescription>
             <span className="text-base">
@@ -118,7 +154,7 @@ export default function AddToListBtn({
             </span>
           </DialogDescription>
         </DialogHeader>
-        <form className="flex flex-col gap-8" onSubmit={hAddToList}>
+        <form className="flex flex-col gap-8" onSubmit={hSaveEntry}>
           <div className="flex flex-col">
             <label htmlFor="status">Status:</label>
             <StatusSelect status={status} setStatus={setStatus} />
@@ -137,10 +173,10 @@ export default function AddToListBtn({
                 <span className="animate-spin">
                   <LoaderCircle size={18} />
                 </span>
-                Adding...
+                {copy.loading}
               </p>
             ) : (
-              <p>Add to list</p>
+              <p>{copy.submit}</p>
             )}
           </button>
         </form>

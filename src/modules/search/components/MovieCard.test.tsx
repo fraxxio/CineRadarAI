@@ -5,7 +5,7 @@ import { getSession } from "@/infra/auth/session";
 import { makeSession } from "@test/helpers/factories";
 import type { TitleSummary } from "@/infra/tmdb";
 
-// AddToListBtn stays real (client component)
+// ListEntryDialog stays real (client component)
 
 const makeResult = (overrides: Partial<TitleSummary> = {}): TitleSummary => ({
   id: 550,

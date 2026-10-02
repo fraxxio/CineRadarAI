@@ -3,14 +3,13 @@ import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, test, vi } from "vitest";
-import DeleteListBtn from "./DeleteListBtn";
+import RemoveEntryButton from "./RemoveEntryButton";
 import { deferred } from "@test/helpers/deferred";
 
 const props = {
-  userId: "u1",
   movieId: 550,
   title: "Fight Club",
-  type: "tv",
+  type: "tv" as const,
 };
 const ERROR_TEXT = "Something went wrong while removing.";
 
@@ -43,9 +42,9 @@ const replies = [
   ["network error", () => Promise.reject(new TypeError("offline"))],
 ] as const;
 
-describe("DeleteListBtn", () => {
+describe("RemoveEntryButton", () => {
   test("the dialog names the title in bold", async () => {
-    render(<DeleteListBtn {...props} />);
+    render(<RemoveEntryButton {...props} />);
     const dialog = await open();
 
     expect(dialog.getByText("Fight Club").tagName).toBe("B");
@@ -56,25 +55,11 @@ describe("DeleteListBtn", () => {
     );
   });
 
-  test("no user id: warns, sends nothing and closes", async () => {
-    const fetch = fetchSpy();
-    render(<DeleteListBtn {...props} userId={undefined as any} />);
-
-    await remove();
-
-    expect(toast.warning).toHaveBeenCalledWith(
-      "Failed to add",
-      expect.objectContaining({ description: "You need to be logged in!" }),
-    );
-    expect(fetch).not.toHaveBeenCalled();
-    await dialogClosed();
-  });
-
   test("sends a DELETE with the movie id and type in headers", async () => {
     const fetch = fetchSpy().mockResolvedValue(
       Response.json({ addToListResult: "success" }),
     );
-    render(<DeleteListBtn {...props} />);
+    render(<RemoveEntryButton {...props} />);
 
     await remove();
 
@@ -92,7 +77,7 @@ describe("DeleteListBtn", () => {
 
   test("success toast names the title", async () => {
     fetchSpy().mockResolvedValue(Response.json({ addToListResult: "success" }));
-    render(<DeleteListBtn {...props} />);
+    render(<RemoveEntryButton {...props} />);
 
     await remove();
 
@@ -108,7 +93,7 @@ describe("DeleteListBtn", () => {
   it.each(replies.slice(1))("error toast on %s", async (_, reply) => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     fetchSpy().mockImplementation(reply);
-    render(<DeleteListBtn {...props} />);
+    render(<RemoveEntryButton {...props} />);
 
     await remove();
 
@@ -121,7 +106,7 @@ describe("DeleteListBtn", () => {
   it.each(replies)("refreshes and closes after %s", async (_, reply) => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     fetchSpy().mockImplementation(reply);
-    render(<DeleteListBtn {...props} />);
+    render(<RemoveEntryButton {...props} />);
 
     await remove();
 
@@ -132,7 +117,7 @@ describe("DeleteListBtn", () => {
   test("shows Removing... and disables the button while in flight", async () => {
     const response = deferred<Response>();
     fetchSpy().mockReturnValue(response.promise);
-    render(<DeleteListBtn {...props} />);
+    render(<RemoveEntryButton {...props} />);
 
     await remove();
 

@@ -2,15 +2,11 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, test } from "vitest";
 import ListCard from "./ListCard";
 import type { ListStatus } from "../entry";
-import { makeMovie, makeUser } from "@test/helpers/factories";
+import { makeMovie } from "@test/helpers/factories";
 
 const renderCard = (overrides: Parameters<typeof makeMovie>[0] = {}) =>
   render(
-    <ListCard
-      movie={makeMovie({ movieId: 550, ...overrides })}
-      user={makeUser()}
-      index={2}
-    />,
+    <ListCard movie={makeMovie({ movieId: 550, ...overrides })} index={2} />,
   );
 
 describe("ListCard", () => {

@@ -11,20 +11,19 @@ import {
   DialogTrigger,
 } from "@/shared/ui/Modal";
 import { toast } from "sonner";
+import type { MediaType } from "@/infra/tmdb";
 
-type DeleteListBtnProps = {
-  userId: string;
+type RemoveEntryButtonProps = {
   movieId: number;
   title: string;
-  type: string;
+  type: MediaType;
 };
 
-export default function DeleteListBtn({
-  userId,
+export default function RemoveEntryButton({
   movieId,
   title,
   type,
-}: DeleteListBtnProps) {
+}: RemoveEntryButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -32,17 +31,6 @@ export default function DeleteListBtn({
   async function hRemoveFromList(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
-    if (userId === undefined) {
-      toast.warning("Failed to add", {
-        description: "You need to be logged in!",
-        style: {
-          color: "red",
-        },
-      });
-      setLoading(false);
-      setIsOpen(false);
-      return null;
-    }
 
     try {
       const response = await fetch("/api/remove-from-list", {

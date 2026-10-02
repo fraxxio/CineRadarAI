@@ -22,14 +22,7 @@ export default async function MyListItems(view: ListView) {
         </div>
       ) : (
         movies.map((movie, index) => {
-          return (
-            <ListCard
-              key={movie.movieId}
-              movie={movie}
-              index={index}
-              user={session.user}
-            />
-          );
+          return <ListCard key={movie.movieId} movie={movie} index={index} />;
         })
       )}
     </div>
