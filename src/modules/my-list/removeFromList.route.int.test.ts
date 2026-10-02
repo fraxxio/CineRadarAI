@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, test, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { DELETE } from "@/app/api/remove-from-list/route";
-import { asUser } from "../../helpers/auth";
-import { forceFailure, getMovies, seedList, seedUser } from "../../helpers/db";
-import { makeMovie } from "../../helpers/factories";
+import { asUser } from "@test/helpers/auth";
+import { forceFailure, getMovies, seedList, seedUser } from "@test/helpers/db";
+import { makeMovie } from "@test/helpers/factories";
 
 vi.mock("@/infra/auth/auth", () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }));
 

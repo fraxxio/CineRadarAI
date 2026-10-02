@@ -1,6 +1,6 @@
-import ListCard from "./ui/ListCard";
+import ListCard from "./ListCard";
 import { getSession } from "@/infra/auth/session";
-import { ListSortValues, filteredMovies, getListMovies } from "@/lib/myList";
+import { ListSortValues, filteredMovies, getListMovies } from "../myList";
 
 export async function ListLength(sortValues: ListSortValues) {
   const session = (await getSession())!;

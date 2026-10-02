@@ -1,5 +1,5 @@
-import AddToListBtn from "@/Components/ui/AddToListBtn";
-import { describeListForm, LIST_ENTRY } from "../helpers/listForm";
+import AddToListBtn from "./AddToListBtn";
+import { describeListForm, LIST_ENTRY } from "../testing/listForm";
 
 describeListForm({
   name: "AddToListBtn",

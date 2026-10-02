@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, test } from "vitest";
-import ListCard from "@/Components/ui/ListCard";
-import { makeMovie, makeUser } from "../../helpers/factories";
+import ListCard from "./ListCard";
+import { makeMovie, makeUser } from "@test/helpers/factories";
 
 const renderCard = (overrides: Parameters<typeof makeMovie>[0] = {}) =>
   render(

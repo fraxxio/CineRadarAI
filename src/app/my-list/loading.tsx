@@ -1,5 +1,4 @@
-import { ListLengthSkeleton } from "@/Components/skeletons/ListLengthSkeleton";
-import { ListRowsSkeleton } from "@/Components/skeletons/ListRowsSkeleton";
+import { ListLengthSkeleton, ListRowsSkeleton } from "@/modules/my-list";
 import { Skeleton } from "@/shared/ui/Skeleton";
 
 const sortGroups = [

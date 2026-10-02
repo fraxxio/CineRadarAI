@@ -1,6 +1,6 @@
 import { describe, expect, it, test, vi } from "vitest";
-import { filteredMovies, type ListSortValues } from "@/lib/myList";
-import { makeMovie } from "../../helpers/factories";
+import { filteredMovies, type ListSortValues } from "./myList";
+import { makeMovie } from "@test/helpers/factories";
 
 // the module imports the DB, but filteredMovies never touches it
 vi.mock("@/infra/db", () => ({ db: {} }));

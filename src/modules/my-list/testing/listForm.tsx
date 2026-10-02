@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation";
 import type { ReactElement } from "react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, test, vi } from "vitest";
-import { deferred } from "./deferred";
-import { makeUser } from "./factories";
+import { deferred } from "@test/helpers/deferred";
+import { makeUser } from "@test/helpers/factories";
 
 type SessionUser = ReturnType<typeof makeUser>;
 

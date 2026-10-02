@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
-import RatingSelect from "@/Components/ui/RatingSelect";
+import RatingSelect from "./RatingSelect";
 
 describe("RatingSelect", () => {
   test("an empty option, then 1 to 10; not required", () => {

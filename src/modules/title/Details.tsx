@@ -8,7 +8,7 @@ import {
   MessageCircleMore,
   Star,
 } from "lucide-react";
-import AddToListBtn from "@/Components/ui/AddToListBtn";
+import { AddToListBtn } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
 
 type DetailsProps = {

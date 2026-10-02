@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
-import ListSortLink from "@/Components/ui/ListSortLink";
+import ListSortLink from "./ListSortLink";
 
 describe("ListSortLink", () => {
   test("active: a disabled button, no link", () => {

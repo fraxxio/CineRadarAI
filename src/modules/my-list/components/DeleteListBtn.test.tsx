@@ -3,8 +3,8 @@ import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, test, vi } from "vitest";
-import DeleteListBtn from "@/Components/ui/DeleteListBtn";
-import { deferred } from "../helpers/deferred";
+import DeleteListBtn from "./DeleteListBtn";
+import { deferred } from "@test/helpers/deferred";
 
 const props = {
   userId: "u1",

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { getListMovies } from "@/lib/myList";
-import { seedList, seedUser } from "../../helpers/db";
-import { makeMovie } from "../../helpers/factories";
+import { getListMovies } from "./myList";
+import { seedList, seedUser } from "@test/helpers/db";
+import { makeMovie } from "@test/helpers/factories";
 
 // `cache` is the identity shim (tests/setup/shared.ts), so nothing is cached across tests
 describe("getListMovies", () => {

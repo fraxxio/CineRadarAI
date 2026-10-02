@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it, test, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { db } from "@/infra/db";
 import { PUT } from "@/app/api/add-to-list/route";
-import { asUser } from "../../helpers/auth";
-import { forceFailure, getMovies, seedList, seedUser } from "../../helpers/db";
-import { makeMovie } from "../../helpers/factories";
-import { jsonRequest } from "../../helpers/requests";
+import { asUser } from "@test/helpers/auth";
+import { forceFailure, getMovies, seedList, seedUser } from "@test/helpers/db";
+import { makeMovie } from "@test/helpers/factories";
+import { jsonRequest } from "@test/helpers/requests";
 
 vi.mock("@/infra/auth/auth", () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }));
 

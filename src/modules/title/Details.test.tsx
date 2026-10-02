@@ -1,12 +1,15 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import Details from "./Details";
-import AddToListBtn from "@/Components/ui/AddToListBtn";
+import { AddToListBtn } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
 import { makeSession } from "@test/helpers/factories";
 import { mockTmdb, tmdbFixture } from "@test/helpers/tmdb";
 
-vi.mock("@/Components/ui/AddToListBtn", () => ({ default: vi.fn(() => null) }));
+vi.mock("@/modules/my-list", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/modules/my-list")>()),
+  AddToListBtn: vi.fn(() => null),
+}));
 
 const movie = tmdbFixture("movie-550");
 const tv = tmdbFixture("tv-1399");

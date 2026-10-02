@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { db } from "@/infra/db";
 import { lists } from "@/infra/db/schema/lists";
-import { getListMovies } from "@/lib/myList";
+import { getListMovies } from "@/modules/my-list/server";
 import { forceFailure, getMovies, seedList, seedUser } from "../helpers/db";
 import { makeMovie } from "../helpers/factories";
 

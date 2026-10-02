@@ -1,5 +1,5 @@
-import EditListBtn from "@/Components/ui/EditListBtn";
-import { describeListForm, LIST_ENTRY } from "../helpers/listForm";
+import EditListBtn from "./EditListBtn";
+import { describeListForm, LIST_ENTRY } from "../testing/listForm";
 
 describeListForm({
   name: "EditListBtn",

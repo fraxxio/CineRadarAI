@@ -2,7 +2,7 @@ import { Star } from "lucide-react";
 import Image from "next/image";
 import { NoImage } from "./NoImage";
 import Link from "next/link";
-import AddToListBtn from "@/Components/ui/AddToListBtn";
+import { AddToListBtn } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
 
 type MovieCardProps = {
