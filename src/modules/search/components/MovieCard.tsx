@@ -4,47 +4,22 @@ import { NoImage } from "./NoImage";
 import Link from "next/link";
 import { AddToListBtn } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
+import type { MediaType, TitleSummary } from "@/infra/tmdb";
 
 type MovieCardProps = {
-  movie: {
-    adult: boolean;
-    backdrop_path: string;
-    genre_ids: Array<number>;
-    id: number;
-    original_language: string;
-    original_title: string;
-    overview: string;
-    popularity: number;
-    poster_path: string;
-    release_date: string;
-    first_air_date: string;
-    title: string;
-    name: string;
-    video: boolean;
-    vote_average: number;
-    vote_count: number;
-  };
-  type: "movie" | "tv" | undefined;
+  movie: TitleSummary;
+  type: MediaType;
 };
 
 export default async function MovieCard({
   movie: {
-    adult,
-    backdrop_path,
-    genre_ids,
     id,
-    original_language,
-    original_title,
-    overview,
-    popularity,
-    poster_path,
-    release_date,
-    first_air_date,
     title,
-    name,
-    video,
-    vote_average,
-    vote_count,
+    releaseDate,
+    posterPath,
+    backdropPath,
+    voteAverage,
+    voteCount,
   },
   type,
 }: MovieCardProps) {
@@ -54,17 +29,17 @@ export default async function MovieCard({
       <AddToListBtn
         user={session?.user}
         movieId={id}
-        title={name || title}
-        image={backdrop_path || poster_path}
-        type={type!}
+        title={title}
+        image={backdropPath || posterPath || ""}
+        type={type}
       />
       <Link href={`/search/${type}/${id}`}>
-        {poster_path === null && backdrop_path === null ? (
+        {posterPath === null && backdropPath === null ? (
           <NoImage title={title} />
         ) : (
           <Image
-            src={`https://image.tmdb.org/t/p/w500${poster_path || backdrop_path}`}
-            alt={title || name}
+            src={`https://image.tmdb.org/t/p/w500${posterPath || backdropPath}`}
+            alt={title}
             width={150}
             height={150}
             className="h-[30rem] w-full border-b border-border-clr object-cover"
@@ -74,21 +49,21 @@ export default async function MovieCard({
         <div className="flex h-[6.5rem] flex-col justify-between p-2">
           <div className="flex justify-between">
             <h1
-              title={title || name}
+              title={title}
               className="max-w-[60%] truncate text-xl font-medium"
             >
-              {title || name}
+              {title}
             </h1>
-            <p className="text-sm">{release_date || first_air_date}</p>
+            <p className="text-sm">{releaseDate}</p>
           </div>
           <div className="flex justify-between">
             <div className="flex items-center gap-1">
               <Star size={16} />
               <p className="text-sm font-medium">
-                {vote_average.toFixed(1)} / 10
+                {voteAverage.toFixed(1)} / 10
               </p>
             </div>
-            <p>Votes: {vote_count}</p>
+            <p>Votes: {voteCount}</p>
           </div>
         </div>
       </Link>
