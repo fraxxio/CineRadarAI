@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test } from "vitest";
-import Navbar from "@/Components/Navbar";
+import { Navbar } from "@/modules/layout";
 import { makeUser } from "../helpers/factories";
 
 // Phase 1 smoke test: proves jsdom, JSX, jest-dom and the component mocks work.

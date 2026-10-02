@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, test } from "vitest";
-import Navbar from "@/Components/Navbar";
-import { makeUser } from "../helpers/factories";
+import Navbar from "./Navbar";
+import { makeUser } from "@test/helpers/factories";
 
 // Logged in, AuthBtn renders twice (desktop + mobile). Visibility comes from
 // Tailwind classes, which jsdom doesn't apply, so the tests assert on classes.
