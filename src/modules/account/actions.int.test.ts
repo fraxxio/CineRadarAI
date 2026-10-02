@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { redirect } from "next/navigation";
-import { DeleteUser } from "@/app/actions";
-import { asUser } from "../helpers/auth";
-import { forceFailure, seedFullUser, userRows } from "../helpers/db";
+import { DeleteUser } from "./actions";
+import { asUser } from "@test/helpers/auth";
+import { forceFailure, seedFullUser, userRows } from "@test/helpers/db";
 
 vi.mock("@/infra/auth/auth", () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }));
 vi.mock("next/navigation", async () => {
-  const { RedirectError } = await import("../helpers/next");
+  const { RedirectError } = await import("@test/helpers/next");
   return {
     redirect: vi.fn((url: string) => {
       throw new RedirectError(url);

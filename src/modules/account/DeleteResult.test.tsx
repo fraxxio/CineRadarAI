@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
-import DeleteResult from "@/Components/ui/DeleteResult";
+import DeleteResult from "./DeleteResult";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());

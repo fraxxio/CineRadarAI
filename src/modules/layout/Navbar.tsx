@@ -3,7 +3,7 @@ import { Menu, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import React, { useState } from "react";
-import AuthBtn from "@/Components/AuthBtn";
+import { AuthBtn } from "@/modules/account";
 
 type NavbarProps = {
   user:

@@ -2,8 +2,8 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useFormStatus } from "react-dom";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import DeleteModal from "@/Components/ui/DeleteModal";
-import DeleteModalBtn from "@/Components/ui/DeleteModalBtn";
+import DeleteModal from "./DeleteModal";
+import DeleteModalBtn from "./DeleteModalBtn";
 
 // <form action={fn}> does nothing under React 18.2 in jsdom: submission is covered by E2E 6.5.7
 

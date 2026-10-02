@@ -1,9 +1,10 @@
-import { SignOut } from "@/app/actions";
+"use client";
+import { SignOut } from "./actions";
 import { LogOut } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import DeleteModal from "./ui/DeleteModal";
+import DeleteModal from "./DeleteModal";
 
 type AuthBtnProps = {
   user:

@@ -1,4 +1,4 @@
-import { DeleteUser } from "@/app/actions";
+import { DeleteUser } from "./actions";
 import { Trash2 } from "lucide-react";
 import {
   Dialog,
