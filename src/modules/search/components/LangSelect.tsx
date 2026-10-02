@@ -1,29 +1,5 @@
 import React from "react";
-import type { Language } from "../types";
-
-async function getLanguages() {
-  const options = {
-    method: "GET",
-    headers: {
-      accept: "application/json",
-      Authorization: `Bearer ${process.env.TMDB_ACCESS_TOKEN}`,
-    },
-  };
-
-  try {
-    const response = await fetch(
-      `${process.env.TMDB_BASE_URL}/configuration/languages`,
-      options,
-    );
-    if (!response.ok) {
-      throw new Error("Failed to fetch languages");
-    }
-    return response.json();
-  } catch (error) {
-    console.error("Error fetching languages:", error);
-    throw error;
-  }
-}
+import { getLanguages } from "@/infra/tmdb/server";
 
 export default async function LangSelect(
   props: React.HTMLProps<HTMLSelectElement>,
@@ -42,14 +18,14 @@ export default async function LangSelect(
       >
         Choose language
       </option>
-      {languages.map((language: Language) => {
+      {languages.map((language) => {
         return (
           <option
-            value={language.iso_639_1}
+            value={language.code}
             className="bg-primary-text text-primary-bg last:rounded-md"
-            key={language.iso_639_1}
+            key={language.code}
           >
-            {language.english_name}
+            {language.englishName}
           </option>
         );
       })}
