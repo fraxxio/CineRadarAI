@@ -1,6 +1,6 @@
 import { count, eq } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
-import { lists } from "../../../src/infra/db/schema/lists";
+import { lists } from "../../../src/modules/my-list/schema";
 import { sessions, users } from "../../../src/infra/db/schema/users";
 
 export type ListMovie = NonNullable<typeof lists.$inferSelect.movies>[number];

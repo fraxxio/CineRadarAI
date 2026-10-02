@@ -1,8 +1,7 @@
 import { cache } from "react";
 import { db } from "@/infra/db";
-import { lists } from "@/infra/db/schema/lists";
+import { lists } from "./schema";
 import { eq } from "drizzle-orm";
-import type { ListEntry } from "./entry";
 
 export const getListMovies = cache(async (userId: string) => {
   const result = await db
@@ -13,5 +12,5 @@ export const getListMovies = cache(async (userId: string) => {
     .where(eq(lists.userId, userId))
     .execute();
 
-  return (result[0]?.movies || []) as ListEntry[];
+  return result[0]?.movies || [];
 });

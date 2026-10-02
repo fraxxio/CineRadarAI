@@ -1,9 +1,8 @@
 import { auth } from "@/infra/auth/auth";
 import { db } from "@/infra/db";
-import { lists } from "@/infra/db/schema/lists";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { entryInput } from "@/modules/my-list/server";
+import { entryInput, lists } from "@/modules/my-list/server";
 
 export async function PUT(request: Request) {
   const session = await auth();

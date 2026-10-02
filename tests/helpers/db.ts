@@ -2,7 +2,7 @@ import { migrate } from "drizzle-orm/libsql/migrator";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/infra/db";
 import { accounts, sessions, users } from "@/infra/db/schema/users";
-import { lists } from "@/infra/db/schema/lists";
+import { lists } from "@/modules/my-list/schema";
 import { makeMovie } from "./factories";
 import { MIGRATIONS_FOLDER } from "./migrations";
 
