@@ -1,6 +1,7 @@
 import { auth } from "@/infra/auth/auth";
 import { revalidatePath } from "next/cache";
-import { entryKeyInput, removeEntry } from "@/modules/my-list/server";
+import { entryKeyInput } from "@/modules/my-list";
+import { removeEntry } from "@/modules/my-list/server";
 
 export async function DELETE(request: Request) {
   const session = await auth();

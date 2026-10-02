@@ -1,23 +1,21 @@
 import ListCard from "./ListCard";
-import { getSession } from "@/infra/auth/session";
-import { getEntries } from "../store";
+import type { ListEntry } from "../entry";
 import { viewEntries, type ListView } from "../view";
 
-// both components stream in their own Suspense boundary; getSession and
-// getEntries are cached per request, so the list is read once
-async function viewedEntries(view: ListView) {
-  const session = (await getSession())!;
-  return viewEntries(await getEntries(session.user.id), view);
-}
+type ListProps = {
+  // the page starts the read once; each component awaits it in its own Suspense boundary
+  entries: Promise<ListEntry[]>;
+  view: ListView;
+};
 
-export async function ListLength(view: ListView) {
-  const movies = await viewedEntries(view);
+export async function ListLength({ entries, view }: ListProps) {
+  const movies = viewEntries(await entries, view);
 
   return <p className="text-lg">Length: {movies.length}</p>;
 }
 
-export default async function MyListItems(view: ListView) {
-  const movies = await viewedEntries(view);
+export default async function MyListItems({ entries, view }: ListProps) {
+  const movies = viewEntries(await entries, view);
 
   return (
     <div className="border-t border-border-clr">

@@ -1,6 +1,7 @@
 import { auth } from "@/infra/auth/auth";
 import { revalidatePath } from "next/cache";
-import { entryInput, saveEntry } from "@/modules/my-list/server";
+import { entryInput } from "@/modules/my-list";
+import { saveEntry } from "@/modules/my-list/server";
 
 export async function PUT(request: Request) {
   const session = await auth();

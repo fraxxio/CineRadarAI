@@ -1,6 +1,8 @@
-import { ListLength, MyListItems } from "@/modules/my-list/server";
+import { getEntries } from "@/modules/my-list/server";
 import {
+  ListLength,
   ListLengthSkeleton,
+  MyListItems,
   ListRowsSkeleton,
   ListSortBtn,
   ListSortLink,
@@ -32,6 +34,8 @@ export default async function page({
   const safeSession = session!;
 
   const sortValues = { rating, status, type };
+  // not awaited: both Suspense boundaries below wait for it and stream separately
+  const entries = getEntries(safeSession.user.id);
   const sortKey = `${type}-${status}-${rating}`;
   const sortHref = (value: Partial<ListView>) =>
     `/my-list?${new URLSearchParams({ ...sortValues, ...value })}`;
@@ -55,7 +59,7 @@ export default async function page({
             <b>{safeSession.user.name}</b> movie and TV show list.
           </h1>
           <Suspense key={sortKey} fallback={<ListLengthSkeleton />}>
-            <ListLength {...sortValues} />
+            <ListLength entries={entries} view={sortValues} />
           </Suspense>
         </div>
         <div className="flex items-center justify-center gap-8 pb-8 max-[1070px]:flex-col">
@@ -132,7 +136,7 @@ export default async function page({
           </div>
         </div>
         <Suspense key={sortKey} fallback={<ListRowsSkeleton />}>
-          <MyListItems {...sortValues} />
+          <MyListItems entries={entries} view={sortValues} />
         </Suspense>
       </section>
     </main>
