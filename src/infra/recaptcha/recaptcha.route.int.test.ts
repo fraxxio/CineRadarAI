@@ -8,7 +8,7 @@ import {
   type MockInstance,
 } from "vitest";
 import { POST } from "@/app/api/recaptcha/route";
-import { jsonRequest } from "../../helpers/requests";
+import { jsonRequest } from "@test/helpers/requests";
 
 let f: MockInstance<typeof fetch>;
 

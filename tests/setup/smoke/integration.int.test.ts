@@ -2,8 +2,8 @@ import { describe, expect, test } from "vitest";
 import { db } from "@/infra/db";
 import { lists } from "@/infra/db/schema/lists";
 import { getListMovies } from "@/modules/my-list/server";
-import { forceFailure, getMovies, seedList, seedUser } from "../helpers/db";
-import { makeMovie } from "../helpers/factories";
+import { forceFailure, getMovies, seedList, seedUser } from "../../helpers/db";
+import { makeMovie } from "../../helpers/factories";
 
 // Phase 1 smoke test: proves the per-worker SQLite file, migrations and reset hooks work.
 describe("integration infrastructure", () => {

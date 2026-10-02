@@ -28,8 +28,9 @@ export default defineConfig({
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],
       exclude: [
-        "src/types/**",
-        "src/Components/skeletons/**",
+        "src/**/skeletons/**",
+        "src/**/*.test.*",
+        "src/**/testing/**",
         "src/**/loading.tsx",
         "src/app/layout.tsx",
       ],
@@ -40,7 +41,7 @@ export default defineConfig({
         test: {
           name: "unit",
           environment: "node",
-          include: ["tests/unit/**/*.test.ts", "src/**/*.test.ts"],
+          include: ["src/**/*.test.ts", "tests/setup/smoke/*.test.ts"],
           exclude: [...configDefaults.exclude, "**/*.int.test.ts"],
         },
       },
@@ -49,7 +50,7 @@ export default defineConfig({
         test: {
           name: "integration",
           environment: "node",
-          include: ["tests/integration/**/*.test.ts", "src/**/*.int.test.ts"],
+          include: ["src/**/*.int.test.ts", "tests/setup/smoke/*.int.test.ts"],
           setupFiles: ["./tests/setup/integration.ts"],
           globalSetup: ["./tests/setup/integration.global.ts"],
         },
@@ -59,11 +60,7 @@ export default defineConfig({
         test: {
           name: "components",
           environment: "jsdom",
-          include: [
-            "tests/components/**/*.test.tsx",
-            "tests/server-components/**/*.test.tsx",
-            "src/**/*.test.tsx",
-          ],
+          include: ["src/**/*.test.tsx", "tests/setup/smoke/*.test.tsx"],
           setupFiles: ["./tests/setup/components.tsx"],
         },
       },
