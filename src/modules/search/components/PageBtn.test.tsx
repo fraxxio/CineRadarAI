@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
-import { PageBtn } from "@/Components/ui/PageBtn";
-import { buildSearchURL } from "@/lib/utils";
+import { PageBtn } from "./PageBtn";
+import { buildSearchURL } from "../buildSearchURL";
 
 const fv = { query: "Fury", language: "fr", btn: "movie" };
 

@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { describe, expect, test } from "vitest";
-import { getTitle } from "@/lib/searchTitle";
+import { getTitle } from "@/modules/search";
 
 // Phase 1 smoke test: proves the unit project, the @ alias and the shared setup work.
 describe("unit infrastructure", () => {

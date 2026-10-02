@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { buildSystemInstruction } from "@/lib/chatConfig";
-import { movieFilterSchema } from "@/lib/validation";
+import { movieFilterSchema } from "@/modules/search";
 
 describe("buildSystemInstruction", () => {
   test("includes the given date as YYYY-MM-DD (UTC)", () => {

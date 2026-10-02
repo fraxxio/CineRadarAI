@@ -1,6 +1,6 @@
 import { describe, expect, it, test } from "vitest";
 import { ZodError } from "zod";
-import { buildSearchURL } from "@/lib/utils";
+import { buildSearchURL } from "./buildSearchURL";
 
 const qp = (url: string) => new URL(url, "http://x").searchParams;
 

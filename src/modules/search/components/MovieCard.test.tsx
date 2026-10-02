@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import MovieCard from "@/Components/ui/MovieCard";
+import MovieCard from "./MovieCard";
 import { getSession } from "@/infra/auth/session";
-import { makeSession } from "../helpers/factories";
+import { makeSession } from "@test/helpers/factories";
 
 // AddToListBtn stays real (client component)
 

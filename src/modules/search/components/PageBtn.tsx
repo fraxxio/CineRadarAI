@@ -1,4 +1,4 @@
-import { buildSearchURL } from "@/lib/utils";
+import { buildSearchURL } from "../buildSearchURL";
 import Link from "next/link";
 
 type PageBtnProps = {

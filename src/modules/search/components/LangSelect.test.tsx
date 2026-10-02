@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
-import LangSelect from "@/Components/ui/LangSelect";
-import { lastTmdbUrl, mockTmdb, tmdbFixture } from "../helpers/tmdb";
+import LangSelect from "./LangSelect";
+import { lastTmdbUrl, mockTmdb, tmdbFixture } from "@test/helpers/tmdb";
 
 const languages = tmdbFixture<{ iso_639_1: string }[]>("languages").slice(0, 3);
 

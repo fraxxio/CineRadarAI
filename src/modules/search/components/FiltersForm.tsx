@@ -1,8 +1,8 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import SubmitBtn from "./ui/SubmitBtn";
-import { buildSearchURL } from "@/lib/utils";
+import SubmitBtn from "./SubmitBtn";
+import { buildSearchURL } from "../buildSearchURL";
 
 export default function FiltersForm({
   children,

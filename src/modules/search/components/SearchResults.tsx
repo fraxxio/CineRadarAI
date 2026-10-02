@@ -1,6 +1,7 @@
-import { movieFilterValues } from "@/lib/validation";
-import MovieCard from "./ui/MovieCard";
-import { Pages } from "./ui/Pages";
+import { movieFilterValues } from "../validation";
+import type { FetchedData, Results, fetchMoviesProps } from "../types";
+import MovieCard from "./MovieCard";
+import { Pages } from "./Pages";
 
 type SearchResultsProps = {
   filterValues: movieFilterValues;

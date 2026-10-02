@@ -1,4 +1,5 @@
 import React from "react";
+import type { Language } from "../types";
 
 async function getLanguages() {
   const options = {

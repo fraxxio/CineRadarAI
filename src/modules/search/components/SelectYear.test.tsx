@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { SelectYear } from "@/Components/ui/SelectYear";
+import { SelectYear } from "./SelectYear";
 
 afterEach(() => vi.useRealTimers());
 

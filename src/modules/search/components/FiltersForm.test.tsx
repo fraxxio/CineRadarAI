@@ -2,9 +2,9 @@ import { render, screen } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { useRouter } from "next/navigation";
 import { beforeEach, describe, expect, it, test, vi } from "vitest";
-import FiltersForm from "@/Components/FiltersForm";
-import { IncludeAdult } from "@/Components/ui/IncludeAdult";
-import { SelectYear } from "@/Components/ui/SelectYear";
+import FiltersForm from "./FiltersForm";
+import { IncludeAdult } from "./IncludeAdult";
+import { SelectYear } from "./SelectYear";
 
 let user: UserEvent;
 beforeEach(() => {
@@ -26,6 +26,7 @@ function renderForm() {
   );
 }
 
+// eslint-disable-next-line react-hooks/rules-of-hooks -- reads the mocked router, not a real hook call
 const push = () => vi.mocked(useRouter().push);
 const pushedParams = () =>
   Object.fromEntries(

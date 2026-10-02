@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
-import SubmitBtn from "@/Components/ui/SubmitBtn";
+import SubmitBtn from "./SubmitBtn";
 
 describe("SubmitBtn", () => {
   test("a submit button named btn with the search target as value", () => {

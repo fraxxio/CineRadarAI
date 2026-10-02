@@ -1,8 +1,8 @@
 import FiltersForm from "./FiltersForm";
-import { IncludeAdult } from "./ui/IncludeAdult";
-import { SelectYear } from "./ui/SelectYear";
-import LangSelect from "./ui/LangSelect";
-import { movieFilterValues } from "@/lib/validation";
+import { IncludeAdult } from "./IncludeAdult";
+import { SelectYear } from "./SelectYear";
+import LangSelect from "./LangSelect";
+import { movieFilterValues } from "../validation";
 
 type SearchResultsProps = {
   filterValues: movieFilterValues;

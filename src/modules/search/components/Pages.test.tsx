@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, test } from "vitest";
-import { Pages } from "@/Components/ui/Pages";
+import { Pages } from "./Pages";
 
 const fv = {
   query: "Fury",

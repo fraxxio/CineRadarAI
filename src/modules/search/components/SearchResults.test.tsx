@@ -1,12 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, test, vi } from "vitest";
-import SearchResults from "@/Components/SearchResults";
-import { getTitle } from "@/lib/searchTitle";
-import type { movieFilterValues } from "@/lib/validation";
-import { lastTmdbUrl, mockTmdb } from "../helpers/tmdb";
+import SearchResults from "./SearchResults";
+import { getTitle } from "../searchTitle";
+import type { movieFilterValues } from "../validation";
+import { lastTmdbUrl, mockTmdb } from "@test/helpers/tmdb";
 
 // async children can't render on the client under React 18: stub the card
-vi.mock("@/Components/ui/MovieCard", () => ({
+vi.mock("./MovieCard", () => ({
   default: ({ movie }: { movie: { id: number } }) => (
     <div data-testid="card">{movie.id}</div>
   ),

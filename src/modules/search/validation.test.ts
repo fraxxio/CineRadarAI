@@ -1,5 +1,5 @@
 import { describe, expect, it, test } from "vitest";
-import { movieFilterSchema } from "@/lib/validation";
+import { movieFilterSchema } from "./validation";
 
 describe("movieFilterSchema", () => {
   test("accepts an empty object", () => {

@@ -1,4 +1,4 @@
-type fetchMoviesProps = {
+export type fetchMoviesProps = {
   searchString?: string | undefined;
   language?: string | undefined;
   year?: string | undefined;
@@ -7,7 +7,7 @@ type fetchMoviesProps = {
   page?: string | undefined;
 };
 
-type Results = {
+export type Results = {
   adult: boolean;
   backdrop_path: string;
   genre_ids: Array<number>;
@@ -26,9 +26,15 @@ type Results = {
   vote_count: number;
 };
 
-type FetchedData = {
+export type FetchedData = {
   page: number;
   results: Results[];
   total_pages: number;
   total_results: number;
+};
+
+export type Language = {
+  iso_639_1: string;
+  english_name: string;
+  name: string;
 };

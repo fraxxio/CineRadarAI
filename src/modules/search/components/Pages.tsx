@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import React from "react";
 import { PageBtn } from "./PageBtn";
 import Link from "next/link";
-import { buildSearchURL } from "@/lib/utils";
+import { buildSearchURL } from "../buildSearchURL";
 
 type PagesProps = {
   totalResults: number;
