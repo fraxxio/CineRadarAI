@@ -9,14 +9,80 @@
             "name": "@google/genai",
             "message": "Only src/lib/llm/ may talk to Gemini, use llmService instead."
           }
+        ],
+        "patterns": [
+          {
+            "group": ["@/modules/*/*", "!@/modules/*/server", "!@/modules/*/actions"],
+            "message": "Import a module through its public entry: @/modules/<m>, /server or /actions. Inside a module, use relative imports."
+          }
         ]
       }
     ]
   },
   "overrides": [
     {
+      "files": ["src/infra/**", "src/shared/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@google/genai",
+                "message": "Only src/lib/llm/ may talk to Gemini, use llmService instead."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["@/modules/*"],
+                "message": "infra/ and shared/ must not depend on feature modules."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/shared/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@google/genai",
+                "message": "Only src/lib/llm/ may talk to Gemini, use llmService instead."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["@/modules/*"],
+                "message": "infra/ and shared/ must not depend on feature modules."
+              },
+              {
+                "group": ["@/infra/*"],
+                "message": "shared/ must not depend on infra/."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": ["src/lib/llm/**"],
-      "rules": { "no-restricted-imports": "off" }
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/modules/*/*", "!@/modules/*/server", "!@/modules/*/actions"],
+                "message": "Import a module through its public entry: @/modules/<m>, /server or /actions. Inside a module, use relative imports."
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

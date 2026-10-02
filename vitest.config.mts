@@ -1,11 +1,14 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   plugins: [react()], // F11: tsconfig has jsx: "preserve"
   resolve: {
-    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "@test": fileURLToPath(new URL("./tests", import.meta.url)),
+    },
   },
   test: {
     clearMocks: true,
@@ -37,7 +40,8 @@ export default defineConfig({
         test: {
           name: "unit",
           environment: "node",
-          include: ["tests/unit/**/*.test.ts"],
+          include: ["tests/unit/**/*.test.ts", "src/**/*.test.ts"],
+          exclude: [...configDefaults.exclude, "**/*.int.test.ts"],
         },
       },
       {
@@ -45,7 +49,7 @@ export default defineConfig({
         test: {
           name: "integration",
           environment: "node",
-          include: ["tests/integration/**/*.test.ts"],
+          include: ["tests/integration/**/*.test.ts", "src/**/*.int.test.ts"],
           setupFiles: ["./tests/setup/integration.ts"],
           globalSetup: ["./tests/setup/integration.global.ts"],
         },
@@ -58,6 +62,7 @@ export default defineConfig({
           include: [
             "tests/components/**/*.test.tsx",
             "tests/server-components/**/*.test.tsx",
+            "src/**/*.test.tsx",
           ],
           setupFiles: ["./tests/setup/components.tsx"],
         },
