@@ -1,8 +1,6 @@
 import { auth } from "@/infra/auth/auth";
-import { db } from "@/infra/db";
-import { lists } from "@/modules/my-list/server";
-import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { entryKeyInput, removeEntry } from "@/modules/my-list/server";
 
 export async function DELETE(request: Request) {
   const session = await auth();
@@ -11,41 +9,19 @@ export async function DELETE(request: Request) {
     return Response.json({ addToListResult: "fail" }, { status: 401 });
   }
 
-  const movieId = Number(request.headers.get("movieId"));
-  const type = request.headers.get("type");
-  if (
-    !Number.isInteger(movieId) ||
-    movieId <= 0 ||
-    (type !== "movie" && type !== "tv")
-  ) {
+  const parsed = entryKeyInput.safeParse({
+    movieId: request.headers.get("movieId"),
+    type: request.headers.get("type"),
+  });
+  if (!parsed.success) {
     return Response.json({ addToListResult: "fail" }, { status: 400 });
   }
 
   try {
-    // Find the existing row
-    const existingRows = await db
-      .select({ movies: lists.movies })
-      .from(lists)
-      .where(eq(lists.userId, userId))
-      .limit(1)
-      .all();
-
-    if (existingRows.length === 0) {
+    const hadList = await removeEntry(userId, parsed.data);
+    if (!hadList) {
       return Response.json({ addToListResult: "fail" });
     }
-
-    // Remove the entry; movie and TV ids can collide, so match on both
-    const updatedMovies = (existingRows[0].movies || []).filter(
-      (movie) => movie.movieId !== movieId || movie.type !== type,
-    );
-
-    // Update the list with the new movies array
-    await db
-      .update(lists)
-      .set({ movies: updatedMovies })
-      .where(eq(lists.userId, userId))
-      .execute();
-
     revalidatePath("/my-list", "page");
     return Response.json({ addToListResult: "success" });
   } catch (error) {

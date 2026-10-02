@@ -5,7 +5,11 @@ import { asUser } from "@test/helpers/auth";
 import { forceFailure, getMovies, seedList, seedUser } from "@test/helpers/db";
 import { makeMovie } from "@test/helpers/factories";
 
-vi.mock("@/infra/auth/auth", () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }));
+vi.mock("@/infra/auth/auth", () => ({
+  auth: vi.fn(),
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+}));
 
 // userId is ignored by the route (B2); it's sent to prove that
 const del = (
@@ -27,6 +31,7 @@ beforeEach(async () => {
   asUser(user);
 });
 
+// data behaviour (matching, no-op, concurrency) is covered by store.int.test.ts
 describe("DELETE /api/remove-from-list", () => {
   test("removes the matching entry and keeps the others", async () => {
     const keep = [makeMovie({ movieId: 1 }), makeMovie({ movieId: 2 })];
@@ -42,16 +47,6 @@ describe("DELETE /api/remove-from-list", () => {
     const res = await del(user.id, 550);
     expect(await res.json()).toEqual({ addToListResult: "fail" });
     expect(vi.mocked(revalidatePath)).not.toHaveBeenCalled();
-  });
-
-  test("returns success (no-op) when the movie isn't in the list", async () => {
-    const movies = [makeMovie({ movieId: 1 })];
-    await seedList(user.id, movies);
-
-    const res = await del(user.id, 999);
-
-    expect(await res.json()).toEqual({ addToListResult: "success" });
-    expect(await getMovies(user.id)).toEqual(movies);
   });
 
   test("returns fail when the update throws", async () => {
@@ -73,16 +68,7 @@ describe("DELETE /api/remove-from-list", () => {
     expect(vi.mocked(revalidatePath)).toHaveBeenCalledWith("/my-list", "page");
   });
 
-  test("[B4] removing a movie keeps a TV show with the same id", async () => {
-    const show = makeMovie({ movieId: 550, type: "tv" });
-    await seedList(user.id, [makeMovie({ movieId: 550, type: "movie" }), show]);
-
-    await del(user.id, 550, { type: "movie" });
-
-    expect(await getMovies(user.id)).toEqual([show]);
-  });
-
-  test("[B4] removing a TV show keeps a movie with the same id", async () => {
+  test("[B4] passes the type header to the store", async () => {
     const movie = makeMovie({ movieId: 550, type: "movie" });
     await seedList(user.id, [movie, makeMovie({ movieId: 550, type: "tv" })]);
 

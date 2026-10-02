@@ -7,7 +7,11 @@ import { forceFailure, getMovies, seedList, seedUser } from "@test/helpers/db";
 import { makeMovie } from "@test/helpers/factories";
 import { jsonRequest } from "@test/helpers/requests";
 
-vi.mock("@/infra/auth/auth", () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }));
+vi.mock("@/infra/auth/auth", () => ({
+  auth: vi.fn(),
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+}));
 
 const put = (body: unknown) =>
   PUT(jsonRequest("PUT", "/api/add-to-list", body));
@@ -39,34 +43,11 @@ const stored = {
   type: "movie",
 };
 
+// data behaviour (append, replace, B4, concurrency) is covered by store.int.test.ts
 describe("PUT /api/add-to-list", () => {
-  test("inserts a new row when the user has none", async () => {
+  test("saves the parsed entry to the session user's list", async () => {
     await put(base);
     expect(await getMovies(user.id)).toEqual([stored]);
-  });
-
-  test("appends to an existing list", async () => {
-    const existing = makeMovie({ movieId: 1 });
-    await seedList(user.id, [existing]);
-
-    await put(base);
-
-    const movies = await getMovies(user.id);
-    expect(movies).toHaveLength(2);
-    expect(movies![0]).toEqual(existing);
-    expect(movies![1]).toEqual(stored);
-  });
-
-  test("replaces an existing entry instead of duplicating it", async () => {
-    await seedList(user.id, [
-      makeMovie({ movieId: 550, status: "Planning to watch" }),
-    ]);
-
-    await put({ ...base, status: "Watching", rating: "3" });
-
-    const movies = await getMovies(user.id);
-    expect(movies).toHaveLength(1);
-    expect(movies![0]).toMatchObject({ status: "Watching", rating: 3 });
   });
 
   it.each([
@@ -90,12 +71,12 @@ describe("PUT /api/add-to-list", () => {
     expect(vi.mocked(revalidatePath)).toHaveBeenCalledWith("/my-list", "page");
   });
 
-  describe("DB failures", () => {
+  describe("store failures", () => {
     beforeEach(() => {
       vi.spyOn(console, "error").mockImplementation(() => {});
     });
 
-    test("returns fail when the update throws", async () => {
+    test("returns fail and doesn't revalidate when the write throws", async () => {
       const existing = [makeMovie({ movieId: 1 })];
       await seedList(user.id, existing);
       await forceFailure("UPDATE", "lists");
@@ -107,18 +88,8 @@ describe("PUT /api/add-to-list", () => {
       expect(await getMovies(user.id)).toEqual(existing);
     });
 
-    test("returns fail when the insert throws", async () => {
-      await forceFailure("INSERT", "lists");
-
-      const res = await put(base);
-
-      expect(await res.json()).toEqual({ addToListResult: "fail" });
-      expect(vi.mocked(revalidatePath)).not.toHaveBeenCalled();
-      expect(await getMovies(user.id)).toBeUndefined();
-    });
-
-    test("[B8] returns fail when the initial select throws", async () => {
-      vi.spyOn(db, "select").mockImplementationOnce(() => {
+    test("[B8] returns fail when the transaction can't start", async () => {
+      vi.spyOn(db, "transaction").mockImplementationOnce(() => {
         throw new Error("db down");
       });
 
@@ -127,22 +98,6 @@ describe("PUT /api/add-to-list", () => {
       await expect(res).resolves.toBeInstanceOf(Response);
       expect(await (await res).json()).toEqual({ addToListResult: "fail" });
     });
-  });
-
-  test("[B4] adding a TV show does not overwrite a movie with the same id", async () => {
-    const movie = makeMovie({ movieId: 550, type: "movie" });
-    await seedList(user.id, [movie]);
-
-    await put({ ...base, type: "tv", title: "Show" });
-
-    const movies = await getMovies(user.id);
-    expect(movies).toHaveLength(2);
-    expect(movies).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ movieId: 550, type: "movie" }),
-        expect.objectContaining({ movieId: 550, type: "tv" }),
-      ]),
-    );
   });
 
   describe("authorization", () => {

@@ -69,7 +69,10 @@ export async function POST(request: NextRequest) {
     }
     // e.g. expired/unknown previous_interaction_id, invalid key, quota
     console.error("Gemini interaction error:", error);
-    return NextResponse.json({ error: "Failed to start chat" }, { status: 502 });
+    return NextResponse.json(
+      { error: "Failed to start chat" },
+      { status: 502 },
+    );
   }
 
   // encode events as NDJSON
