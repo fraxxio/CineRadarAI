@@ -7,58 +7,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/shared/ui/Modal";
-
-type GalleryProps = {
-  backdrops: [
-    {
-      aspect_ratio: number;
-      height: number;
-      iso_639_1: string | null;
-      file_path: string;
-      vote_average: number;
-      vote_count: number;
-      width: number;
-    },
-  ];
-};
-
-async function fetchGallery(id: number, mediaType: "movie" | "tv") {
-  "use server";
-
-  const options = {
-    method: "GET",
-    headers: {
-      accept: "application/json",
-      Authorization: `Bearer ${process.env.TMDB_ACCESS_TOKEN}`,
-    },
-  };
-
-  const fetchURL = `${process.env.TMDB_BASE_URL}/${mediaType}/${id}/images`;
-
-  try {
-    const response = await fetch(fetchURL, options);
-    if (!response.ok) {
-      const error = new Error(
-        `Failed to fetch ${mediaType} images (Status: ${response.status})`,
-      );
-      throw error;
-    }
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`Error fetching ${mediaType} images:`, error);
-    throw error;
-  }
-}
+import type { MediaType } from "@/infra/tmdb";
+import { getTitleImages } from "@/infra/tmdb/server";
 
 export default async function Gallery({
   id,
   mediaType,
 }: {
   id: number;
-  mediaType: "movie" | "tv";
+  mediaType: MediaType;
 }) {
-  const { backdrops }: GalleryProps = await fetchGallery(id, mediaType);
+  const { backdrops } = await getTitleImages(mediaType, id);
 
   return (
     <section className="mt-20 rounded-sm border border-border-clr bg-primary-bg py-4">
@@ -74,10 +33,10 @@ export default async function Gallery({
       <div className="grid grid-cols-3 place-items-center gap-4 px-8 pb-4 max-[980px]:grid-cols-2 max-md:grid-cols-1 max-sm:px-2">
         {backdrops.slice(0, 9).map((image) => {
           return (
-            <Dialog key={image.file_path}>
+            <Dialog key={image.filePath}>
               <DialogTrigger>
                 <Image
-                  src={`https://image.tmdb.org/t/p/w780${image.file_path}`}
+                  src={`https://image.tmdb.org/t/p/w780${image.filePath}`}
                   alt="Gallery image"
                   width={650}
                   height={366}
@@ -88,12 +47,12 @@ export default async function Gallery({
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>
-                    {image.vote_count} people rated this picture:{" "}
-                    {image.vote_average.toFixed(1)}
+                    {image.voteCount} people rated this picture:{" "}
+                    {image.voteAverage.toFixed(1)}
                   </DialogTitle>
                   <DialogDescription>
                     <Image
-                      src={`https://image.tmdb.org/t/p/w1280${image.file_path}`}
+                      src={`https://image.tmdb.org/t/p/w1280${image.filePath}`}
                       alt="Gallery image"
                       width={1920}
                       height={1080}

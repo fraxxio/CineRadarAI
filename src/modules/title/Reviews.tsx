@@ -2,63 +2,17 @@ import { CircleUser, Star } from "lucide-react";
 import DOMPurify from "isomorphic-dompurify";
 import Image from "next/image";
 import React from "react";
-
-type ProvidersProps = {
-  results: [
-    {
-      author: string;
-      author_details: {
-        name: string;
-        username: string;
-        avatar_path: string;
-        rating: number;
-      };
-      content: string;
-      created_at: string;
-      id: string;
-      updated_at: string;
-      url: string;
-    },
-  ];
-};
-
-async function fetchReviews(id: number, mediaType: "movie" | "tv") {
-  "use server";
-
-  const options = {
-    method: "GET",
-    headers: {
-      accept: "application/json",
-      Authorization: `Bearer ${process.env.TMDB_ACCESS_TOKEN}`,
-    },
-  };
-
-  const fetchURL = `${process.env.TMDB_BASE_URL}/${mediaType}/${id}/reviews?language=en-US&page=1`;
-
-  try {
-    const response = await fetch(fetchURL, options);
-    if (!response.ok) {
-      const error = new Error(
-        `Failed to fetch ${mediaType} reviews (Status: ${response.status})`,
-      );
-      throw error;
-    }
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`Error fetching ${mediaType} reviews:`, error);
-    throw error;
-  }
-}
+import type { MediaType } from "@/infra/tmdb";
+import { getTitleReviews } from "@/infra/tmdb/server";
 
 export default async function Reviews({
   id,
   mediaType,
 }: {
   id: number;
-  mediaType: "movie" | "tv";
+  mediaType: MediaType;
 }) {
-  const { results }: ProvidersProps = await fetchReviews(id, mediaType);
+  const { results } = await getTitleReviews(mediaType, id);
 
   return (
     <section
@@ -76,11 +30,11 @@ export default async function Reviews({
             className="border-b border-border-clr p-4 last:border-none"
           >
             <div className="flex items-end gap-2 max-md:flex-col max-md:items-start">
-              {review.author_details.avatar_path === null ? (
+              {review.avatarPath === null ? (
                 <CircleUser size={70} strokeWidth={1} />
               ) : (
                 <Image
-                  src={`https://image.tmdb.org/t/p/w500${review.author_details.avatar_path}`}
+                  src={`https://image.tmdb.org/t/p/w500${review.avatarPath}`}
                   alt={review.author}
                   width={100}
                   height={100}
@@ -94,7 +48,7 @@ export default async function Reviews({
                   Rating:
                   <span className="flex items-center gap-1 text-[1.2rem] text-yellow-600">
                     <Star size={18} />
-                    {review.author_details.rating}/10
+                    {review.rating}/10
                   </span>
                 </p>
               </div>
