@@ -1,11 +1,10 @@
-import Details from "@/Components/Details";
-import Gallery from "@/Components/Gallery";
-import Reviews from "@/Components/Reviews";
-import Trailer from "@/Components/Trailer";
-import { DetailsSkeleton } from "@/Components/skeletons/DetailsSkeleton";
-import { GallerySkeleton } from "@/Components/skeletons/GallerySkeleton";
-import { ReviewsSkeleton } from "@/Components/skeletons/ReviewsSkeleton";
-import { TrailerSkeleton } from "@/Components/skeletons/TrailerSkeleton";
+import { Details, Gallery, Reviews, Trailer } from "@/modules/title/server";
+import {
+  DetailsSkeleton,
+  GallerySkeleton,
+  ReviewsSkeleton,
+  TrailerSkeleton,
+} from "@/modules/title";
 import { Metadata } from "next";
 import { Suspense } from "react";
 

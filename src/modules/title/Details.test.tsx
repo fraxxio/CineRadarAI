@@ -1,10 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import Details from "@/Components/Details";
+import Details from "./Details";
 import AddToListBtn from "@/Components/ui/AddToListBtn";
 import { getSession } from "@/infra/auth/session";
-import { makeSession } from "../helpers/factories";
-import { mockTmdb, tmdbFixture } from "../helpers/tmdb";
+import { makeSession } from "@test/helpers/factories";
+import { mockTmdb, tmdbFixture } from "@test/helpers/tmdb";
 
 vi.mock("@/Components/ui/AddToListBtn", () => ({ default: vi.fn(() => null) }));
 

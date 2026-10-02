@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import { generateMetadata as movieMetadata } from "@/app/search/movie/[id]/page";
 import { generateMetadata as tvMetadata } from "@/app/search/tv/[id]/page";
-import { lastTmdbUrl, mockTmdb, tmdbFixture } from "../helpers/tmdb";
+import { lastTmdbUrl, mockTmdb, tmdbFixture } from "@test/helpers/tmdb";
 
 describe("details page generateMetadata", () => {
   test("movie title", async () => {

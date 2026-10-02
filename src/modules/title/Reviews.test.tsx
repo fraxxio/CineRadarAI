@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
-import Reviews from "@/Components/Reviews";
-import { mockTmdb, tmdbFixture } from "../helpers/tmdb";
+import Reviews from "./Reviews";
+import { mockTmdb, tmdbFixture } from "@test/helpers/tmdb";
 
 const fixture = tmdbFixture("reviews"); // 12 reviews
 

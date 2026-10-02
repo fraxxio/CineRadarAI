@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
-import Trailer from "@/Components/Trailer";
-import { mockTmdb } from "../helpers/tmdb";
+import Trailer from "./Trailer";
+import { mockTmdb } from "@test/helpers/tmdb";
 
 const video = (type: string, key: string, site = "YouTube") => ({
   type,

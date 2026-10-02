@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency } from "./formatCurrency";
 import {
   Clapperboard,
   Film,
@@ -8,7 +8,7 @@ import {
   MessageCircleMore,
   Star,
 } from "lucide-react";
-import AddToListBtn from "./ui/AddToListBtn";
+import AddToListBtn from "@/Components/ui/AddToListBtn";
 import { getSession } from "@/infra/auth/session";
 
 type DetailsProps = {
