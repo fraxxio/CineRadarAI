@@ -3,16 +3,21 @@ import { getSession } from "@/infra/auth/session";
 import { getEntries } from "../store";
 import { viewEntries, type ListView } from "../view";
 
-export async function ListLength(view: ListView) {
+// both components stream in their own Suspense boundary; getSession and
+// getEntries are cached per request, so the list is read once
+async function viewedEntries(view: ListView) {
   const session = (await getSession())!;
-  const movies = viewEntries(await getEntries(session.user.id), view);
+  return viewEntries(await getEntries(session.user.id), view);
+}
+
+export async function ListLength(view: ListView) {
+  const movies = await viewedEntries(view);
 
   return <p className="text-lg">Length: {movies.length}</p>;
 }
 
 export default async function MyListItems(view: ListView) {
-  const session = (await getSession())!;
-  const movies = viewEntries(await getEntries(session.user.id), view);
+  const movies = await viewedEntries(view);
 
   return (
     <div className="border-t border-border-clr">
@@ -22,7 +27,14 @@ export default async function MyListItems(view: ListView) {
         </div>
       ) : (
         movies.map((movie, index) => {
-          return <ListCard key={movie.movieId} movie={movie} index={index} />;
+          // movie and TV ids can collide
+          return (
+            <ListCard
+              key={`${movie.type}-${movie.movieId}`}
+              movie={movie}
+              index={index}
+            />
+          );
         })
       )}
     </div>
