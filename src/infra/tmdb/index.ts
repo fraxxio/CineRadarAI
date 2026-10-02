@@ -13,4 +13,9 @@ export type {
   TitleVideo,
   TvDetails,
 } from "./types";
-export { tmdbImageUrl, tmdbWatchUrl, type ImageSize } from "./urls";
+export {
+  TMDB_SITE_URL,
+  tmdbImageUrl,
+  tmdbWatchUrl,
+  type ImageSize,
+} from "./urls";

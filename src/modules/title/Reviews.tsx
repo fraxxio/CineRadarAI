@@ -2,7 +2,7 @@ import { CircleUser, Star } from "lucide-react";
 import DOMPurify from "isomorphic-dompurify";
 import Image from "next/image";
 import React from "react";
-import type { MediaType } from "@/infra/tmdb";
+import { tmdbImageUrl, type MediaType } from "@/infra/tmdb";
 import { getTitleReviews } from "@/infra/tmdb/server";
 
 export default async function Reviews({
@@ -24,17 +24,18 @@ export default async function Reviews({
         <p className="text-center text-lg">No reviews were found.</p>
       )}
       {results.slice(0, 10).map((review) => {
+        const avatar = tmdbImageUrl(review.avatarPath, "w500");
         return (
           <div
             key={review.id}
             className="border-b border-border-clr p-4 last:border-none"
           >
             <div className="flex items-end gap-2 max-md:flex-col max-md:items-start">
-              {review.avatarPath === null ? (
+              {avatar === null ? (
                 <CircleUser size={70} strokeWidth={1} />
               ) : (
                 <Image
-                  src={`https://image.tmdb.org/t/p/w500${review.avatarPath}`}
+                  src={avatar}
                   alt={review.author}
                   width={100}
                   height={100}

@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { AddToListBtn } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
-import type { MediaType } from "@/infra/tmdb";
+import { tmdbImageUrl, tmdbWatchUrl, type MediaType } from "@/infra/tmdb";
 import { getTitle } from "@/infra/tmdb/server";
 
 export default async function Details({
@@ -32,13 +32,14 @@ export default async function Details({
     voteCount,
     status,
   } = details;
+  const poster = tmdbImageUrl(posterPath || backdropPath, "w500");
   const session = await getSession();
 
   return (
     <section className="mt-20 flex gap-32 rounded-sm border border-border-clr bg-primary-bg max-[950px]:flex-col max-[950px]:gap-4">
-      {posterPath || backdropPath ? (
+      {poster ? (
         <Image
-          src={`https://image.tmdb.org/t/p/w500${posterPath || backdropPath}`}
+          src={poster}
           alt={title}
           width={650}
           height={366}
@@ -115,7 +116,7 @@ export default async function Details({
           <a
             target="_blank"
             rel="noopener noreferrer"
-            href={`https://www.themoviedb.org/${mediaType}/${id}/watch`}
+            href={tmdbWatchUrl(mediaType, id)}
             className="underline underline-offset-4"
           >
             Where to watch?

@@ -1,4 +1,5 @@
 import React from "react";
+import { TMDB_SITE_URL } from "@/infra/tmdb";
 
 export default function page() {
   return (
@@ -41,7 +42,7 @@ export default function page() {
           <a
             target="_blank"
             rel="noreferrer noopener"
-            href="https://www.themoviedb.org"
+            href={TMDB_SITE_URL}
             className="underline"
           >
             TMDB

@@ -1,5 +1,7 @@
 import type { MediaType, TitleId } from "./types";
 
+export const TMDB_SITE_URL = "https://www.themoviedb.org";
+
 export type ImageSize = "w500" | "w780" | "w1280";
 
 // null when TMDB has no image, so callers can show a placeholder
@@ -11,5 +13,5 @@ export function tmdbImageUrl(
 }
 
 export function tmdbWatchUrl(type: MediaType, id: TitleId): string {
-  return `https://www.themoviedb.org/${type}/${id}/watch`;
+  return `${TMDB_SITE_URL}/${type}/${id}/watch`;
 }

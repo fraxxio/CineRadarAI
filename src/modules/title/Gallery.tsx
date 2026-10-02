@@ -7,7 +7,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/shared/ui/Modal";
-import type { MediaType } from "@/infra/tmdb";
+import { tmdbImageUrl, type MediaType } from "@/infra/tmdb";
 import { getTitleImages } from "@/infra/tmdb/server";
 
 export default async function Gallery({
@@ -36,7 +36,7 @@ export default async function Gallery({
             <Dialog key={image.filePath}>
               <DialogTrigger>
                 <Image
-                  src={`https://image.tmdb.org/t/p/w780${image.filePath}`}
+                  src={tmdbImageUrl(image.filePath, "w780")!}
                   alt="Gallery image"
                   width={650}
                   height={366}
@@ -52,7 +52,7 @@ export default async function Gallery({
                   </DialogTitle>
                   <DialogDescription>
                     <Image
-                      src={`https://image.tmdb.org/t/p/w1280${image.filePath}`}
+                      src={tmdbImageUrl(image.filePath, "w1280")!}
                       alt="Gallery image"
                       width={1920}
                       height={1080}

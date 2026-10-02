@@ -50,6 +50,12 @@ describe("ListCard", () => {
     expect(screen.getByText("#3")).toBeInTheDocument();
   });
 
+  test("no image -> placeholder instead of a broken poster", () => {
+    renderCard({ image: "" });
+    expect(screen.getByText("No image")).toBeInTheDocument();
+    expect(screen.queryByAltText("Fury")).toBeNull();
+  });
+
   it.each([
     ["Watching", "lucide-eye"],
     ["Completed", "lucide-circle-check"],

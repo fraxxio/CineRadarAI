@@ -4,7 +4,7 @@ import { NoImage } from "./NoImage";
 import Link from "next/link";
 import { AddToListBtn } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
-import type { MediaType, TitleSummary } from "@/infra/tmdb";
+import { tmdbImageUrl, type MediaType, type TitleSummary } from "@/infra/tmdb";
 
 type MovieCardProps = {
   movie: TitleSummary;
@@ -23,6 +23,7 @@ export default async function MovieCard({
   },
   type,
 }: MovieCardProps) {
+  const poster = tmdbImageUrl(posterPath || backdropPath, "w500");
   const session = await getSession();
   return (
     <div className="relative w-full border border-border-clr bg-primary-bg duration-300 hover:border-primary-text hover:shadow-md hover:shadow-primary-text">
@@ -34,11 +35,11 @@ export default async function MovieCard({
         type={type}
       />
       <Link href={`/search/${type}/${id}`}>
-        {posterPath === null && backdropPath === null ? (
+        {poster === null ? (
           <NoImage title={title} />
         ) : (
           <Image
-            src={`https://image.tmdb.org/t/p/w500${posterPath || backdropPath}`}
+            src={poster}
             alt={title}
             width={150}
             height={150}

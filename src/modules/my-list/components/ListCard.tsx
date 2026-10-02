@@ -1,9 +1,10 @@
-import { CircleCheck, Eye, NotebookPen, Star } from "lucide-react";
+import { CircleCheck, Eye, ImageOff, NotebookPen, Star } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import React from "react";
 import EditListBtn from "./EditListBtn";
 import DeleteListBtn from "./DeleteListBtn";
+import { tmdbImageUrl } from "@/infra/tmdb";
 
 type ListCardProps = {
   movie: {
@@ -24,16 +25,26 @@ type ListCardProps = {
 };
 
 export default function ListCard({ movie, index, user }: ListCardProps) {
+  // entries saved without a poster or backdrop have an empty image
+  const poster = tmdbImageUrl(movie.image, "w500");
+
   return (
     <div className="relative flex gap-8 border-b border-border-clr last:border-none max-[480px]:flex-col max-[480px]:gap-0">
-      <Image
-        src={`https://image.tmdb.org/t/p/w500${movie.image}`}
-        alt={movie.name}
-        width={400}
-        height={400}
-        className="max-h-[225px] border-r border-border-clr object-cover max-[840px]:max-w-[250px] max-[567px]:max-w-[180px] max-[480px]:w-full max-[480px]:max-w-full max-[480px]:border-b max-[480px]:border-r-0"
-        sizes="(max-width: 768px) 100vw, 33vw"
-      />
+      {poster ? (
+        <Image
+          src={poster}
+          alt={movie.name}
+          width={400}
+          height={400}
+          className="max-h-[225px] border-r border-border-clr object-cover max-[840px]:max-w-[250px] max-[567px]:max-w-[180px] max-[480px]:w-full max-[480px]:max-w-full max-[480px]:border-b max-[480px]:border-r-0"
+          sizes="(max-width: 768px) 100vw, 33vw"
+        />
+      ) : (
+        <div className="flex h-[225px] w-[400px] shrink-0 flex-col items-center justify-center gap-2 border-r border-border-clr bg-slate-950 max-[840px]:w-[250px] max-[567px]:w-[180px] max-[480px]:w-full max-[480px]:border-b max-[480px]:border-r-0">
+          <ImageOff aria-label="No image available" />
+          <p>No image</p>
+        </div>
+      )}
       <div className="flex flex-grow justify-between py-4 pr-8 max-[610px]:flex-col max-[480px]:px-4">
         <div>
           <Link
