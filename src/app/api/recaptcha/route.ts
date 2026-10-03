@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isRecaptchaEnabled } from "@/lib/recaptcha";
+import { isRecaptchaEnabled } from "@/infra/recaptcha/recaptcha";
 
 export async function POST(request: Request) {
   if (process.env.AI_CHAT_ENABLED !== "true") {

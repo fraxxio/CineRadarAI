@@ -1,4 +1,4 @@
-import { DetailsPageSkeleton } from "@/Components/skeletons/DetailsPageSkeleton";
+import { DetailsPageSkeleton } from "@/modules/title";
 
 export default function Loading() {
   return <DetailsPageSkeleton />;

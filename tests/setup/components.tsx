@@ -35,7 +35,7 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 // server actions pull in next-auth and the DB
-vi.mock("@/app/actions", () => ({ SignOut: vi.fn(), DeleteUser: vi.fn() }));
+vi.mock("@/modules/account/actions", () => ({ SignOut: vi.fn(), DeleteUser: vi.fn() }));
 vi.mock("react-google-recaptcha-v3", () => ({
   useGoogleReCaptcha: vi.fn(() => ({ executeRecaptcha: undefined })),
   GoogleReCaptchaProvider: ({ children }: { children: React.ReactNode }) =>

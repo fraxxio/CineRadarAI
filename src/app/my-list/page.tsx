@@ -1,10 +1,14 @@
-import MyListItems, { ListLength } from "@/Components/MyListItems";
-import { ListLengthSkeleton } from "@/Components/skeletons/ListLengthSkeleton";
-import { ListRowsSkeleton } from "@/Components/skeletons/ListRowsSkeleton";
-import ListSortBtn from "@/Components/ui/ListSortBtn";
-import ListSortLink from "@/Components/ui/ListSortLink";
-import { getSession } from "@/lib/session";
-import { ListSortValues } from "@/lib/myList";
+import { getEntries } from "@/modules/my-list/server";
+import {
+  ListLength,
+  ListLengthSkeleton,
+  MyListItems,
+  ListRowsSkeleton,
+  ListSortBtn,
+  ListSortLink,
+  type ListView,
+} from "@/modules/my-list";
+import { getSession } from "@/infra/auth/session";
 import { RotateCcw } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Metadata } from "next";
@@ -17,7 +21,7 @@ export const metadata: Metadata = {
 };
 
 type UrlParams = {
-  searchParams: Partial<ListSortValues>;
+  searchParams: Partial<ListView>;
 };
 
 export default async function page({
@@ -30,8 +34,10 @@ export default async function page({
   const safeSession = session!;
 
   const sortValues = { rating, status, type };
+  // not awaited: both Suspense boundaries below wait for it and stream separately
+  const entries = getEntries(safeSession.user.id);
   const sortKey = `${type}-${status}-${rating}`;
-  const sortHref = (value: Partial<ListSortValues>) =>
+  const sortHref = (value: Partial<ListView>) =>
     `/my-list?${new URLSearchParams({ ...sortValues, ...value })}`;
 
   return (
@@ -53,7 +59,7 @@ export default async function page({
             <b>{safeSession.user.name}</b> movie and TV show list.
           </h1>
           <Suspense key={sortKey} fallback={<ListLengthSkeleton />}>
-            <ListLength {...sortValues} />
+            <ListLength entries={entries} view={sortValues} />
           </Suspense>
         </div>
         <div className="flex items-center justify-center gap-8 pb-8 max-[1070px]:flex-col">
@@ -130,7 +136,7 @@ export default async function page({
           </div>
         </div>
         <Suspense key={sortKey} fallback={<ListRowsSkeleton />}>
-          <MyListItems {...sortValues} />
+          <MyListItems entries={entries} view={sortValues} />
         </Suspense>
       </section>
     </main>

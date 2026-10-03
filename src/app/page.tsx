@@ -1,7 +1,7 @@
-import ChatAssistant from "@/Components/ChatAssistant";
-import RecaptchaWrapper from "@/Components/RecaptchaWrapper";
-import DeleteResult from "@/Components/ui/DeleteResult";
-import { isRecaptchaEnabled } from "@/lib/recaptcha";
+import { ChatAssistant } from "@/modules/chat";
+import RecaptchaWrapper from "@/infra/recaptcha/RecaptchaWrapper";
+import { DeleteResult } from "@/modules/account";
+import { isRecaptchaEnabled } from "@/infra/recaptcha/recaptcha";
 
 export const runtime = "edge";
 

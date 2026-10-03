@@ -1,4 +1,4 @@
-import { signIn } from "@/auth";
+import { signIn } from "@/infra/auth/auth";
 import React from "react";
 
 // keep only the path, so the redirect can never leave the site

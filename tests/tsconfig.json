@@ -2,7 +2,12 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "target": "ES2022",
-    "incremental": false
+    "incremental": false,
+    // replaces the root paths, so "@/*" is repeated
+    "paths": {
+      "@/*": ["../src/*"],
+      "@test/*": ["./*"]
+    }
   },
   "include": [
     "../next-env.d.ts",

@@ -1,15 +1,7 @@
-"use client";
-import { usePathname } from "next/navigation";
-import { DetailsPageSkeleton } from "@/Components/skeletons/DetailsPageSkeleton";
-import { SearchPageSkeleton } from "@/Components/skeletons/SearchPageSkeleton";
+import { SearchLoading } from "@/modules/search";
 
-// Also shown when navigating into /search/movie|tv/[id] from outside /search
+// not a client component: that would bundle the whole @/modules/search barrel,
+// zod included, into the browser
 export default function Loading() {
-  const pathname = usePathname();
-
-  return pathname.startsWith("/search/") ? (
-    <DetailsPageSkeleton />
-  ) : (
-    <SearchPageSkeleton />
-  );
+  return <SearchLoading />;
 }

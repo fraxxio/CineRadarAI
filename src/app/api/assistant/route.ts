@@ -4,8 +4,9 @@ import {
   MAX_PROMPT_LENGTH,
   MAX_STOPPED_TEXT_LENGTH,
   MAX_STOPPED_TURNS,
-} from "@/lib/chatLimits";
-import { streamChatReply } from "@/lib/llm/llmService";
+  type ChatStreamEvent,
+} from "@/modules/chat";
+import { streamChatReply } from "@/modules/chat/server";
 
 export const runtime = "edge";
 

@@ -1,4 +1,4 @@
-export { auth as middleware } from "./auth";
+export { auth as middleware } from "@/infra/auth/auth";
 
 // runs on every page so the session cookie expiry keeps rolling
 export const config = {
