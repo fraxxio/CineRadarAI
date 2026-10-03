@@ -125,7 +125,7 @@ export default function ListEntryDialog({
           className={`${fullSize ? "mt-6 block py-1" : "absolute right-2 top-2 border border-border-clr bg-primary-bg p-2 hover:pl-24 [&_span]:pointer-events-none [&_span]:opacity-0 [&_span]:hover:opacity-100 [&_span]:hover:duration-200"} flex items-center gap-2 rounded-md duration-200 hover:bg-primary-text hover:text-primary-bg`}
         >
           <div
-            className={`relative ${fullSize && "flex flex-row-reverse items-center gap-2"}`}
+            className={`relative ${fullSize ? "flex flex-row-reverse items-center gap-2" : ""}`}
           >
             <span
               className={`${fullSize ? "pr-1" : "absolute right-6 top-0 w-[6rem] text-primary-bg"}`}

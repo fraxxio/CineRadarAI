@@ -1,5 +1,5 @@
 import type { MediaType } from "@/infra/tmdb";
-import { LIST_STATUSES, type ListEntry, type ListStatusSlug } from "./entry";
+import { LIST_STATUSES, type ListStatusSlug, type StoredEntry } from "./entry";
 
 // the /my-list search params
 export type ListView = {
@@ -9,7 +9,7 @@ export type ListView = {
 };
 
 export const viewEntries = (
-  entries: ListEntry[],
+  entries: StoredEntry[],
   { type, status, rating }: ListView,
 ) => {
   if (type !== "both") {
@@ -20,7 +20,7 @@ export const viewEntries = (
     entries = entries.filter((entry) => entry.status === statusValue);
   }
 
-  const compare = (a: ListEntry, b: ListEntry) =>
+  const compare = (a: StoredEntry, b: StoredEntry) =>
     rating === "asc" ? a.rating - b.rating : b.rating - a.rating;
   // copy so the cached array isn't sorted in place
   return [...entries].sort(compare);

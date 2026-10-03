@@ -1,12 +1,15 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, test } from "vitest";
 import ListCard from "./ListCard";
-import type { ListStatus } from "../entry";
+import type { StoredEntry } from "../entry";
 import { makeMovie } from "@test/helpers/factories";
 
-const renderCard = (overrides: Parameters<typeof makeMovie>[0] = {}) =>
+const renderCard = (overrides: Partial<StoredEntry> = {}) =>
   render(
-    <ListCard movie={makeMovie({ movieId: 550, ...overrides })} index={2} />,
+    <ListCard
+      movie={{ ...makeMovie({ movieId: 550 }), ...overrides }}
+      index={2}
+    />,
   );
 
 describe("ListCard", () => {
@@ -59,7 +62,7 @@ describe("ListCard", () => {
     ["Planning to watch", "lucide-notebook-pen"],
     // rows saved before the payload was validated
     ["Dropped", "lucide-notebook-pen"],
-  ] as [ListStatus, string][])("status %s -> %s icon", (status, icon) => {
+  ])("status %s -> %s icon", (status, icon) => {
     const { container } = renderCard({ status });
     expect(screen.getByText(status)).toBeInTheDocument();
     expect(container.querySelector(`svg.${icon}`)).not.toBeNull();

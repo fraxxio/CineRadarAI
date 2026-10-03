@@ -70,9 +70,9 @@ describe("RemoveEntryButton", () => {
         headers: expect.objectContaining({ movieId: "550", type: "tv" }),
       }),
     );
-    // the route takes the user from the session (B2)
+    // only the entry key: the route takes the user from the session (B2)
     const headers = fetch.mock.calls[0][1]!.headers as Record<string, string>;
-    expect(headers).not.toHaveProperty("userId");
+    expect(Object.keys(headers)).toEqual(["movieId", "type"]);
   });
 
   test("success toast names the title", async () => {

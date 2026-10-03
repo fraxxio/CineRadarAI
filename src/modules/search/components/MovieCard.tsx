@@ -3,15 +3,15 @@ import Image from "next/image";
 import { NoImage } from "./NoImage";
 import Link from "next/link";
 import { ListEntryDialog } from "@/modules/my-list";
-import { getSession } from "@/infra/auth/session";
 import { tmdbImageUrl, type MediaType, type TitleSummary } from "@/infra/tmdb";
 
 type MovieCardProps = {
   movie: TitleSummary;
   type: MediaType;
+  signedIn: boolean;
 };
 
-export default async function MovieCard({
+export default function MovieCard({
   movie: {
     id,
     title,
@@ -22,14 +22,14 @@ export default async function MovieCard({
     voteCount,
   },
   type,
+  signedIn,
 }: MovieCardProps) {
   const poster = tmdbImageUrl(posterPath || backdropPath, "w500");
-  const session = await getSession();
   return (
     <div className="relative w-full border border-border-clr bg-primary-bg duration-300 hover:border-primary-text hover:shadow-md hover:shadow-primary-text">
       <ListEntryDialog
         mode="add"
-        signedIn={session?.user !== undefined}
+        signedIn={signedIn}
         movieId={id}
         title={title}
         image={backdropPath || posterPath || ""}

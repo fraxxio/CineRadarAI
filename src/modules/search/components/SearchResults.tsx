@@ -1,5 +1,6 @@
 import { movieFilterValues } from "../validation";
 import { findTitles } from "@/infra/tmdb/server";
+import { getSession } from "@/infra/auth/session";
 import MovieCard from "./MovieCard";
 import { Pages } from "./Pages";
 
@@ -19,14 +20,19 @@ export default async function SearchResults({
     .filter((word) => word.length > 0)
     .join("|");
 
-  const titles = await findTitles({
-    mediaType,
-    query: searchString,
-    language,
-    year,
-    includeAdult: adult,
-    page,
-  });
+  const [titles, session] = await Promise.all([
+    findTitles({
+      mediaType,
+      query: searchString,
+      language,
+      year,
+      includeAdult: adult,
+      page,
+    }),
+    // read once here, not per card
+    getSession(),
+  ]);
+  const signedIn = session?.user !== undefined;
 
   return (
     <section className="w-full max-w-[70%] max-lg:max-w-full">
@@ -40,7 +46,14 @@ export default async function SearchResults({
       ) : (
         <div className="grid grid-cols-3 gap-4 max-[700px]:grid-cols-2 max-[450px]:grid-cols-1">
           {titles.results.map((title) => {
-            return <MovieCard type={mediaType} key={title.id} movie={title} />;
+            return (
+              <MovieCard
+                type={mediaType}
+                key={title.id}
+                movie={title}
+                signedIn={signedIn}
+              />
+            );
           })}
           <Pages
             filterValues={{ query, language, year, adult, btn, page }}

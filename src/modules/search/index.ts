@@ -1,5 +1,5 @@
 export { buildSearchURL } from "./buildSearchURL";
 export { getTitle } from "./searchTitle";
 export { movieFilterSchema, type movieFilterValues } from "./validation";
-export { SearchPageSkeleton } from "./skeletons/SearchPageSkeleton";
+export { SearchLoading } from "./skeletons/SearchLoading";
 export { SearchResultsSkeleton } from "./skeletons/SearchResultsSkeleton";

@@ -6,11 +6,11 @@ export { ListLengthSkeleton } from "./skeletons/ListLengthSkeleton";
 export { ListRowsSkeleton } from "./skeletons/ListRowsSkeleton";
 export {
   LIST_STATUSES,
-  entryInput,
-  entryKeyInput,
   type EntryKey,
   type ListEntry,
   type ListStatus,
   type ListStatusSlug,
+  type StoredEntry,
 } from "./entry";
+export { entryInput, entryKeyInput } from "./entryInput";
 export type { ListView } from "./view";

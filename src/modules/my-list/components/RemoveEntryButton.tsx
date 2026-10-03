@@ -35,12 +35,7 @@ export default function RemoveEntryButton({
     try {
       const response = await fetch("/api/remove-from-list", {
         method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          movieId: movieId.toString(),
-          type: type,
-          redirect: "true",
-        },
+        headers: { movieId: movieId.toString(), type },
       });
       const data = await response.json();
       if (data.addToListResult === "success") {

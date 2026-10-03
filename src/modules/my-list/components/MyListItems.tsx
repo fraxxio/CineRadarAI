@@ -1,10 +1,10 @@
 import ListCard from "./ListCard";
-import type { ListEntry } from "../entry";
+import type { StoredEntry } from "../entry";
 import { viewEntries, type ListView } from "../view";
 
 type ListProps = {
   // the page starts the read once; each component awaits it in its own Suspense boundary
-  entries: Promise<ListEntry[]>;
+  entries: Promise<StoredEntry[]>;
   view: ListView;
 };
 

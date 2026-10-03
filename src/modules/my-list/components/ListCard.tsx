@@ -11,11 +11,11 @@ import Link from "next/link";
 import React from "react";
 import ListEntryDialog from "./ListEntryDialog";
 import RemoveEntryButton from "./RemoveEntryButton";
-import type { ListEntry, ListStatus } from "../entry";
+import { isListStatus, type ListStatus, type StoredEntry } from "../entry";
 import { tmdbImageUrl } from "@/infra/tmdb";
 
 type ListCardProps = {
-  movie: ListEntry;
+  movie: StoredEntry;
   index: number;
 };
 
@@ -28,8 +28,9 @@ const STATUS_ICONS: Record<ListStatus, LucideIcon> = {
 export default function ListCard({ movie, index }: ListCardProps) {
   // entries saved without a poster or backdrop have an empty image
   const poster = tmdbImageUrl(movie.image, "w500");
-  // rows saved before the payload was validated can hold other statuses
-  const StatusIcon = STATUS_ICONS[movie.status] ?? NotebookPen;
+  const StatusIcon = isListStatus(movie.status)
+    ? STATUS_ICONS[movie.status]
+    : NotebookPen;
 
   return (
     <div className="relative flex gap-8 border-b border-border-clr last:border-none max-[480px]:flex-col max-[480px]:gap-0">

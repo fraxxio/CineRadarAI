@@ -3,12 +3,24 @@ import { describe, expect, it, test, vi } from "vitest";
 import SearchResults from "./SearchResults";
 import { getTitle } from "../searchTitle";
 import type { movieFilterValues } from "../validation";
+import { getSession } from "@/infra/auth/session";
+import { makeSession } from "@test/helpers/factories";
 import { lastTmdbUrl, mockTmdb } from "@test/helpers/tmdb";
 
-// async children can't render on the client under React 18: stub the card
+// MovieCard has its own tests: stub it to see what it's given
 vi.mock("./MovieCard", () => ({
-  default: ({ movie }: { movie: { id: number } }) => (
-    <div data-testid="card">{movie.id}</div>
+  default: ({
+    movie,
+    type,
+    signedIn,
+  }: {
+    movie: { id: number };
+    type: string;
+    signedIn: boolean;
+  }) => (
+    <div data-testid="card" data-type={type} data-signed-in={signedIn}>
+      {movie.id}
+    </div>
   ),
 }));
 
@@ -153,6 +165,34 @@ describe("SearchResults", () => {
     mockAll(new Response("boom", { status: 500 }));
     await expect(run({ query: "Fury" })).rejects.toThrow(
       "Failed to fetch search results (Status: 500)",
+    );
+  });
+
+  test("no btn -> movies", async () => {
+    const spy = mockAll(page([1]));
+    render(await run({ query: "Fury", btn: undefined }));
+
+    expect(lastTmdbUrl(spy).pathname).toBe("/3/search/movie");
+    expect(screen.getByTestId("card")).toHaveAttribute("data-type", "movie");
+  });
+
+  test("reads the session once and passes it to every card", async () => {
+    vi.mocked(getSession).mockResolvedValueOnce(makeSession());
+    mockAll(page([1, 2]));
+    render(await run({}));
+
+    expect(getSession).toHaveBeenCalledTimes(1);
+    for (const card of screen.getAllByTestId("card")) {
+      expect(card).toHaveAttribute("data-signed-in", "true");
+    }
+  });
+
+  test("logged out -> cards aren't signed in", async () => {
+    mockAll(page([1]));
+    render(await run({}));
+    expect(screen.getByTestId("card")).toHaveAttribute(
+      "data-signed-in",
+      "false",
     );
   });
 

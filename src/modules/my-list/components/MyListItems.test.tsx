@@ -1,12 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import MyListItems, { ListLength } from "./MyListItems";
-import type { ListEntry } from "../entry";
+import type { StoredEntry } from "../entry";
 import type { ListView } from "../view";
 import { makeMovie } from "@test/helpers/factories";
 
 const view: ListView = { type: "both", status: "all", rating: "desc" };
-const list = (entries: ListEntry[]) => Promise.resolve(entries);
+const list = (entries: StoredEntry[]) => Promise.resolve(entries);
 
 describe("MyListItems", () => {
   test("renders the entries in view order", async () => {
