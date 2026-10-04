@@ -1,8 +1,9 @@
-import Filters from "@/Components/Filters";
-import SearchResults from "@/Components/SearchResults";
-import { SearchResultsSkeleton } from "@/Components/skeletons/SearchResultsSkeleton";
-import { getTitle } from "@/lib/searchTitle";
-import { movieFilterValues } from "@/lib/validation";
+import { Filters, SearchResults } from "@/modules/search/server";
+import {
+  SearchResultsSkeleton,
+  getTitle,
+  type movieFilterValues,
+} from "@/modules/search";
 import { Metadata } from "next";
 import { Suspense } from "react";
 

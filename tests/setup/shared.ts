@@ -23,4 +23,4 @@ vi.mock("react-dom", async (importOriginal) => {
 });
 
 // getSession() -> auth() needs a Next request context; tests control it directly
-vi.mock("@/lib/session", () => ({ getSession: vi.fn(async () => null) }));
+vi.mock("@/infra/auth/session", () => ({ getSession: vi.fn(async () => null) }));

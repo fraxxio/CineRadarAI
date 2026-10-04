@@ -1,8 +1,8 @@
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { eq, sql } from "drizzle-orm";
-import { db } from "@/db";
-import { accounts, sessions, users } from "@/db/schema/users";
-import { lists } from "@/db/schema/lists";
+import { db } from "@/infra/db";
+import { accounts, sessions, users } from "@/infra/db/schema/users";
+import { lists } from "@/modules/my-list/schema";
 import { makeMovie } from "./factories";
 import { MIGRATIONS_FOLDER } from "./migrations";
 

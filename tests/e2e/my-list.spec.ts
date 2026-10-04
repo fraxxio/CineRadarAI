@@ -183,6 +183,35 @@ test("sort and filter, with a matching length", async ({
   await expectItems(page, []);
 });
 
+// the e2e DB is a libsql server, as in production: no in-process write queue,
+// only the server's write lock keeps concurrent saves from overwriting each other
+test("concurrent saves all land", async ({ page, loginAs, db }) => {
+  const user = await loginAs();
+  const ids = [1, 2, 3, 4, 5];
+
+  // page.request shares the context's session cookie
+  const responses = await Promise.all(
+    ids.map((movieId) =>
+      page.request.put("/api/add-to-list", {
+        data: {
+          movieId,
+          title: `Movie ${movieId}`,
+          image: "",
+          status: "Completed",
+          rating: "",
+          type: "movie",
+        },
+      }),
+    ),
+  );
+
+  for (const res of responses) {
+    expect(await res.json()).toEqual({ addToListResult: "success" });
+  }
+  const stored = await getMovies(db, user.id);
+  expect(stored?.map((entry) => entry.movieId).sort()).toEqual(ids);
+});
+
 test("a new user has an empty list", async ({ page, loginAs }) => {
   await loginAs();
   await page.goto("/my-list");

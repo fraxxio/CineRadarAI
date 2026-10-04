@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import { Sora } from "next/font/google";
-import Navbar from "@/Components/Navbar";
-import { Toaster } from "@/Components/ui/sonner";
+import { Footer, Navbar } from "@/modules/layout";
+import { Toaster } from "@/shared/ui/Toaster";
 import "./globals.css";
-import Footer from "@/Components/Footer";
-import { getSession } from "@/lib/session";
+import { getSession } from "@/infra/auth/session";
 
 const sora = Sora({ subsets: ["latin"] });
 

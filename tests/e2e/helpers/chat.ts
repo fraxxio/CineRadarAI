@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import type { ChatStreamEvent } from "../../../src/modules/chat";
 
 type Reply = {
   status?: number;
