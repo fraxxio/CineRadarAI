@@ -72,7 +72,7 @@ test("the right confirmation text deletes the account and list", async ({
   await expect(page.getByText("Account deleted succesfully.")).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expect(await userExists(db, user.id)).toBe(false);
-  expect(await getMovies(db, user.id)).toBeUndefined();
+  expect(await getMovies(db, user.id)).toEqual([]);
   await expect(
     page.locator("nav#top").getByRole("link", { name: "Sign In" }),
   ).toBeVisible();

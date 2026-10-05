@@ -4,7 +4,11 @@ import { DeleteUser } from "./actions";
 import { asUser } from "@test/helpers/auth";
 import { forceFailure, seedFullUser, userRows } from "@test/helpers/db";
 
-vi.mock("@/infra/auth/auth", () => ({ auth: vi.fn(), signIn: vi.fn(), signOut: vi.fn() }));
+vi.mock("@/infra/auth/auth", () => ({
+  auth: vi.fn(),
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+}));
 vi.mock("next/navigation", async () => {
   const { RedirectError } = await import("@test/helpers/next");
   return {
@@ -21,8 +25,8 @@ const form = (verify: string, id: string) => {
   return f;
 };
 
-const all = { users: 1, accounts: 1, sessions: 1, lists: 1 };
-const none = { users: 0, accounts: 0, sessions: 0, lists: 0 };
+const all = { users: 1, accounts: 1, sessions: 1, listEntries: 1 };
+const none = { users: 0, accounts: 0, sessions: 0, listEntries: 0 };
 
 let a: Awaited<ReturnType<typeof seedFullUser>>;
 let b: Awaited<ReturnType<typeof seedFullUser>>;
@@ -63,18 +67,21 @@ describe("DeleteUser", () => {
     expect(await userRows(b.id)).toEqual(all);
   });
 
-  test("rolls back every delete when the transaction fails", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    asUser(a);
-    // the user row is deleted last, so the earlier deletes must be rolled back
-    await forceFailure("DELETE", "user");
+  // a failing cascaded delete must also undo the user delete and the other cascades
+  test.each(["user", "account", "session", "list_entries"])(
+    "deletes nothing when the delete from %s fails",
+    async (table) => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      asUser(a);
+      await forceFailure("DELETE", table);
 
-    await expect(
-      DeleteUser(form("Delete account", a.id)),
-    ).rejects.toMatchObject({ url: "/?deleteAcc=fail" });
+      await expect(
+        DeleteUser(form("Delete account", a.id)),
+      ).rejects.toMatchObject({ url: "/?deleteAcc=fail" });
 
-    expect(await userRows(a.id)).toEqual(all);
-  });
+      expect(await userRows(a.id)).toEqual(all);
+    },
+  );
 
   test("[B3] only deletes the session user, ignoring the form id", async () => {
     asUser(a);

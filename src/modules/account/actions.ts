@@ -1,9 +1,8 @@
 "use server";
 
 import { auth, signOut } from "@/infra/auth/auth";
-import { writeTransaction } from "@/infra/db";
-import { clearList } from "@/modules/my-list/server";
-import { accounts, sessions, users } from "@/infra/db/schema/users";
+import { db } from "@/infra/db";
+import { users } from "@/infra/db/schema/users";
 import { eq } from "drizzle-orm/sqlite-core/expressions";
 import { redirect } from "next/navigation";
 
@@ -21,15 +20,9 @@ export async function DeleteUser(formData: FormData) {
 
   if (formData.get("verifyInput") === "Delete account") {
     try {
-      await writeTransaction(async (tx) => {
-        // Delete the rows that reference the user first
-        await tx.delete(accounts).where(eq(accounts.userId, userId));
-        await tx.delete(sessions).where(eq(sessions.userId, userId));
-        await clearList(userId, tx);
-
-        // Delete the user
-        await tx.delete(users).where(eq(users.id, userId));
-      });
+      // one statement, so it's atomic: their accounts, sessions and list
+      // entries go with the user row (on delete cascade)
+      await db.delete(users).where(eq(users.id, userId));
     } catch (error) {
       console.error("Failed to delete account: ", error);
       redirect(`/?deleteAcc=fail`);

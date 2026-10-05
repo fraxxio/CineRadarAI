@@ -1,23 +1,30 @@
-import { count, eq } from "drizzle-orm";
+import { asc, count, eq } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
-import { lists } from "../../../src/modules/my-list/schema";
+import {
+  entryColumns,
+  listEntries,
+} from "../../../src/modules/my-list/schema";
 import { sessions, users } from "../../../src/infra/db/schema/users";
 
-export type ListMovie = NonNullable<typeof lists.$inferSelect.movies>[number];
+export type ListMovie = Omit<typeof listEntries.$inferSelect, "id" | "userId">;
 
-export const seedList = (
+// inserts the entries in array order, so their ids keep that order
+export async function seedList(
   db: LibSQLDatabase,
   userId: string,
-  movies: ListMovie[] | null,
-) => db.insert(lists).values({ userId, movies });
-
-export async function getMovies(db: LibSQLDatabase, userId: string) {
-  const rows = await db
-    .select({ movies: lists.movies })
-    .from(lists)
-    .where(eq(lists.userId, userId));
-  return rows[0]?.movies; // undefined = no row
+  entries: ListMovie[],
+) {
+  if (entries.length === 0) return; // drizzle rejects an empty values()
+  await db.insert(listEntries).values(entries.map((e) => ({ userId, ...e })));
 }
+
+// the user's entries in list order; [] when they have none
+export const getMovies = (db: LibSQLDatabase, userId: string) =>
+  db
+    .select(entryColumns)
+    .from(listEntries)
+    .where(eq(listEntries.userId, userId))
+    .orderBy(asc(listEntries.id));
 
 export async function userExists(db: LibSQLDatabase, id: string) {
   const rows = await db
