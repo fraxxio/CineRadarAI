@@ -1,32 +1,26 @@
 import { describe, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/infra/db";
-import { lists } from "./schema";
-import { clearList, getEntries, removeEntry, saveEntry } from "./store";
+import { users } from "@/infra/db/schema/users";
+import { getEntries, removeEntry, saveEntry } from "./store";
 import { forceFailure, getMovies, seedList, seedUser } from "@test/helpers/db";
 import { makeMovie } from "@test/helpers/factories";
 
 // `cache` is the identity shim (tests/setup/shared.ts), so nothing is cached across tests
 describe("getEntries", () => {
-  test("returns the stored entries", async () => {
+  test("returns the stored entries in insertion order", async () => {
     const user = await seedUser();
     const entries = [
-      makeMovie({ movieId: 1 }),
       makeMovie({ movieId: 2, type: "tv" }),
+      makeMovie({ movieId: 1 }),
     ];
     await seedList(user.id, entries);
 
     expect(await getEntries(user.id)).toEqual(entries);
   });
 
-  test("returns [] for a user with no row", async () => {
+  test("returns [] for a user with no entries", async () => {
     const user = await seedUser();
-    expect(await getEntries(user.id)).toEqual([]);
-  });
-
-  test("returns [] for a row with movies = null", async () => {
-    const user = await seedUser();
-    await seedList(user.id, null);
     expect(await getEntries(user.id)).toEqual([]);
   });
 });
@@ -34,7 +28,7 @@ describe("getEntries", () => {
 describe("saveEntry", () => {
   const entry = makeMovie({ movieId: 550, name: "Fight Club", rating: 8 });
 
-  test("inserts a row when the user has none", async () => {
+  test("adds the first entry", async () => {
     const user = await seedUser();
 
     await saveEntry(user.id, entry);
@@ -50,15 +44,6 @@ describe("saveEntry", () => {
     await saveEntry(user.id, entry);
 
     expect(await getMovies(user.id)).toEqual([existing, entry]);
-  });
-
-  test("appends to a row with movies = null", async () => {
-    const user = await seedUser();
-    await seedList(user.id, null);
-
-    await saveEntry(user.id, entry);
-
-    expect(await getMovies(user.id)).toEqual([entry]);
   });
 
   test("replaces the entry with the same key in place", async () => {
@@ -102,9 +87,25 @@ describe("saveEntry", () => {
     expect(await getMovies(other.id)).toEqual(otherEntries);
   });
 
-  test("two concurrent saves of different titles both survive", async () => {
+  // The local file client runs each statement synchronously, so these
+  // "concurrent" single-statement writes actually run one after another: they
+  // check the outcome, not real interleaving. The e2e tests in my-list.spec.ts
+  // run concurrent saves against a libsql server, as in production.
+  test("two concurrent saves of different titles both land", async () => {
     const user = await seedUser();
-    await seedList(user.id, []);
+    await seedList(user.id, [makeMovie({ movieId: 3 })]);
+    const a = makeMovie({ movieId: 1, name: "A" });
+    const b = makeMovie({ movieId: 2, name: "B" });
+
+    await Promise.all([saveEntry(user.id, a), saveEntry(user.id, b)]);
+
+    const stored = await getMovies(user.id);
+    expect(stored).toHaveLength(3);
+    expect(stored).toEqual(expect.arrayContaining([a, b]));
+  });
+
+  test("two concurrent first saves both land", async () => {
+    const user = await seedUser();
     const a = makeMovie({ movieId: 1, name: "A" });
     const b = makeMovie({ movieId: 2, name: "B" });
 
@@ -115,35 +116,47 @@ describe("saveEntry", () => {
     expect(stored).toEqual(expect.arrayContaining([a, b]));
   });
 
-  test("two concurrent first saves both survive", async () => {
+  test("two concurrent saves of the same key leave one row", async () => {
     const user = await seedUser();
-    const a = makeMovie({ movieId: 1, name: "A" });
-    const b = makeMovie({ movieId: 2, name: "B" });
+    const a = { ...entry, status: "Watching" as const, rating: 3 };
+    const b = { ...entry, status: "Completed" as const, rating: 9 };
 
     await Promise.all([saveEntry(user.id, a), saveEntry(user.id, b)]);
 
-    const rows = await db.select().from(lists).where(eq(lists.userId, user.id));
-    expect(rows).toHaveLength(1);
-    expect(rows[0].movies).toEqual(expect.arrayContaining([a, b]));
+    const stored = await getMovies(user.id);
+    expect(stored).toHaveLength(1);
+    expect([a, b]).toContainEqual(stored[0]);
+  });
+
+  test("rejects for a user that doesn't exist", async () => {
+    await expect(saveEntry("no-such-user", entry)).rejects.toThrow(
+      /FOREIGN KEY/,
+    );
+    expect(await getMovies("no-such-user")).toEqual([]);
   });
 
   describe("DB failures", () => {
-    test("throws and keeps the list when the update fails", async () => {
+    // a BEFORE INSERT trigger fires for every upsert, including the update path
+    test("throws and keeps the list when the insert fails", async () => {
       const user = await seedUser();
       const existing = [makeMovie({ movieId: 1 })];
       await seedList(user.id, existing);
-      await forceFailure("UPDATE", "lists");
+      await forceFailure("INSERT", "list_entries");
 
       await expect(saveEntry(user.id, entry)).rejects.toThrow("forced failure");
       expect(await getMovies(user.id)).toEqual(existing);
     });
 
-    test("throws and inserts nothing when the insert fails", async () => {
+    test("throws and keeps the old values when the replace fails", async () => {
       const user = await seedUser();
-      await forceFailure("INSERT", "lists");
+      const existing = [{ ...entry, status: "Planning to watch", rating: 0 }];
+      await seedList(user.id, existing);
+      await forceFailure("UPDATE", "list_entries");
 
-      await expect(saveEntry(user.id, entry)).rejects.toThrow("forced failure");
-      expect(await getMovies(user.id)).toBeUndefined();
+      await expect(
+        saveEntry(user.id, { ...entry, status: "Watching", rating: 3 }),
+      ).rejects.toThrow("forced failure");
+      expect(await getMovies(user.id)).toEqual(existing);
     });
   });
 });
@@ -156,7 +169,7 @@ describe("removeEntry", () => {
 
     await expect(
       removeEntry(user.id, { movieId: 550, type: "movie" }),
-    ).resolves.toBe(true);
+    ).resolves.toBeUndefined();
 
     expect(await getMovies(user.id)).toEqual(keep);
   });
@@ -186,21 +199,19 @@ describe("removeEntry", () => {
     const entries = [makeMovie({ movieId: 1 })];
     await seedList(user.id, entries);
 
-    await expect(
-      removeEntry(user.id, { movieId: 999, type: "movie" }),
-    ).resolves.toBe(true);
+    await removeEntry(user.id, { movieId: 999, type: "movie" });
 
     expect(await getMovies(user.id)).toEqual(entries);
   });
 
-  test("resolves false and creates no row when the user has no list", async () => {
+  test("a user with no entries is a no-op", async () => {
     const user = await seedUser();
 
     await expect(
       removeEntry(user.id, { movieId: 550, type: "movie" }),
-    ).resolves.toBe(false);
+    ).resolves.toBeUndefined();
 
-    expect(await getMovies(user.id)).toBeUndefined();
+    expect(await getMovies(user.id)).toEqual([]);
   });
 
   test("only touches the given user's list", async () => {
@@ -215,6 +226,7 @@ describe("removeEntry", () => {
     expect(await getMovies(other.id)).toEqual(otherEntries);
   });
 
+  // runs sequentially on the local file client, see the note in saveEntry
   test("a concurrent save and remove both apply", async () => {
     const user = await seedUser();
     const added = makeMovie({ movieId: 2 });
@@ -228,11 +240,11 @@ describe("removeEntry", () => {
     expect(await getMovies(user.id)).toEqual([added]);
   });
 
-  test("throws and keeps the list when the update fails", async () => {
+  test("throws and keeps the list when the delete fails", async () => {
     const user = await seedUser();
     const entries = [makeMovie({ movieId: 550 })];
     await seedList(user.id, entries);
-    await forceFailure("UPDATE", "lists");
+    await forceFailure("DELETE", "list_entries");
 
     await expect(
       removeEntry(user.id, { movieId: 550, type: "movie" }),
@@ -241,45 +253,17 @@ describe("removeEntry", () => {
   });
 });
 
-describe("clearList", () => {
-  test("deletes the user's list and keeps the others", async () => {
+describe("deleting a user", () => {
+  test("deletes their entries and keeps other users' entries", async () => {
     const user = await seedUser();
     const other = await seedUser();
     const otherEntries = [makeMovie({ movieId: 1 })];
     await seedList(user.id, [makeMovie({ movieId: 1 })]);
     await seedList(other.id, otherEntries);
 
-    await clearList(user.id);
+    await db.delete(users).where(eq(users.id, user.id));
 
-    expect(await getMovies(user.id)).toBeUndefined();
+    expect(await getMovies(user.id)).toEqual([]);
     expect(await getMovies(other.id)).toEqual(otherEntries);
-  });
-
-  test("is a no-op when the user has no list", async () => {
-    const user = await seedUser();
-    await expect(clearList(user.id)).resolves.toBeUndefined();
-  });
-
-  test("runs inside the given transaction", async () => {
-    const user = await seedUser();
-    const entries = [makeMovie({ movieId: 1 })];
-    await seedList(user.id, entries);
-
-    await expect(
-      db.transaction(async (tx) => {
-        await clearList(user.id, tx);
-        throw new Error("abort");
-      }),
-    ).rejects.toThrow("abort");
-
-    expect(await getMovies(user.id)).toEqual(entries);
-  });
-
-  test("throws when the delete fails", async () => {
-    const user = await seedUser();
-    await seedList(user.id, [makeMovie({ movieId: 1 })]);
-    await forceFailure("DELETE", "lists");
-
-    await expect(clearList(user.id)).rejects.toThrow("forced failure");
   });
 });

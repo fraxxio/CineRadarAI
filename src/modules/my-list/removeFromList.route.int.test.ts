@@ -43,17 +43,21 @@ describe("DELETE /api/remove-from-list", () => {
     expect(await getMovies(user.id)).toEqual(keep);
   });
 
-  test("returns fail when the user has no list row", async () => {
+  test("returns success when the entry isn't in the list", async () => {
+    const movies = [makeMovie({ movieId: 1 })];
+    await seedList(user.id, movies);
+
     const res = await del(user.id, 550);
-    expect(await res.json()).toEqual({ addToListResult: "fail" });
-    expect(vi.mocked(revalidatePath)).not.toHaveBeenCalled();
+
+    expect(await res.json()).toEqual({ addToListResult: "success" });
+    expect(await getMovies(user.id)).toEqual(movies);
   });
 
-  test("returns fail when the update throws", async () => {
+  test("returns fail when the delete throws", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const movies = [makeMovie({ movieId: 550 })];
     await seedList(user.id, movies);
-    await forceFailure("UPDATE", "lists");
+    await forceFailure("DELETE", "list_entries");
 
     const res = await del(user.id, 550);
 

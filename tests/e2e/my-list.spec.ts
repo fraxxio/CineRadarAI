@@ -183,33 +183,55 @@ test("sort and filter, with a matching length", async ({
   await expectItems(page, []);
 });
 
-// the e2e DB is a libsql server, as in production: no in-process write queue,
-// only the server's write lock keeps concurrent saves from overwriting each other
+// page.request shares the context's session cookie
+const put = (page: Page, movieId: number, rating = "") =>
+  page.request.put("/api/add-to-list", {
+    data: {
+      movieId,
+      title: `Movie ${movieId}`,
+      image: "",
+      status: "Completed",
+      rating,
+      type: "movie",
+    },
+  });
+
+// the e2e DB is a libsql server, as in production; each save is a single
+// statement, so concurrent saves can't overwrite each other
 test("concurrent saves all land", async ({ page, loginAs, db }) => {
   const user = await loginAs();
   const ids = [1, 2, 3, 4, 5];
 
-  // page.request shares the context's session cookie
+  const responses = await Promise.all(ids.map((movieId) => put(page, movieId)));
+
+  for (const res of responses) {
+    expect(await res.json()).toEqual({ addToListResult: "success" });
+  }
+  const stored = await getMovies(db, user.id);
+  expect(stored.map((entry) => entry.movieId).sort()).toEqual(ids);
+});
+
+// the unique (userId, movieId, type) key keeps concurrent saves of one title
+// from creating duplicate rows
+test("concurrent saves of the same title leave one entry", async ({
+  page,
+  loginAs,
+  db,
+}) => {
+  const user = await loginAs();
+  const ratings = ["1", "2", "3", "4", "5"];
+
   const responses = await Promise.all(
-    ids.map((movieId) =>
-      page.request.put("/api/add-to-list", {
-        data: {
-          movieId,
-          title: `Movie ${movieId}`,
-          image: "",
-          status: "Completed",
-          rating: "",
-          type: "movie",
-        },
-      }),
-    ),
+    ratings.map((rating) => put(page, 550, rating)),
   );
 
   for (const res of responses) {
     expect(await res.json()).toEqual({ addToListResult: "success" });
   }
   const stored = await getMovies(db, user.id);
-  expect(stored?.map((entry) => entry.movieId).sort()).toEqual(ids);
+  expect(stored).toHaveLength(1);
+  expect(stored[0].movieId).toBe(550);
+  expect(ratings.map(Number)).toContain(stored[0].rating);
 });
 
 test("a new user has an empty list", async ({ page, loginAs }) => {

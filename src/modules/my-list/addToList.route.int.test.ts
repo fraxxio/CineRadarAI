@@ -55,14 +55,14 @@ describe("PUT /api/add-to-list", () => {
     ["7", 7],
   ])("stores rating %j as the number %d", async (rating, expected) => {
     await put({ ...base, rating });
-    const [movie] = (await getMovies(user.id))!;
+    const [movie] = await getMovies(user.id);
     expect(typeof movie.rating).toBe("number");
     expect(movie.rating).toBe(expected);
   });
 
   test("stores movieId as a number", async () => {
     await put(base);
-    expect((await getMovies(user.id))![0].movieId).toBe(550);
+    expect((await getMovies(user.id))[0].movieId).toBe(550);
   });
 
   test("returns success and revalidates /my-list", async () => {
@@ -79,7 +79,7 @@ describe("PUT /api/add-to-list", () => {
     test("returns fail and doesn't revalidate when the write throws", async () => {
       const existing = [makeMovie({ movieId: 1 })];
       await seedList(user.id, existing);
-      await forceFailure("UPDATE", "lists");
+      await forceFailure("INSERT", "list_entries");
 
       const res = await put(base);
 
@@ -88,8 +88,8 @@ describe("PUT /api/add-to-list", () => {
       expect(await getMovies(user.id)).toEqual(existing);
     });
 
-    test("[B8] returns fail when the transaction can't start", async () => {
-      vi.spyOn(db, "transaction").mockImplementationOnce(() => {
+    test("[B8] returns fail when the write can't start", async () => {
+      vi.spyOn(db, "insert").mockImplementationOnce(() => {
         throw new Error("db down");
       });
 
@@ -107,7 +107,7 @@ describe("PUT /api/add-to-list", () => {
       const res = await put(base);
 
       expect(res.status).toBe(401);
-      expect(await getMovies(user.id)).toBeUndefined();
+      expect(await getMovies(user.id)).toEqual([]);
     });
 
     test("[B1] ignores a foreign userId in the body", async () => {
@@ -125,7 +125,7 @@ describe("PUT /api/add-to-list", () => {
 
   test("stores a missing image as an empty string", async () => {
     await put({ ...base, image: null });
-    expect((await getMovies(user.id))![0].image).toBe("");
+    expect((await getMovies(user.id))[0].image).toBe("");
   });
 
   describe("payload validation", () => {
@@ -144,7 +144,7 @@ describe("PUT /api/add-to-list", () => {
 
       expect(res.status).toBe(400);
       expect(await res.json()).toEqual({ addToListResult: "fail" });
-      expect(await getMovies(user.id)).toBeUndefined();
+      expect(await getMovies(user.id)).toEqual([]);
     });
 
     test("rejects a malformed JSON body with 400", async () => {

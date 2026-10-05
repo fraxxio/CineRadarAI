@@ -1,60 +1,47 @@
 import "server-only";
 import { cache } from "react";
-import { eq } from "drizzle-orm";
-import { db, writeTransaction, type Tx } from "@/infra/db";
-import { lists } from "./schema";
+import { and, asc, eq } from "drizzle-orm";
+import { db } from "@/infra/db";
+import { entryColumns, listEntries } from "./schema";
 import type { EntryKey, ListEntry } from "./entry";
 
-// movie and TV ids can collide, so an entry is matched on both
-const isEntry = (key: EntryKey) => (entry: EntryKey) =>
-  entry.movieId === key.movieId && entry.type === key.type;
+// Each write is a single statement, so it's atomic without a transaction and
+// concurrent writes to different entries can't overwrite each other (for the
+// same entry, the last write wins).
+// The functions stay async so a synchronous throw from the query builder
+// becomes a rejection (B8).
 
-const selectEntries = (tx: Tx | typeof db, userId: string) =>
-  tx
-    .select({ movies: lists.movies })
-    .from(lists)
-    .where(eq(lists.userId, userId))
-    .limit(1);
-
-export const getEntries = cache(async (userId: string) => {
-  const [row] = await selectEntries(db, userId);
-  return row?.movies ?? [];
-});
-
-// Writes read-modify-write the JSON blob inside a write transaction, so concurrent
-// saves are serialised instead of overwriting each other.
-// Keep them short: one select, one write, no network calls.
+// in insertion order: a replaced entry keeps its id, so it keeps its place
+export const getEntries = cache(async (userId: string) =>
+  db
+    .select(entryColumns)
+    .from(listEntries)
+    .where(eq(listEntries.userId, userId))
+    .orderBy(asc(listEntries.id)),
+);
 
 // adds the entry, or replaces the one with the same key
-export function saveEntry(userId: string, entry: ListEntry) {
-  return writeTransaction(async (tx) => {
-    const [row] = await selectEntries(tx, userId);
-    if (!row) {
-      await tx.insert(lists).values({ userId, movies: [entry] });
-      return;
-    }
-    const entries = row.movies ?? [];
-    const index = entries.findIndex(isEntry(entry));
-    const movies =
-      index === -1
-        ? [...entries, entry]
-        : entries.map((e, i) => (i === index ? entry : e));
-    await tx.update(lists).set({ movies }).where(eq(lists.userId, userId));
-  });
+export async function saveEntry(userId: string, entry: ListEntry) {
+  const { movieId, type, ...fields } = entry;
+  await db
+    .insert(listEntries)
+    .values({ userId, movieId, type, ...fields })
+    .onConflictDoUpdate({
+      target: [listEntries.userId, listEntries.movieId, listEntries.type],
+      set: fields,
+    });
 }
 
-// resolves false when the user has no list
-export function removeEntry(userId: string, key: EntryKey) {
-  return writeTransaction(async (tx) => {
-    const [row] = await selectEntries(tx, userId);
-    if (!row) return false;
-    const movies = (row.movies ?? []).filter((entry) => !isEntry(key)(entry));
-    await tx.update(lists).set({ movies }).where(eq(lists.userId, userId));
-    return true;
-  });
-}
-
-// pass `tx` to delete the list as part of a larger transaction (account deletion)
-export async function clearList(userId: string, tx: Tx | typeof db = db) {
-  await tx.delete(lists).where(eq(lists.userId, userId));
+// movie and TV ids can collide, so an entry is matched on both;
+// removing an entry that isn't in the list is a no-op
+export async function removeEntry(userId: string, { movieId, type }: EntryKey) {
+  await db
+    .delete(listEntries)
+    .where(
+      and(
+        eq(listEntries.userId, userId),
+        eq(listEntries.movieId, movieId),
+        eq(listEntries.type, type),
+      ),
+    );
 }

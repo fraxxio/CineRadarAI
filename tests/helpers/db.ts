@@ -1,12 +1,12 @@
 import { migrate } from "drizzle-orm/libsql/migrator";
-import { eq, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { db } from "@/infra/db";
 import { accounts, sessions, users } from "@/infra/db/schema/users";
-import { lists } from "@/modules/my-list/schema";
+import { entryColumns, listEntries } from "@/modules/my-list/schema";
 import { makeMovie } from "./factories";
 import { MIGRATIONS_FOLDER } from "./migrations";
 
-export type ListMovie = NonNullable<typeof lists.$inferSelect.movies>[number];
+export type ListMovie = Omit<typeof listEntries.$inferSelect, "id" | "userId">;
 
 export const migrateTestDb = () =>
   migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
@@ -16,7 +16,7 @@ export async function resetDb() {
     sql`select name from sqlite_master where type = 'trigger' and name like 'force_fail_%'`,
   );
   for (const t of triggers) await db.run(sql.raw(`drop trigger "${t.name}"`));
-  await db.delete(lists);
+  await db.delete(listEntries);
   await db.delete(sessions);
   await db.delete(accounts);
   await db.delete(users);
@@ -37,16 +37,19 @@ export async function seedUser(
   return user as Required<typeof user>;
 }
 
-export const seedList = (userId: string, movies: ListMovie[] | null) =>
-  db.insert(lists).values({ userId, movies });
-
-export async function getMovies(userId: string) {
-  const rows = await db
-    .select({ movies: lists.movies })
-    .from(lists)
-    .where(eq(lists.userId, userId));
-  return rows[0]?.movies; // undefined = no row
+// inserts the entries in array order, so their ids keep that order
+export async function seedList(userId: string, entries: ListMovie[]) {
+  if (entries.length === 0) return; // drizzle rejects an empty values()
+  await db.insert(listEntries).values(entries.map((e) => ({ userId, ...e })));
 }
+
+// the user's entries in list order; [] when they have none
+export const getMovies = (userId: string) =>
+  db
+    .select(entryColumns)
+    .from(listEntries)
+    .where(eq(listEntries.userId, userId))
+    .orderBy(asc(listEntries.id));
 
 // makes the next INSERT/UPDATE/DELETE on `table` fail inside SQLite (removed by resetDb)
 export const forceFailure = (
@@ -59,7 +62,7 @@ export const forceFailure = (
     ),
   );
 
-// user + account + session + list row, for DeleteUser
+// user + account + session + list entry, for DeleteUser
 export async function seedFullUser(
   overrides: Partial<typeof users.$inferInsert> = {},
 ) {
@@ -85,12 +88,12 @@ export async function userRows(userId: string) {
     db.select().from(users).where(eq(users.id, userId)),
     db.select().from(accounts).where(eq(accounts.userId, userId)),
     db.select().from(sessions).where(eq(sessions.userId, userId)),
-    db.select().from(lists).where(eq(lists.userId, userId)),
+    db.select().from(listEntries).where(eq(listEntries.userId, userId)),
   ]);
   return {
     users: u.length,
     accounts: a.length,
     sessions: s.length,
-    lists: l.length,
+    listEntries: l.length,
   };
 }

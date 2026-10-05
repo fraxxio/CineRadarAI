@@ -19,10 +19,7 @@ export async function DELETE(request: Request) {
   }
 
   try {
-    const hadList = await removeEntry(userId, parsed.data);
-    if (!hadList) {
-      return Response.json({ addToListResult: "fail" });
-    }
+    await removeEntry(userId, parsed.data);
     revalidatePath("/my-list", "page");
     return Response.json({ addToListResult: "success" });
   } catch (error) {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { db } from "@/infra/db";
-import { lists } from "@/modules/my-list/schema";
+import { listEntries } from "@/modules/my-list/schema";
 import { getEntries } from "@/modules/my-list/server";
 import { forceFailure, getMovies, seedList, seedUser } from "../../helpers/db";
 import { makeMovie } from "../../helpers/factories";
@@ -23,20 +23,22 @@ describe("integration infrastructure", () => {
   });
 
   test("resets the DB between tests", async () => {
-    expect(await db.select().from(lists)).toEqual([]);
+    expect(await db.select().from(listEntries)).toEqual([]);
   });
 
   test("keeps the schema after a transaction (F4)", async () => {
     const user = await seedUser();
     await db.transaction(async (tx) => {
-      await tx.insert(lists).values({ userId: user.id, movies: [] });
+      await tx.insert(listEntries).values({ userId: user.id, ...makeMovie() });
     });
-    expect(await getMovies(user.id)).toEqual([]);
+    expect(await getMovies(user.id)).toEqual([makeMovie()]);
   });
 
   test("forceFailure makes writes fail inside SQLite", async () => {
     const user = await seedUser();
-    await forceFailure("INSERT", "lists");
-    await expect(seedList(user.id, [])).rejects.toThrow();
+    await forceFailure("INSERT", "list_entries");
+    await expect(seedList(user.id, [makeMovie()])).rejects.toThrow(
+      "forced failure",
+    );
   });
 });

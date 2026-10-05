@@ -99,7 +99,7 @@ test("[B2] a logged-in user can't DELETE from another user's list", async ({
 
   const res = await remove(page.request, victim.id);
 
-  // the attacker has no list row, so there is nothing to remove
-  expect(await res.json()).toEqual({ addToListResult: "fail" });
+  // removes the entry from the attacker's own (empty) list: a no-op
+  expect(await res.json()).toEqual({ addToListResult: "success" });
   expect(await getMovies(db, victim.id)).toEqual([victimEntry]);
 });
