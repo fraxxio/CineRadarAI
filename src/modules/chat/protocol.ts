@@ -2,6 +2,8 @@
 export type ChatStreamEvent =
   | { type: "start"; interactionId: string }
   | { type: "delta"; text: string }
+  // tools are running, e.g. "Searching TMDB database..."; the next delta ends it
+  | { type: "status"; text: string }
   | { type: "done"; interactionId: string }
   | { type: "error" };
 

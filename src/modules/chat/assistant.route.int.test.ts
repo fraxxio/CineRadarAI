@@ -124,10 +124,16 @@ describe("POST /api/assistant", () => {
 
     it.each([
       ["not an array", turn()],
-      ["more than MAX_STOPPED_TURNS", Array(MAX_STOPPED_TURNS + 1).fill(turn())],
+      [
+        "more than MAX_STOPPED_TURNS",
+        Array(MAX_STOPPED_TURNS + 1).fill(turn()),
+      ],
       ["a prompt that isn't a string", [turn(42)]],
       ["a whitespace-only prompt", [turn("   ")]],
-      ["a prompt over MAX_PROMPT_LENGTH", [turn("a".repeat(MAX_PROMPT_LENGTH + 1))]],
+      [
+        "a prompt over MAX_PROMPT_LENGTH",
+        [turn("a".repeat(MAX_PROMPT_LENGTH + 1))],
+      ],
       ["a missing partialText", [{ prompt: "p1" }]],
       ["a partialText that isn't a string", [turn("p1", null)]],
       [
@@ -143,7 +149,10 @@ describe("POST /api/assistant", () => {
     test("accepts the exact limits", async () => {
       create.mockResolvedValue(geminiEvents([]));
       const stoppedTurns = Array(MAX_STOPPED_TURNS).fill(
-        turn("a".repeat(MAX_PROMPT_LENGTH), "b".repeat(MAX_STOPPED_TEXT_LENGTH)),
+        turn(
+          "a".repeat(MAX_PROMPT_LENGTH),
+          "b".repeat(MAX_STOPPED_TEXT_LENGTH),
+        ),
       );
       const res = await post({ content: "hi", stoppedTurns });
       expect(res.status).toBe(200);
