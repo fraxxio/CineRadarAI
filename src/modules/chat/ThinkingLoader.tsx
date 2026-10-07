@@ -1,38 +1,37 @@
 "use client";
 import { useEffect, useState } from "react";
+import { BouncingText } from "./BouncingText";
 
-const STEP_MS = 60;
 const ROTATE_MS = 4000;
 
-type ThinkingLoaderProps = {
-  words: string[];
-  startIndex: number;
-};
+type ThinkingLoaderProps =
+  // fixed text, e.g. the status of running tools
+  | { text: string; words?: undefined; startIndex?: undefined }
+  // rotating words; text, when set, shows instead of them
+  | { words: string[]; startIndex: number; text?: string };
 
-export function ThinkingLoader({ words, startIndex }: ThinkingLoaderProps) {
+export function ThinkingLoader({
+  words,
+  startIndex = 0,
+  text,
+}: ThinkingLoaderProps) {
   const [index, setIndex] = useState(startIndex);
+  const rotating = words !== undefined;
 
   useEffect(() => {
+    if (!rotating) {
+      return;
+    }
     const interval = setInterval(() => setIndex((i) => i + 1), ROTATE_MS);
     return () => clearInterval(interval);
-  }, []);
+  }, [rotating]);
 
-  const word = words[index % words.length];
+  const shown = text || (words ? words[index % words.length] : "");
 
   return (
     <p role="status" className="italic">
-      <span className="sr-only">Generating response</span>
-      <span key={word} aria-hidden>
-        {Array.from(word).map((char, i) => (
-          <span
-            key={i}
-            className="inline-block animate-letter-bounce motion-reduce:animate-none"
-            style={{ animationDelay: `${i * STEP_MS}ms` }}
-          >
-            {char === " " ? " " : char}
-          </span>
-        ))}
-      </span>
+      <span className="sr-only">{text || "Generating response"}</span>
+      <BouncingText text={shown} />
     </p>
   );
 }

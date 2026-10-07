@@ -32,6 +32,8 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
   const [messages, setMessages] = useState<Tmessage>([]);
   const [streamingContent, setStreamingContent] = useState("");
   const [status, setStatus] = useState<ChatStatus>("idle");
+  // what the running tools do, e.g. "Searching TMDB database..."; "" otherwise
+  const [progress, setProgress] = useState("");
   const turnRef = useRef<Turn | null>(null);
   // last completed turn, the next request continues from it
   const interactionIdRef = useRef<string>();
@@ -70,6 +72,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
 
     // set before beforeSend so the loader shows during verification
     setStreamingContent("");
+    setProgress("");
     setStatus("loading");
 
     if (beforeSend) {
@@ -136,7 +139,12 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
           case "delta":
             turn.text += serverEvent.text;
             setStreamingContent(turn.text);
+            setProgress("");
             setStatus("streaming");
+            break;
+          // tools are running, the next delta clears it
+          case "status":
+            setProgress(serverEvent.text);
             break;
           case "done":
             newInteractionId = serverEvent.interactionId;
@@ -208,6 +216,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
 
     turnRef.current = null;
     setStreamingContent("");
+    setProgress("");
   }
 
   // keeps the partial answer; the next send shares it with the model
@@ -243,6 +252,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
       );
     }
     setStreamingContent("");
+    setProgress("");
     setStatus("idle");
   }
 
@@ -254,8 +264,9 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
     stoppedTurnsRef.current = [];
     setMessages([]);
     setStreamingContent("");
+    setProgress("");
     setStatus("idle");
   }
 
-  return { messages, streamingContent, status, send, stop, reset };
+  return { messages, streamingContent, progress, status, send, stop, reset };
 }

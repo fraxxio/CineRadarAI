@@ -20,9 +20,8 @@ export default function ChatAssistant({
   recaptchaEnabled,
 }: ChatAssistantProps) {
   const recaptcha = useRecaptchaCheck(recaptchaEnabled);
-  const { messages, streamingContent, status, send, stop, reset } = useChat({
-    beforeSend: recaptcha.verify,
-  });
+  const { messages, streamingContent, progress, status, send, stop, reset } =
+    useChat({ beforeSend: recaptcha.verify });
   const [prompt, setPrompt] = useState("");
   // safe to shuffle during render: the loader never renders on the server
   const [loaderWords] = useState(() => shuffle(LOADER_WORDS));
@@ -76,12 +75,15 @@ export default function ChatAssistant({
             (streamingContent ? (
               <AssistantMessage
                 message={{ role: "assistant", content: streamingContent }}
+                // tools run after the text written before them
+                footer={progress ? <ThinkingLoader text={progress} /> : null}
               />
             ) : (
               <AssistantMessage message={{ role: "assistant" }}>
                 <ThinkingLoader
                   words={loaderWords}
                   startIndex={loaderTurn.current}
+                  text={progress || undefined}
                 />
               </AssistantMessage>
             ))}

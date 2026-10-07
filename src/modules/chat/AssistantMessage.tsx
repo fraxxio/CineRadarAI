@@ -10,6 +10,8 @@ type AssistantMessageProps = {
     stopped?: boolean;
   };
   children?: React.ReactNode;
+  // under the message, e.g. a loader while tools run
+  footer?: React.ReactNode;
 };
 
 // has a scheme (https:, mailto:) or is protocol-relative (//host)
@@ -27,7 +29,11 @@ const markdownComponents: Components = {
     ),
 };
 
-export function AssistantMessage({ message, children }: AssistantMessageProps) {
+export function AssistantMessage({
+  message,
+  children,
+  footer,
+}: AssistantMessageProps) {
   function displayRole(roleName: string) {
     switch (roleName) {
       case "user":
@@ -60,6 +66,7 @@ export function AssistantMessage({ message, children }: AssistantMessageProps) {
           </Markdown>
         )}
       </div>
+      {footer}
       {message.stopped && (
         <small className="italic text-secondary-text">Stopped</small>
       )}
