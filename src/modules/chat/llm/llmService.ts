@@ -2,6 +2,7 @@
 import { GoogleGenAI, type Interactions } from "@google/genai";
 import {
   CHAT_MODEL,
+  CHAT_THINKING_LEVEL,
   MAX_TOOL_ROUNDS,
   buildSystemInstruction,
 } from "../chatConfig";
@@ -76,7 +77,7 @@ export async function streamChatReply({
         tools,
         system_instruction: systemInstruction,
         generation_config: {
-          thinking_level: "minimal",
+          thinking_level: CHAT_THINKING_LEVEL,
           tool_choice: request.toolChoice,
         },
         stream: true,
