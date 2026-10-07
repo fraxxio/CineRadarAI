@@ -13,15 +13,22 @@ export class TmdbError extends Error {
 
 type Params = Record<string, string | number | boolean | undefined>;
 
+export type FetchOptions = {
+  // aborts the request, e.g. when the chat client stops a turn
+  signal?: AbortSignal;
+};
+
 // `what` names the resource in errors and logs, e.g. "movie details"
 export async function tmdbFetch<T>(
   path: string,
   params: Params,
   what: string,
+  { signal }: FetchOptions = {},
 ): Promise<T> {
   // read env at call time: tests stub it per test
   const options = {
     method: "GET",
+    signal,
     headers: {
       accept: "application/json",
       Authorization: `Bearer ${process.env.TMDB_ACCESS_TOKEN}`,
@@ -46,6 +53,10 @@ export async function tmdbFetch<T>(
     }
     return (await response.json()) as T;
   } catch (error) {
+    // aborted on purpose (stopped turn, timeout): the caller decides what to log
+    if (signal?.aborted) {
+      throw error;
+    }
     console.error(`Error fetching ${what}:`, error);
     throw error;
   }

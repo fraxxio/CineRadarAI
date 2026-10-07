@@ -1,13 +1,16 @@
 // TMDB wire shapes (only the fields we read) and their mapping to ./types
 import type {
+  Genre,
   Language,
   MediaType,
   Paged,
   TitleDetails,
+  TitleHit,
   TitleImages,
   TitleReview,
   TitleSummary,
   TitleVideo,
+  TitleWithCredits,
 } from "./types";
 
 export type RawPaged<T> = {
@@ -28,6 +31,8 @@ export type RawSummary = {
   backdrop_path?: string | null;
   vote_average: number;
   vote_count: number;
+  // search / discover only
+  genre_ids?: number[];
 };
 
 export type RawDetails = RawSummary & {
@@ -40,7 +45,13 @@ export type RawDetails = RawSummary & {
   last_air_date?: string;
   number_of_seasons?: number;
   type?: string;
+  // TV only, usually one value, empty for many newer shows
+  episode_run_time?: number[];
+  // only with append_to_response=credits
+  credits?: { cast: { name: string; order: number }[] };
 };
+
+export type RawGenres = { genres: Genre[] };
 
 export type RawImages = {
   backdrops: { file_path: string; vote_average: number; vote_count: number }[];
@@ -77,6 +88,11 @@ export const toSummary = (type: MediaType, raw: RawSummary): TitleSummary => ({
   voteCount: raw.vote_count,
 });
 
+export const toHit = (type: MediaType, raw: RawSummary): TitleHit => ({
+  ...toSummary(type, raw),
+  genreIds: raw.genre_ids ?? [],
+});
+
 export function toDetails(type: MediaType, raw: RawDetails): TitleDetails {
   const base = {
     ...toSummary(type, raw),
@@ -100,6 +116,17 @@ export function toDetails(type: MediaType, raw: RawDetails): TitleDetails {
         showType: raw.type ?? "",
       };
 }
+
+export const toTitleWithCredits = (
+  type: MediaType,
+  raw: RawDetails,
+): TitleWithCredits => ({
+  ...toDetails(type, raw),
+  cast: [...(raw.credits?.cast ?? [])]
+    .sort((a, b) => a.order - b.order)
+    .map((member) => member.name),
+  episodeRuntime: raw.episode_run_time?.[0] ?? null,
+});
 
 export const toImages = (raw: RawImages): TitleImages => ({
   backdrops: raw.backdrops.map((image) => ({
