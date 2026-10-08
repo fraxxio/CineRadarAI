@@ -354,6 +354,13 @@ describe("runToolCalls", () => {
       expect(result.output).toMatch(
         /^Unknown genre "Cartoons"\. Valid movie genres: Drama, /,
       );
+      // the model's mistake: a warning, not a server error
+      expect(console.warn).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /^Tool call discover_titles rejected: Unknown genre "Cartoons"/,
+        ),
+      );
+      expect(console.error).not.toHaveBeenCalled();
     });
 
     test("a call that takes over 8 s times out", async () => {
@@ -447,6 +454,7 @@ describe("runToolCalls", () => {
         ),
       ).rejects.toBe(controller.signal.reason);
       // fetch is called with the aborted signal; a real fetch rejects at once
+      expect(spy).toHaveBeenCalled();
       for (const [, init] of spy.mock.calls) {
         expect(init?.signal?.aborted).toBe(true);
       }

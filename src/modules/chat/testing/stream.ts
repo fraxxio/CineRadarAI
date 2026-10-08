@@ -47,9 +47,6 @@ export async function* geminiEvents(events: object[], throwAfter?: number) {
   }
 }
 
-// Gemini interaction events, shaped like the real sequence in
-// docs/plans/tmdb-tool-loop-events.json
-
 export const created = (id = "i1") => ({
   event_type: "interaction.created",
   interaction: { id },

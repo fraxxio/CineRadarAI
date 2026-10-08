@@ -345,6 +345,21 @@ describe("discoverTitles", () => {
   });
 
   it.each([
+    ["movie", "primary_release_date.lte"],
+    ["tv", "first_air_date.lte"],
+  ] as const)("releasedBy %s: goes to %s", async (type, key) => {
+    const spy = mockSearch();
+    await discoverTitles({ type, sort: "popular", releasedBy: "2026-10-08" });
+
+    expect(params(spy)).toEqual([
+      ["language", "en-US"],
+      ["include_adult", "false"],
+      [key, "2026-10-08"],
+      ["sort_by", "popularity.desc"],
+    ]);
+  });
+
+  it.each([
     ["movie", "200", "primary_release_year"],
     ["tv", "100", "first_air_date_year"],
   ] as const)(
@@ -403,6 +418,16 @@ describe("getGenres", () => {
       { id: 10765, name: "Sci-Fi & Fantasy" },
     ]);
     expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  test("parallel calls share one request", async () => {
+    const { getGenres } = await freshServer();
+    const spy = mockTmdb({ "/3/genre/movie/list": GENRES });
+
+    const lists = await Promise.all([1, 2, 3].map(() => getGenres("movie")));
+
+    expect(lists).toEqual([GENRES.genres, GENRES.genres, GENRES.genres]);
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   test("a failure isn't cached: the next call retries", async () => {

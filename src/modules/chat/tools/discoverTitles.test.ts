@@ -101,6 +101,21 @@ describe("discover_titles", () => {
     expect(tv.has("primary_release_year")).toBe(false);
   });
 
+  test("lists only titles released by today", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-08T12:00:00Z"));
+    const spy = mockDiscover();
+
+    await run({ type: "movie", year: 2026 });
+    await run({ type: "tv", year: 2026 });
+    vi.useRealTimers();
+
+    const movie = discoverUrl(spy, "movie").searchParams;
+    const tv = discoverUrl(spy, "tv").searchParams;
+    expect(movie.get("primary_release_date.lte")).toBe("2026-10-08");
+    expect(tv.get("first_air_date.lte")).toBe("2026-10-08");
+  });
+
   it.each(["Science Fiction", "science fiction", "  SCIENCE FICTION "])(
     "genre %j maps to its id",
     async (genre) => {
@@ -129,6 +144,30 @@ describe("discover_titles", () => {
     );
     // nothing discovered with a wrong filter
     expect(tmdbUrls(spy, "/3/discover/tv")).toEqual([]);
+  });
+
+  describe("a failed genre list", () => {
+    const failGenres = () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      return mockTmdb({
+        "/3/discover/movie": page([rawMovie(1)]),
+        "/3/genre/movie/list": new Response("boom", { status: 503 }),
+      });
+    };
+
+    test("no genre: still lists the titles, without genres", async () => {
+      failGenres();
+      const { results } = await run({ type: "movie" });
+      expect(results).toEqual([expect.objectContaining({ id: 1, genres: [] })]);
+    });
+
+    test("a genre filter: fails, nothing discovered", async () => {
+      const spy = failGenres();
+      await expect(run({ type: "movie", genre: "War" })).rejects.toMatchObject({
+        status: 503,
+      });
+      expect(tmdbUrls(spy, "/3/discover/movie")).toEqual([]);
+    });
   });
 
   test("passes the signal to every TMDB request", async () => {

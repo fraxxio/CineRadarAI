@@ -160,13 +160,20 @@ export type DiscoverTitlesParams = {
   year?: number;
   genreId?: number;
   sort: DiscoverSort;
+  // "2026-10-08": leaves out titles released (first aired) after this date
+  releasedBy?: string;
 };
+
+const releasedByParam = (type: MediaType, date: string | undefined) =>
+  type === "movie"
+    ? { "primary_release_date.lte": date }
+    : { "first_air_date.lte": date };
 
 // without a vote floor, titles with a single 10/10 vote top the list
 const TOP_RATED_MIN_VOTES: Record<MediaType, number> = { movie: 200, tv: 100 };
 
 export async function discoverTitles(
-  { type, year, genreId, sort }: DiscoverTitlesParams,
+  { type, year, genreId, sort, releasedBy }: DiscoverTitlesParams,
   options?: FetchOptions,
 ): Promise<Paged<TitleHit>> {
   const sortParams =
@@ -183,6 +190,7 @@ export async function discoverTitles(
       include_adult: false,
       with_genres: genreId,
       ...yearParam(type, year),
+      ...releasedByParam(type, releasedBy),
       ...sortParams,
     },
     "discover results",
@@ -192,10 +200,11 @@ export async function discoverTitles(
 }
 
 // genre lists rarely change: kept for the life of the server instance;
-// failures aren't cached, the next call retries
-const genreCache = new Map<MediaType, Genre[]>();
+// the request itself is cached, so parallel calls share it (and the first
+// caller's signal); failures aren't cached, the next call retries
+const genreCache = new Map<MediaType, Promise<Genre[]>>();
 
-export async function getGenres(
+export function getGenres(
   type: MediaType,
   options?: FetchOptions,
 ): Promise<Genre[]> {
@@ -203,14 +212,15 @@ export async function getGenres(
   if (cached) {
     return cached;
   }
-  const raw = await tmdbFetch<RawGenres>(
+  const genres = tmdbFetch<RawGenres>(
     `/genre/${type}/list`,
     { language: "en-US" },
     `${type} genres`,
     options,
-  );
-  genreCache.set(type, raw.genres);
-  return raw.genres;
+  ).then((raw) => raw.genres);
+  genreCache.set(type, genres);
+  genres.catch(() => genreCache.delete(type));
+  return genres;
 }
 
 // details and cast in one request

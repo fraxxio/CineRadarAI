@@ -62,6 +62,8 @@ export async function runToolCalls(
     if (outcome.status === "fulfilled") {
       return outcome.value;
     }
+    // runToolCall only rejects on abort, handled above: a guard in case that
+    // changes
     console.error(`Tool ${calls[i].name} failed:`, outcome.reason);
     return errorResult(calls[i], "Tool failed");
   });
@@ -87,6 +89,9 @@ async function runToolCall(
   } catch (error) {
     if (signal.aborted) {
       throw error;
+    }
+    if (error instanceof ToolError) {
+      return rejected(call, error.message);
     }
     console.error(`Tool ${call.name} failed:`, error);
     return errorResult(call, errorMessage(error, timeout.signal));
@@ -126,9 +131,6 @@ function errorMessage(error: unknown, timeoutSignal: AbortSignal) {
   if (timeoutSignal.aborted) {
     return "TMDB request timed out";
   }
-  if (error instanceof ToolError) {
-    return error.message;
-  }
   if (error instanceof TmdbError) {
     return `TMDB request failed (status ${error.status})`;
   }
@@ -142,7 +144,8 @@ const errorResult = (call: ToolCall, message: string): ToolResult => ({
   isError: true,
 });
 
-// the model's mistake (bad name, args, too many calls), not a server error
+// the model's mistake (bad name, args, too many calls, a ToolError), not a
+// server error
 function rejected(call: ToolCall, message: string): Promise<ToolResult> {
   console.warn(`Tool call ${call.name} rejected: ${message}`);
   return Promise.resolve(errorResult(call, message));

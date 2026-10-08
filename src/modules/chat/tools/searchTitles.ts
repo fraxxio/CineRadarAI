@@ -26,7 +26,8 @@ export const searchTitles = defineTool({
   async run({ query, type, year }, { signal }) {
     const [page, genres] = await Promise.all([
       searchTitlesByYear({ type, query, year }, { signal }),
-      getGenres(type, { signal }),
+      // genres are extra detail: a found title still counts without them
+      getGenres(type, { signal }).catch(() => []),
     ]);
     return {
       results: page.results

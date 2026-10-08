@@ -89,6 +89,18 @@ describe("search_titles", () => {
     expect(tv.searchParams.get("query")).toBe("Dark");
   });
 
+  test("a failed genre list still returns the hits, without genres", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockTmdb({
+      "/3/search/movie": page([rawMovie(1)]),
+      "/3/genre/movie/list": new Response("boom", { status: 503 }),
+    });
+
+    const { results } = await search({ query: "Fury", type: "movie" });
+
+    expect(results).toEqual([expect.objectContaining({ id: 1, genres: [] })]);
+  });
+
   test("no matches: an empty list", async () => {
     mockSearch([]);
     expect(

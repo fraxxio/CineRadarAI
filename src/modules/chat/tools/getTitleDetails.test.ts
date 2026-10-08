@@ -100,15 +100,24 @@ describe("get_title_details", () => {
     expect(show).toMatchObject({ episodeRuntime: null });
   });
 
-  test("the overview is cut to 300 characters", async () => {
+  test("a long overview is cut to at most 300 characters", async () => {
     mockTmdb({
       "/3/movie/550": movie({ overview: "word ".repeat(100) }),
     });
 
     const { overview } = (await details("movie", 550)) as { overview: string };
 
+    expect(overview).toBe(`${"word ".repeat(59)}word…`);
     expect(overview).toHaveLength(300);
-    expect(overview.endsWith("…")).toBe(true);
+  });
+
+  test("a cut at a space drops the space before the ellipsis", async () => {
+    const text = `${"a".repeat(298)} ${"b".repeat(50)}`;
+    mockTmdb({ "/3/movie/550": movie({ overview: text }) });
+
+    const { overview } = (await details("movie", 550)) as { overview: string };
+
+    expect(overview).toBe(`${"a".repeat(298)}…`);
   });
 
   test("an overview of exactly 300 characters is kept", async () => {

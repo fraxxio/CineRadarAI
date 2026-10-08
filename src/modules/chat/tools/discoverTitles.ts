@@ -8,7 +8,7 @@ const MAX_RESULTS = 10;
 export const discoverTitles = defineTool({
   name: "discover_titles",
   description:
-    "List movies or TV shows from TMDB by release year and genre, sorted by popularity or rating. Returns the top 10 with their TMDB id, title, release year, rating, vote count and genres. Use it for recent releases and for requests where no titles come to mind.",
+    "List released movies or TV shows from TMDB by release year and genre, sorted by popularity or rating. Returns the top 10 with their TMDB id, title, release year, rating, vote count and genres. Use it for recent releases and for requests where no titles come to mind.",
   status: "Browsing TMDB database...",
   args: z.object({
     type: mediaTypeArg,
@@ -25,7 +25,9 @@ export const discoverTitles = defineTool({
       .describe("popular: most popular first, top_rated: best rated first"),
   }),
   async run({ type, year, genre, sort }, { signal }) {
-    const genres = await getGenres(type, { signal });
+    const loading = getGenres(type, { signal });
+    // needed to filter by genre; otherwise just extra detail
+    const genres = await (genre ? loading : loading.catch(() => []));
 
     let genreId: number | undefined;
     if (genre) {
@@ -38,7 +40,12 @@ export const discoverTitles = defineTool({
       }
     }
 
-    const page = await discover({ type, year, genreId, sort }, { signal });
+    // upcoming titles rank high by popularity: only list released ones
+    const releasedBy = new Date().toISOString().slice(0, 10);
+    const page = await discover(
+      { type, year, genreId, sort, releasedBy },
+      { signal },
+    );
     return {
       results: page.results
         .slice(0, MAX_RESULTS)
