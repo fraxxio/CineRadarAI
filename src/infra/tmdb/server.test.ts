@@ -1,14 +1,22 @@
 import { describe, expect, it, test, vi } from "vitest";
 import {
   TmdbError,
+  discoverTitles,
   findTitles,
   getLanguages,
   getTitle,
   getTitleImages,
   getTitleReviews,
   getTitleVideos,
+  getTitleWithCredits,
+  searchTitlesByYear,
 } from "./server";
-import { lastTmdbUrl, mockTmdb, tmdbFixture } from "@test/helpers/tmdb";
+import {
+  hangUntilAborted,
+  lastTmdbUrl,
+  mockTmdb,
+  tmdbFixture,
+} from "@test/helpers/tmdb";
 
 const EMPTY = { page: 1, results: [], total_pages: 0, total_results: 0 };
 
@@ -266,4 +274,273 @@ test("getLanguages", async () => {
 
   expect(lastTmdbUrl(spy).search).toBe("");
   expect(languages[0]).toEqual({ code: "en", englishName: "English" });
+});
+
+const params = (spy: ReturnType<typeof mockTmdb>) => [
+  ...lastTmdbUrl(spy).searchParams,
+];
+
+describe("searchTitlesByYear", () => {
+  test("a movie year goes to primary_release_year", async () => {
+    const spy = mockSearch();
+    await searchTitlesByYear({ type: "movie", query: "Fury", year: 2014 });
+
+    expect(lastTmdbUrl(spy).pathname).toBe("/3/search/movie");
+    expect(params(spy)).toEqual([
+      ["query", "Fury"],
+      ["language", "en-US"],
+      ["include_adult", "false"],
+      ["primary_release_year", "2014"],
+    ]);
+  });
+
+  test("a TV year goes to first_air_date_year", async () => {
+    const spy = mockSearch();
+    await searchTitlesByYear({ type: "tv", query: "Dark", year: 2017 });
+
+    expect(lastTmdbUrl(spy).pathname).toBe("/3/search/tv");
+    expect(params(spy)).toEqual([
+      ["query", "Dark"],
+      ["language", "en-US"],
+      ["include_adult", "false"],
+      ["first_air_date_year", "2017"],
+    ]);
+  });
+
+  test("no year: no year param", async () => {
+    const spy = mockSearch();
+    await searchTitlesByYear({ type: "movie", query: "Fury" });
+    expect(params(spy).map(([key]) => key)).toEqual([
+      "query",
+      "language",
+      "include_adult",
+    ]);
+  });
+
+  test("hits keep their genre ids, [] when TMDB has none", async () => {
+    mockSearch({
+      ...EMPTY,
+      results: [
+        { id: 1, title: "A", vote_average: 7, vote_count: 9, genre_ids: [18] },
+        { id: 2, title: "B", vote_average: 7, vote_count: 9 },
+      ],
+    });
+    const { results } = await searchTitlesByYear({ type: "movie", query: "x" });
+    expect(results.map((hit) => hit.genreIds)).toEqual([[18], []]);
+  });
+});
+
+describe("discoverTitles", () => {
+  test("popular: by popularity, no vote floor", async () => {
+    const spy = mockSearch();
+    await discoverTitles({ type: "movie", year: 2026, sort: "popular" });
+
+    expect(lastTmdbUrl(spy).pathname).toBe("/3/discover/movie");
+    expect(params(spy)).toEqual([
+      ["language", "en-US"],
+      ["include_adult", "false"],
+      ["primary_release_year", "2026"],
+      ["sort_by", "popularity.desc"],
+    ]);
+  });
+
+  it.each([
+    ["movie", "200", "primary_release_year"],
+    ["tv", "100", "first_air_date_year"],
+  ] as const)(
+    "top_rated %s: by rating with a vote floor of %s",
+    async (type, floor, yearKey) => {
+      const spy = mockSearch();
+      await discoverTitles({
+        type,
+        year: 2020,
+        genreId: 18,
+        sort: "top_rated",
+      });
+
+      expect(lastTmdbUrl(spy).pathname).toBe(`/3/discover/${type}`);
+      expect(params(spy)).toEqual([
+        ["language", "en-US"],
+        ["include_adult", "false"],
+        ["with_genres", "18"],
+        [yearKey, "2020"],
+        ["sort_by", "vote_average.desc"],
+        ["vote_count.gte", floor],
+      ]);
+    },
+  );
+});
+
+describe("getGenres", () => {
+  // the cache lives in the module: a fresh copy per test
+  const freshServer = async () => {
+    vi.resetModules();
+    return import("./server");
+  };
+  const GENRES = { genres: [{ id: 18, name: "Drama" }] };
+
+  test("fetches the English list per media type", async () => {
+    const { getGenres } = await freshServer();
+    const spy = mockTmdb({ "/3/genre/tv/list": GENRES });
+
+    expect(await getGenres("tv")).toEqual(GENRES.genres);
+    expect(lastTmdbUrl(spy).pathname).toBe("/3/genre/tv/list");
+    expect(params(spy)).toEqual([["language", "en-US"]]);
+  });
+
+  test("is memoised per media type", async () => {
+    const { getGenres } = await freshServer();
+    const spy = mockTmdb({
+      "/3/genre/movie/list": GENRES,
+      "/3/genre/tv/list": { genres: [{ id: 10765, name: "Sci-Fi & Fantasy" }] },
+    });
+
+    await getGenres("movie");
+    expect(await getGenres("movie")).toEqual(GENRES.genres);
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    expect(await getGenres("tv")).toEqual([
+      { id: 10765, name: "Sci-Fi & Fantasy" },
+    ]);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  test("a failure isn't cached: the next call retries", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { getGenres } = await freshServer();
+    let fail = true;
+    const spy = mockTmdb({
+      "/3/genre/movie/list": () =>
+        fail ? new Response("boom", { status: 503 }) : GENRES,
+    });
+
+    await expect(getGenres("movie")).rejects.toMatchObject({ status: 503 });
+    fail = false;
+    expect(await getGenres("movie")).toEqual(GENRES.genres);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("getTitleWithCredits", () => {
+  const credits = {
+    cast: [
+      { name: "Third", order: 2 },
+      { name: "First", order: 0 },
+      { name: "Second", order: 1 },
+    ],
+  };
+
+  test("one request: details with credits, cast in billing order", async () => {
+    const spy = mockTmdb({
+      "/3/movie/550": { ...tmdbFixture<object>("movie-550"), credits },
+    });
+    const title = await getTitleWithCredits("movie", 550);
+
+    expect(spy).toHaveBeenCalledOnce();
+    expect(params(spy)).toEqual([
+      ["language", "en-US"],
+      ["append_to_response", "credits"],
+    ]);
+    expect(title).toMatchObject({
+      mediaType: "movie",
+      title: "Fight Club",
+      runtime: 139,
+      cast: ["First", "Second", "Third"],
+      episodeRuntime: null,
+    });
+  });
+
+  test("TV: the first episode runtime", async () => {
+    mockTmdb({
+      "/3/tv/1399": {
+        ...tmdbFixture<object>("tv-1399"),
+        credits,
+        episode_run_time: [55, 60],
+      },
+    });
+    const title = await getTitleWithCredits("tv", 1399);
+    expect(title).toMatchObject({
+      mediaType: "tv",
+      numberOfSeasons: 8,
+      episodeRuntime: 55,
+    });
+  });
+
+  test("no credits or episode runtimes: empty cast and null", async () => {
+    mockTmdb({
+      "/3/tv/1399": { ...tmdbFixture<object>("tv-1399"), episode_run_time: [] },
+    });
+    const title = await getTitleWithCredits("tv", 1399);
+    expect(title.cast).toEqual([]);
+    expect(title.episodeRuntime).toBeNull();
+  });
+});
+
+describe("abort signal", () => {
+  it.each([
+    [
+      "searchTitlesByYear",
+      (o: { signal: AbortSignal }) =>
+        searchTitlesByYear({ type: "movie", query: "x" }, o),
+    ],
+    [
+      "discoverTitles",
+      (o: { signal: AbortSignal }) =>
+        discoverTitles({ type: "tv", sort: "popular" }, o),
+    ],
+    [
+      "getTitleWithCredits",
+      (o: { signal: AbortSignal }) => getTitleWithCredits("movie", 550, o),
+    ],
+  ])("%s passes it to fetch", async (_, call) => {
+    const spy = mockTmdb({
+      "/3/search/movie": EMPTY,
+      "/3/discover/tv": EMPTY,
+      "/3/movie/550": tmdbFixture("movie-550"),
+    });
+    const { signal } = new AbortController();
+
+    await call({ signal });
+
+    expect(init(spy).signal).toBe(signal);
+  });
+
+  test("getGenres passes it to fetch", async () => {
+    vi.resetModules();
+    const { getGenres } = await import("./server");
+    const spy = mockTmdb({ "/3/genre/movie/list": { genres: [] } });
+    const { signal } = new AbortController();
+
+    await getGenres("movie", { signal });
+
+    expect(init(spy).signal).toBe(signal);
+  });
+
+  test("an aborted request rethrows the reason without logging", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockTmdb({ "/3/search/movie": hangUntilAborted });
+    const controller = new AbortController();
+
+    const request = searchTitlesByYear(
+      { type: "movie", query: "x" },
+      { signal: controller.signal },
+    );
+    controller.abort();
+
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  test("a failure with a live signal is still logged", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockTmdb({ "/3/search/movie": new Response("x", { status: 500 }) });
+
+    await expect(
+      searchTitlesByYear(
+        { type: "movie", query: "x" },
+        { signal: new AbortController().signal },
+      ),
+    ).rejects.toBeInstanceOf(TmdbError);
+    expect(log).toHaveBeenCalledOnce();
+  });
 });

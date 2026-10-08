@@ -71,4 +71,22 @@ describe("AssistantMessage", () => {
     expect(screen.getByText("loader")).toBeInTheDocument();
     expect(screen.queryByText("content")).toBeNull();
   });
+
+  test("the footer renders under the content, above the stopped note", () => {
+    render(
+      <AssistantMessage
+        message={{ role: "assistant", content: "Let me check.", stopped: true }}
+        footer={<span>footer</span>}
+      />,
+    );
+    const content = screen.getByText("Let me check.");
+    const footer = screen.getByText("footer");
+    const stopped = screen.getByText("Stopped");
+    expect(content.compareDocumentPosition(footer)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(footer.compareDocumentPosition(stopped)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
 });

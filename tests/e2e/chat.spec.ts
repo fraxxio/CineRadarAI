@@ -1,10 +1,16 @@
 import type { Page } from "@playwright/test";
 import { deferred } from "../helpers/deferred";
 import { expect, test } from "./fixtures";
-import { answer, stubAssistant } from "./helpers/chat";
+import { answer, openAssistantStream, stubAssistant } from "./helpers/chat";
 
-const FURY =
+const FURY = "Here you go:\n1. [Fury](/search/movie/228150) (2014) — tanks.";
+// the TMDB mock has a fixture for movie 550
+const FIGHT_CLUB =
+  "Here you go:\n1. [Fight Club](/search/movie/550) (1999) — soap.";
+// a title the tools couldn't check
+const FALLBACK =
   "Here you go:\n1. [Fury](/search?query=Fury&btn=movie&year=2014) (2014) — tanks.";
+const SEARCHING = "Searching TMDB database...";
 
 const promptInput = (page: Page) => page.getByPlaceholder(/Suggest me movies/);
 
@@ -54,8 +60,20 @@ test("shows the loader and disables the input while waiting", async ({
   await expect(promptInput(page)).toBeEnabled();
 });
 
-test("a recommendation link opens the prefilled search", async ({ page }) => {
-  await stubAssistant(page, () => ({ events: answer("i1", FURY) }));
+test("a recommendation link opens the title page", async ({ page }) => {
+  await stubAssistant(page, () => ({ events: answer("i1", FIGHT_CLUB) }));
+  await send(page, "movies about fight clubs");
+
+  await page.getByRole("link", { name: "Fight Club" }).click();
+
+  await expect(page).toHaveURL(/\/search\/movie\/550$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Fight Club" }),
+  ).toBeVisible();
+});
+
+test("a fallback link opens the prefilled search", async ({ page }) => {
+  await stubAssistant(page, () => ({ events: answer("i1", FALLBACK) }));
   await send(page, "war movies");
 
   await page.getByRole("link", { name: "Fury" }).click();
@@ -63,6 +81,60 @@ test("a recommendation link opens the prefilled search", async ({ page }) => {
   await expect(page).toHaveURL(/\/search\?query=Fury&btn=movie&year=2014/);
   await expect(page.getByPlaceholder("Type keywords...")).toHaveValue("Fury");
   await expect(page.locator('select[name="year"]')).toHaveValue("2014");
+});
+
+test("a status before any text replaces the loader words", async ({ page }) => {
+  const stream = await openAssistantStream(page);
+  await page.goto("/");
+  await send(page, "war movies");
+
+  await stream.send({ type: "start", interactionId: "i1" });
+  await stream.send({ type: "status", text: SEARCHING });
+
+  await expect(page.getByRole("status")).toContainText(SEARCHING);
+
+  await stream.send(
+    { type: "delta", text: FIGHT_CLUB },
+    { type: "done", interactionId: "i1" },
+  );
+  await stream.close();
+  await expect(answerItem(page)).toContainText("Fight Club");
+  await expect(page.getByRole("status")).toHaveCount(0);
+});
+
+test("a status after text shows a loader under it until the answer continues", async ({
+  page,
+}) => {
+  const stream = await openAssistantStream(page);
+  await page.goto("/");
+  await send(page, "war movies");
+
+  await stream.send(
+    { type: "start", interactionId: "i1" },
+    { type: "delta", text: "Let me check the database." },
+    { type: "status", text: SEARCHING },
+  );
+
+  const before = page.getByText("Let me check the database.");
+  await expect(before).toBeVisible();
+  await expect(page.getByRole("status")).toHaveCount(1);
+  await expect(page.getByRole("status")).toContainText(SEARCHING);
+  await expect(promptInput(page)).toBeDisabled();
+  // the loader sits under the text
+  const textBox = (await before.boundingBox())!;
+  const loaderBox = (await page.getByRole("status").boundingBox())!;
+  expect(loaderBox.y).toBeGreaterThanOrEqual(textBox.y + textBox.height);
+
+  await stream.send(
+    { type: "delta", text: "\n\n" + FIGHT_CLUB },
+    { type: "done", interactionId: "i1" },
+  );
+  await stream.close();
+
+  await expect(answerItem(page)).toContainText("Fight Club");
+  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(before).toBeVisible();
+  await expect(promptInput(page)).toBeEnabled();
 });
 
 test("a follow-up sends the previous interaction id", async ({ page }) => {

@@ -46,3 +46,56 @@ export async function* geminiEvents(events: object[], throwAfter?: number) {
     yield e;
   }
 }
+
+// Gemini interaction events, shaped like the real sequence in
+// docs/plans/tmdb-tool-loop-events.json
+
+export const created = (id = "i1") => ({
+  event_type: "interaction.created",
+  interaction: { id },
+});
+
+export const textDelta = (text: string) => ({
+  event_type: "step.delta",
+  delta: { type: "text", text },
+});
+
+export const completed = (id = "i1", status = "completed") => ({
+  event_type: "interaction.completed",
+  interaction: { id, status },
+});
+
+export const requiresAction = (id: string) => completed(id, "requires_action");
+
+// step.start of a function call; the real API sends `arguments: {}` here and
+// the arguments as deltas
+export const functionCall = (
+  index: number,
+  { id, name, args = {} }: { id: string; name: string; args?: object },
+) => ({
+  event_type: "step.start",
+  index,
+  step: { type: "function_call", id, name, arguments: args },
+});
+
+export const argsDelta = (index: number, json: string) => ({
+  event_type: "step.delta",
+  index,
+  delta: { type: "arguments_delta", arguments: json },
+});
+
+export const stepStop = (index: number) => ({
+  event_type: "step.stop",
+  index,
+});
+
+// one complete call as the real API streams it: start, all arguments in one
+// delta, stop
+export const toolCall = (
+  index: number,
+  call: { id: string; name: string; args: object },
+) => [
+  functionCall(index, { id: call.id, name: call.name }),
+  argsDelta(index, JSON.stringify(call.args)),
+  stepStop(index),
+];

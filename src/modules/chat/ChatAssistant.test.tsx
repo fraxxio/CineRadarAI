@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
@@ -18,6 +18,7 @@ const CAPTCHA_FAILED = "Recaptcha failed to verify!";
 const start = (interactionId: string) => ({ type: "start", interactionId });
 const delta = (text: string) => ({ type: "delta", text });
 const done = (interactionId: string) => ({ type: "done", interactionId });
+const progress = (text: string) => ({ type: "status", text });
 // one complete, successful turn
 const answer = (id: string, text: string) =>
   streamResponse([ndjson(start(id), delta(text), done(id))]);
@@ -447,6 +448,159 @@ describe("ChatAssistant", () => {
       expect(screen.queryByText("Stopped")).toBeNull();
       expect(input()).toHaveValue("hi");
       expect(calls.map((c) => c.url)).toEqual(["/api/recaptcha"]);
+    });
+  });
+
+  describe("tool progress", () => {
+    const SEARCHING = "Searching TMDB database...";
+    const stopBtn = () => screen.getByRole("button", { name: "Stop" });
+    // the loader's screen-reader text names what it shows
+    const loaderText = () =>
+      screen.getByRole("status").querySelector(".sr-only")?.textContent;
+
+    test("a status before any text replaces the loader words", async () => {
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("war films");
+      expect(loaderText()).toBe("Generating response");
+
+      stream.push(ndjson(start("i1"), progress(SEARCHING)));
+
+      await waitFor(() => expect(loaderText()).toBe(SEARCHING));
+      expect(screen.getAllByRole("status")).toHaveLength(1);
+    });
+
+    test("a status after text shows a loader under the text; the next delta clears it", async () => {
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("war films");
+
+      stream.push(ndjson(start("i1"), delta("Let me check.")));
+      await screen.findByText("Let me check.");
+      expect(screen.queryByRole("status")).toBeNull();
+
+      stream.push(ndjson(progress(SEARCHING)));
+      const status = await screen.findByRole("status");
+      expect(loaderText()).toBe(SEARCHING);
+      expect(screen.getAllByRole("status")).toHaveLength(1);
+      // under the text written so far
+      const text = screen.getByText("Let me check.");
+      expect(text.compareDocumentPosition(status)).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+      expect(input()).toBeDisabled();
+
+      stream.push(ndjson(delta("\n\nWatch Fury.")));
+      await screen.findByText("Watch Fury.");
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.getByText("Let me check.")).toBeInTheDocument();
+
+      stream.push(ndjson(done("i1")));
+      stream.close();
+      await settled();
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+
+    test("a newer status replaces the older one", async () => {
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("war films");
+
+      stream.push(ndjson(start("i1"), progress(SEARCHING)));
+      await waitFor(() => expect(loaderText()).toBe(SEARCHING));
+      stream.push(ndjson(progress("Checking title details...")));
+
+      await waitFor(() =>
+        expect(loaderText()).toBe("Checking title details..."),
+      );
+      expect(screen.getAllByRole("status")).toHaveLength(1);
+    });
+
+    test("an error during a tool round clears the loader", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("war films");
+
+      stream.push(
+        ndjson(start("i1"), delta("Let me check."), progress(SEARCHING)),
+      );
+      await screen.findByRole("status");
+      stream.push(ndjson({ type: "error" }));
+
+      expect(await screen.findByText(ERROR_TEXT)).toBeInTheDocument();
+      await settled();
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+
+    test("the next turn starts without the old status", async () => {
+      const first = controlledStream();
+      const second = controlledStream();
+      routeFetch({ "/api/assistant": [first.response, second.response] });
+      renderChat();
+      await send("p1");
+      first.push(ndjson(start("i1"), progress(SEARCHING)));
+      await waitFor(() => expect(loaderText()).toBe(SEARCHING));
+      await user.click(stopBtn());
+
+      await send("p2");
+
+      expect(loaderText()).toBe("Generating response");
+    });
+
+    test("the turn after a failed tool round starts without the old status", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const first = controlledStream();
+      const second = controlledStream();
+      routeFetch({ "/api/assistant": [first.response, second.response] });
+      renderChat();
+      await send("p1");
+      first.push(ndjson(start("i1"), progress(SEARCHING), { type: "error" }));
+      await screen.findByText(ERROR_TEXT);
+      await settled();
+
+      await send("p2");
+
+      expect(loaderText()).toBe("Generating response");
+    });
+
+    test("a stop during a tool round shares the text written before the tools", async () => {
+      const toolRound = controlledStream();
+      const { bodies } = routeFetch({
+        "/api/assistant": [
+          answer("i1", "a1"),
+          toolRound.response,
+          answer("i3", "a3"),
+        ],
+      });
+      renderChat();
+      await send("p1");
+      await settled();
+      await send("p2");
+      toolRound.push(
+        ndjson(start("i2"), delta("Let me check."), progress(SEARCHING)),
+      );
+      await screen.findByRole("status");
+
+      await user.click(stopBtn());
+
+      expect(screen.queryByRole("status")).toBeNull();
+      const stopped = screen.getByText("Stopped").parentElement!;
+      expect(within(stopped).getByText("Let me check.")).toBeInTheDocument();
+
+      await send("p3");
+      await settled();
+
+      // continues from the last completed turn, not the stopped one
+      expect(bodies("/api/assistant")[2]).toEqual({
+        content: "p3",
+        previousInteractionId: "i1",
+        stoppedTurns: [{ prompt: "p2", partialText: "Let me check." }],
+      });
     });
   });
 
