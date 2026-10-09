@@ -8,6 +8,8 @@ import { useChat } from "./useChat";
 import { useRecaptchaCheck } from "@/infra/recaptcha/useRecaptchaCheck";
 import { MAX_PROMPT_LENGTH } from "./chatLimits";
 import { LOADER_WORDS } from "./loaderWords";
+import { lastPartIsFinishedTool } from "./messageParts";
+import type { ChatMessage } from "./protocol";
 import { shuffle } from "@/shared/lib/shuffle";
 
 type ChatAssistantProps = {
@@ -20,8 +22,9 @@ export default function ChatAssistant({
   recaptchaEnabled,
 }: ChatAssistantProps) {
   const recaptcha = useRecaptchaCheck(recaptchaEnabled);
-  const { messages, streamingContent, progress, status, send, stop, reset } =
-    useChat({ beforeSend: recaptcha.verify });
+  const { messages, streamingParts, status, send, stop, reset } = useChat({
+    beforeSend: recaptcha.verify,
+  });
   const [prompt, setPrompt] = useState("");
   // safe to shuffle during render: the loader never renders on the server
   const [loaderWords] = useState(() => shuffle(LOADER_WORDS));
@@ -29,12 +32,15 @@ export default function ChatAssistant({
 
   const isBusy = status === "loading" || status === "streaming";
   const isEmpty = messages.length === 0 && status === "idle";
+  // nothing has arrived yet, or the tools are done and the model is reading
+  // their results; a running tool line has its own spinner
+  const showLoader =
+    streamingParts.length === 0 || lastPartIsFinishedTool(streamingParts);
 
-  // set default greeting Message
-  const greetingMessage = {
+  const assistantText = (text: string): Omit<ChatMessage, "id"> => ({
     role: "assistant",
-    content: greeting,
-  };
+    parts: [{ type: "text", text }],
+  });
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -67,32 +73,27 @@ export default function ChatAssistant({
       </div>
       <div className="flex max-h-full flex-col-reverse overflow-y-auto">
         <div>
-          <AssistantMessage message={greetingMessage} />
+          <AssistantMessage message={assistantText(greeting)} />
           {messages.map((m) => (
             <AssistantMessage key={m.id} message={m} />
           ))}
-          {isBusy &&
-            (streamingContent ? (
-              <AssistantMessage
-                message={{ role: "assistant", content: streamingContent }}
-                // tools run after the text written before them
-                footer={progress ? <ThinkingLoader text={progress} /> : null}
-              />
-            ) : (
-              <AssistantMessage message={{ role: "assistant" }}>
+          {isBusy && (
+            <AssistantMessage
+              message={{ role: "assistant", parts: streamingParts }}
+            >
+              {showLoader && (
                 <ThinkingLoader
                   words={loaderWords}
                   startIndex={loaderTurn.current}
-                  text={progress || undefined}
                 />
-              </AssistantMessage>
-            ))}
+              )}
+            </AssistantMessage>
+          )}
           {status === "error" && (
             <AssistantMessage
-              message={{
-                role: "assistant",
-                content: "Unfortunately an error occurred. Try again later.",
-              }}
+              message={assistantText(
+                "Unfortunately an error occurred. Try again later.",
+              )}
             />
           )}
         </div>

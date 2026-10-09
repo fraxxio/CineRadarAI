@@ -5,8 +5,11 @@ export {
   MAX_STOPPED_TURNS,
 } from "./chatLimits";
 export type {
+  ChatMessage,
   ChatRequest,
   ChatStreamEvent,
+  MessagePart,
   StoppedTurn,
-  Tmessage,
+  TextPart,
+  ToolPart,
 } from "./protocol";

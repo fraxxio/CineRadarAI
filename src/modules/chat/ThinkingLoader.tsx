@@ -4,34 +4,23 @@ import { BouncingText } from "./BouncingText";
 
 const ROTATE_MS = 4000;
 
-type ThinkingLoaderProps =
-  // fixed text, e.g. the status of running tools
-  | { text: string; words?: undefined; startIndex?: undefined }
-  // rotating words; text, when set, shows instead of them
-  | { words: string[]; startIndex: number; text?: string };
+type ThinkingLoaderProps = {
+  words: string[];
+  startIndex: number;
+};
 
-export function ThinkingLoader({
-  words,
-  startIndex = 0,
-  text,
-}: ThinkingLoaderProps) {
+export function ThinkingLoader({ words, startIndex }: ThinkingLoaderProps) {
   const [index, setIndex] = useState(startIndex);
-  const rotating = words !== undefined;
 
   useEffect(() => {
-    if (!rotating) {
-      return;
-    }
     const interval = setInterval(() => setIndex((i) => i + 1), ROTATE_MS);
     return () => clearInterval(interval);
-  }, [rotating]);
-
-  const shown = text || (words ? words[index % words.length] : "");
+  }, []);
 
   return (
     <p role="status" className="italic">
-      <span className="sr-only">{text || "Generating response"}</span>
-      <BouncingText text={shown} />
+      <span className="sr-only">Generating response</span>
+      <BouncingText text={words[index % words.length]} />
     </p>
   );
 }

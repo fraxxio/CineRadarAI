@@ -2,8 +2,6 @@
 export type ChatStreamEvent =
   | { type: "start"; interactionId: string }
   | { type: "delta"; text: string }
-  // tools are running, e.g. "Searching TMDB database..."; the next delta ends it
-  | { type: "status"; text: string }
   // a tool call started; `id` is the Gemini call id, `name` the tool name,
   // `text` its progress label, e.g. "Searching TMDB database..."
   | { type: "tool_start"; id: string; name: string; text: string }
@@ -50,11 +48,3 @@ export type ChatMessage = {
   // the user stopped this answer before it finished
   stopped?: boolean;
 };
-
-export type Tmessage = {
-  id: string;
-  role: string;
-  content: string;
-  // the user stopped this answer before it finished
-  stopped?: boolean;
-}[];
