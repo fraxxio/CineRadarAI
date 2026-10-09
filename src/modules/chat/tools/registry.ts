@@ -20,7 +20,8 @@ export const CHAT_TOOLS: ChatTool[] = [
 export const MAX_CALLS_PER_ROUND = 10;
 const TOOL_TIMEOUT_MS = 8000;
 const MAX_ISSUES = 5;
-const MIXED_STATUS = "Checking TMDB database...";
+// the model called a tool that doesn't exist
+const FALLBACK_STATUS = "Checking TMDB database...";
 
 const findTool = (name: string) =>
   CHAT_TOOLS.find((tool) => tool.name === name);
@@ -32,10 +33,9 @@ export function toolParameters(tool: ChatTool): Record<string, unknown> {
   return schema;
 }
 
-// progress text for a round: the tool's own when it's the only one used
-export function statusFor(names: string[]): string {
-  const tool = new Set(names).size === 1 ? findTool(names[0]) : undefined;
-  return tool?.status ?? MIXED_STATUS;
+// progress text of a call, e.g. "Searching TMDB database..."
+export function statusFor(name: string): string {
+  return findTool(name)?.status ?? FALLBACK_STATUS;
 }
 
 // runs a round's calls in parallel, results in call order; never throws

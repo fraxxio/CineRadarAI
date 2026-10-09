@@ -100,15 +100,12 @@ async function* runTurn(
   signal: AbortSignal,
 ): AsyncGenerator<ChatStreamEvent> {
   let stream = first;
-  let wroteText = false;
 
   // round 0 answers the prompt, round n the results of tool round n
   for (let round = 0; ; round++) {
     const outcome: RoundOutcome = yield* readRound(stream, {
       firstRound: round === 0,
-      breakBeforeText: wroteText,
     });
-    wroteText ||= outcome.wroteText;
 
     if (outcome.status === "completed") {
       yield { type: "done", interactionId: outcome.interactionId };
@@ -135,6 +132,11 @@ async function* runTurn(
     console.info(
       `Tool round ${round + 1}: ${outcome.calls.map((call) => call.name).join(", ")} (${Date.now() - started} ms, ${errors} errors)`,
     );
+    // every started call ends, also the rejected ones: the round settles
+    // together, so all its lines stop at once
+    for (const call of outcome.calls) {
+      yield { type: "tool_end", id: call.id };
+    }
 
     stream = await openRound({
       input: toFunctionResults(results),

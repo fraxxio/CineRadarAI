@@ -401,7 +401,13 @@ describe("POST /api/assistant", () => {
       vi.spyOn(console, "info").mockImplementation(() => {});
     });
 
-    const SEARCHING = { type: "status", text: "Searching TMDB database..." };
+    const searching = (id: string) => ({
+      type: "tool_start",
+      id,
+      name: "search_titles",
+      text: "Searching TMDB database...",
+    });
+    const ended = (id: string) => ({ type: "tool_end", id });
     const FURY = rawMovie(228150, { title: "Fury" });
     const FURY_ITEM = {
       id: 228150,
@@ -459,7 +465,8 @@ describe("POST /api/assistant", () => {
 
       expect(events).toEqual([
         { type: "start", interactionId: "i1" },
-        SEARCHING,
+        searching("c1"),
+        ended("c1"),
         { type: "delta", text: "Watch " },
         { type: "delta", text: "Fury." },
         { type: "done", interactionId: "i2" },
@@ -538,7 +545,16 @@ describe("POST /api/assistant", () => {
           result: { results: [expect.objectContaining({ id: 2 })] },
         }),
       ]);
-      expect(events.filter((e) => e.type === "status")).toEqual([SEARCHING]);
+      // a start per call as it streams, an end per call once the round is done
+      expect(events).toEqual([
+        { type: "start", interactionId: "i1" },
+        searching("c1"),
+        searching("c2"),
+        ended("c1"),
+        ended("c2"),
+        { type: "delta", text: "Done." },
+        { type: "done", interactionId: "i2" },
+      ]);
     });
 
     test("arguments split over deltas are joined per step index", async () => {
@@ -681,6 +697,20 @@ describe("POST /api/assistant", () => {
         },
       ]);
       expect(spy).not.toHaveBeenCalled();
+      // rejected calls start and end like the others
+      expect(events.filter((e) => e.type.startsWith("tool_"))).toEqual([
+        searching("c1"),
+        searching("c2"),
+        {
+          type: "tool_start",
+          id: "c3",
+          name: "get_weather",
+          text: "Checking TMDB database...",
+        },
+        ended("c1"),
+        ended("c2"),
+        ended("c3"),
+      ]);
       expect(events.at(-1)).toEqual({ type: "done", interactionId: "i2" });
       expect(events).not.toContainEqual({ type: "error" });
     });
@@ -735,9 +765,13 @@ describe("POST /api/assistant", () => {
       );
       rounds(toolRound("i1", ...calls), answerRound("i2", "Done."));
 
-      await readNdjson(await post({ content: "war" }));
+      const { events } = await readNdjson(await post({ content: "war" }));
 
       expect(tmdbUrls(spy, "/3/search/movie")).toHaveLength(10);
+      // the call over the limit ends too
+      expect(events.filter((e) => e.type === "tool_end")).toEqual(
+        calls.map((c) => ended(c.id)),
+      );
       const input = results(1);
       expect(input.map((r: { call_id: string }) => r.call_id)).toEqual(
         calls.map((c) => c.id),
@@ -762,7 +796,7 @@ describe("POST /api/assistant", () => {
           type: "start",
           interactionId: "i1",
         });
-        expect(await readLine(reader)).toEqual(SEARCHING);
+        expect(await readLine(reader)).toEqual(searching("c1"));
         await vi.waitFor(() =>
           expect(tmdbUrls(spy, "/3/search/movie")).toHaveLength(1),
         );
@@ -795,22 +829,22 @@ describe("POST /api/assistant", () => {
         );
         const reader = res.body!.getReader();
         await readLine(reader); // start
-        await readLine(reader); // status
+        expect(await readLine(reader)).toEqual(searching("c1"));
         await vi.waitFor(() =>
           expect(tmdbUrls(spy, "/3/search/movie")).toHaveLength(1),
         );
 
         client.abort();
 
-        // the stream closes without an error line
+        // the stream closes without a tool_end or an error line
         expect((await reader.read()).done).toBe(true);
         expect(create).toHaveBeenCalledTimes(1);
         expect(console.error).not.toHaveBeenCalled();
       });
     });
 
-    describe("paragraph break between rounds", () => {
-      test("text before the tools: the next round's text starts a new paragraph", async () => {
+    describe("text around tool rounds", () => {
+      test("is sent as it is, the client separates it from the tool lines", async () => {
         tmdb();
         rounds(
           [
@@ -827,23 +861,15 @@ describe("POST /api/assistant", () => {
         expect(events).toEqual([
           { type: "start", interactionId: "i1" },
           { type: "delta", text: "Let me check." },
-          SEARCHING,
-          { type: "delta", text: "\n\nHere" },
+          searching("c1"),
+          ended("c1"),
+          { type: "delta", text: "Here" },
           { type: "delta", text: " you go." },
           { type: "done", interactionId: "i2" },
         ]);
       });
 
-      test("no text before the tools: no break", async () => {
-        tmdb();
-        rounds(toolRound("i1", searchCall("c1")), answerRound("i2", "Here"));
-
-        const { events } = await readNdjson(await post({ content: "war" }));
-
-        expect(events).toContainEqual({ type: "delta", text: "Here" });
-      });
-
-      test("a round without text in between: still one break", async () => {
+      test("a round without text in between: each call starts and ends in its round", async () => {
         tmdb();
         rounds(
           [
@@ -858,9 +884,15 @@ describe("POST /api/assistant", () => {
 
         const { events } = await readNdjson(await post({ content: "war" }));
 
-        expect(
-          events.filter((e) => e.type === "delta").map((e) => e.text),
-        ).toEqual(["Let me check.", "\n\nHere"]);
+        expect(events.slice(1)).toEqual([
+          { type: "delta", text: "Let me check." },
+          searching("c1"),
+          ended("c1"),
+          searching("c2"),
+          ended("c2"),
+          { type: "delta", text: "Here" },
+          { type: "done", interactionId: "i3" },
+        ]);
       });
     });
 
@@ -892,7 +924,8 @@ describe("POST /api/assistant", () => {
         expect(res.status).toBe(200);
         expect(events).toEqual([
           { type: "start", interactionId: "i1" },
-          SEARCHING,
+          searching("c1"),
+          ended("c1"),
           { type: "error" },
         ]);
         expect(console.error).toHaveBeenCalledWith(

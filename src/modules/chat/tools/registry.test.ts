@@ -153,15 +153,14 @@ describe("CHAT_TOOLS", () => {
 
 describe("statusFor", () => {
   it.each([
-    [["search_titles"], "Searching TMDB database..."],
-    [["search_titles", "search_titles"], "Searching TMDB database..."],
-    [["discover_titles"], "Browsing TMDB database..."],
-    [["get_title_details"], "Checking title details..."],
-    [["search_titles", "get_title_details"], "Checking TMDB database..."],
-    [["get_weather"], "Checking TMDB database..."],
-    [[], "Checking TMDB database..."],
-  ])("%j -> %j", (names, status) => {
-    expect(statusFor(names)).toBe(status);
+    ["search_titles", "Searching TMDB database..."],
+    ["discover_titles", "Browsing TMDB database..."],
+    ["get_title_details", "Checking title details..."],
+    // the model's mistake
+    ["get_weather", "Checking TMDB database..."],
+    ["", "Checking TMDB database..."],
+  ])("%j -> %j", (name, status) => {
+    expect(statusFor(name)).toBe(status);
   });
 });
 
