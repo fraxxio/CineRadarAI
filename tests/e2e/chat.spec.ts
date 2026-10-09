@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { deferred } from "../helpers/deferred";
 import { expect, test } from "./fixtures";
 import { answer, openAssistantStream, stubAssistant } from "./helpers/chat";
@@ -11,6 +11,8 @@ const FIGHT_CLUB =
 const FALLBACK =
   "Here you go:\n1. [Fury](/search?query=Fury&btn=movie&year=2014) (2014) — tanks.";
 const SEARCHING = "Searching TMDB database...";
+const BROWSING = "Browsing TMDB database...";
+const DETAILS = "Checking title details...";
 
 const promptInput = (page: Page) => page.getByPlaceholder(/Suggest me movies/);
 
@@ -20,6 +22,26 @@ const answerItem = (page: Page) => page.getByRole("main").getByRole("listitem");
 async function send(page: Page, text: string) {
   await promptInput(page).fill(text);
   await page.getByRole("button", { name: "Submit" }).click();
+}
+
+// needs page.clock.install() before the page loads; from here on the page's
+// time only moves with page.clock.runFor
+async function pauseClock(page: Page) {
+  const now = await page.evaluate(() => Date.now());
+  await page.clock.pauseAt(now + 1000);
+}
+
+const toolStart = (id: string, name: string, text: string) =>
+  ({ type: "tool_start", id, name, text }) as const;
+const toolEnd = (id: string) => ({ type: "tool_end", id }) as const;
+
+// the line's label, counter and time; the role="status" goes when it ends
+const toolLine = (page: Page, label: string) => page.getByText(label);
+
+async function expectAbove(upper: Locator, lower: Locator) {
+  const a = (await upper.boundingBox())!;
+  const b = (await lower.boundingBox())!;
+  expect(b.y).toBeGreaterThanOrEqual(a.y + a.height);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -83,58 +105,102 @@ test("a fallback link opens the prefilled search", async ({ page }) => {
   await expect(page.locator('select[name="year"]')).toHaveValue("2014");
 });
 
-test("a status before any text replaces the loader words", async ({ page }) => {
-  const stream = await openAssistantStream(page);
-  await page.goto("/");
-  await send(page, "war movies");
-
-  await stream.send({ type: "start", interactionId: "i1" });
-  await stream.send({ type: "status", text: SEARCHING });
-
-  await expect(page.getByRole("status")).toContainText(SEARCHING);
-
-  await stream.send(
-    { type: "delta", text: FIGHT_CLUB },
-    { type: "done", interactionId: "i1" },
-  );
-  await stream.close();
-  await expect(answerItem(page)).toContainText("Fight Club");
-  await expect(page.getByRole("status")).toHaveCount(0);
-});
-
-test("a status after text shows a loader under it until the answer continues", async ({
+test("a tool line shows a spinner and a timer, and stays in the answer after it ends", async ({
   page,
 }) => {
   const stream = await openAssistantStream(page);
+  await page.clock.install();
   await page.goto("/");
   await send(page, "war movies");
 
   await stream.send(
     { type: "start", interactionId: "i1" },
     { type: "delta", text: "Let me check the database." },
-    { type: "status", text: SEARCHING },
   );
-
   const before = page.getByText("Let me check the database.");
   await expect(before).toBeVisible();
-  await expect(page.getByRole("status")).toHaveCount(1);
-  await expect(page.getByRole("status")).toContainText(SEARCHING);
+  await pauseClock(page);
+
+  await stream.send(toolStart("c1", "search_titles", SEARCHING));
+
+  const line = toolLine(page, SEARCHING);
+  const status = page.getByRole("status");
+  await expect(line).toHaveText(`${SEARCHING} - 0.0s`);
+  await expect(status).toHaveCount(1);
+  await expect(status).toContainText(SEARCHING);
+  await expect(status.locator("svg.animate-spin")).toBeVisible();
   await expect(promptInput(page)).toBeDisabled();
-  // the loader sits under the text
-  const textBox = (await before.boundingBox())!;
-  const loaderBox = (await page.getByRole("status").boundingBox())!;
-  expect(loaderBox.y).toBeGreaterThanOrEqual(textBox.y + textBox.height);
+  await expectAbove(before, line);
+
+  await page.clock.runFor(2400);
+  await expect(line).toHaveText(`${SEARCHING} - 2.4s`);
+
+  await stream.send(toolEnd("c1"));
+
+  // the rotating loader covers the model reading the results
+  await expect(status).toHaveCount(1);
+  await expect(status).toContainText("Generating response");
+  await expect(page.locator("svg.animate-spin")).toHaveCount(0);
+  await page.clock.runFor(5000);
+  await expect(line).toHaveText(`${SEARCHING} - 2.4s`);
 
   await stream.send(
-    { type: "delta", text: "\n\n" + FIGHT_CLUB },
+    { type: "delta", text: FIGHT_CLUB },
+    { type: "done", interactionId: "i1" },
+  );
+  await stream.close();
+
+  await expect(answerItem(page)).toContainText("Fight Club");
+  await expect(status).toHaveCount(0);
+  await expect(promptInput(page)).toBeEnabled();
+  // text before the tool, the tool line, then the answer
+  await expect(line).toHaveText(`${SEARCHING} - 2.4s`);
+  await expectAbove(before, line);
+  await expectAbove(line, answerItem(page));
+});
+
+test("repeated calls of one tool share a line with a counter; a different tool gets a new line", async ({
+  page,
+}) => {
+  const stream = await openAssistantStream(page);
+  await page.clock.install();
+  await page.goto("/");
+  await send(page, "war movies");
+  await stream.send({ type: "start", interactionId: "i1" });
+  await expect(page.getByRole("status")).toContainText("Generating response");
+  await pauseClock(page);
+
+  await stream.send(toolStart("d1", "discover_titles", BROWSING));
+  await expect(toolLine(page, BROWSING)).toBeVisible();
+  await page.clock.runFor(2100);
+  await stream.send(
+    toolEnd("d1"),
+    toolStart("c1", "get_title_details", DETAILS),
+    toolStart("c2", "get_title_details", DETAILS),
+    toolStart("c3", "get_title_details", DETAILS),
+  );
+
+  const details = toolLine(page, DETAILS);
+  await expect(details).toHaveText(`${DETAILS} (3x) - 0.0s`);
+  await expect(details).toHaveCount(1);
+  // only the running line is live
+  await expect(page.getByRole("status")).toHaveCount(1);
+  await expect(page.getByRole("status")).toContainText(DETAILS);
+
+  await page.clock.runFor(14_000);
+  await stream.send(toolEnd("c1"), toolEnd("c2"), toolEnd("c3"));
+  await stream.send(
+    { type: "delta", text: FIGHT_CLUB },
     { type: "done", interactionId: "i1" },
   );
   await stream.close();
 
   await expect(answerItem(page)).toContainText("Fight Club");
   await expect(page.getByRole("status")).toHaveCount(0);
-  await expect(before).toBeVisible();
-  await expect(promptInput(page)).toBeEnabled();
+  await expect(toolLine(page, BROWSING)).toHaveText(`${BROWSING} - 2.1s`);
+  await expect(details).toHaveText(`${DETAILS} (3x) - 14s`);
+  await expectAbove(toolLine(page, BROWSING), details);
+  await expectAbove(details, answerItem(page));
 });
 
 test("a follow-up sends the previous interaction id", async ({ page }) => {
