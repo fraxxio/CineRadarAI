@@ -1,30 +1,16 @@
-import Markdown, { Components } from "react-markdown";
 import Image from "next/image";
-import Link from "next/link";
+import { MessageParts } from "./MessageParts";
+import type { ChatMessage } from "./protocol";
 
 type AssistantMessageProps = {
   message: {
     id?: string;
-    role: string;
-    content?: string;
+    role: ChatMessage["role"];
+    parts: ChatMessage["parts"];
     stopped?: boolean;
   };
+  // after the parts, e.g. the loader
   children?: React.ReactNode;
-};
-
-// has a scheme (https:, mailto:) or is protocol-relative (//host)
-const isExternalHref = (href: string) =>
-  /^([a-z][a-z\d+.-]*:|\/\/)/i.test(href);
-
-const markdownComponents: Components = {
-  a: ({ href = "", children }) =>
-    isExternalHref(href) ? (
-      <a href={href} target="_blank" rel="noreferrer">
-        {children}
-      </a>
-    ) : (
-      <Link href={href}>{children}</Link>
-    ),
 };
 
 export function AssistantMessage({ message, children }: AssistantMessageProps) {
@@ -54,11 +40,8 @@ export function AssistantMessage({ message, children }: AssistantMessageProps) {
         {displayRole(message.role)}
       </div>
       <div className="chatLink overflow-auto text-left">
-        {children ?? (
-          <Markdown components={markdownComponents}>
-            {message.content ?? ""}
-          </Markdown>
-        )}
+        <MessageParts parts={message.parts} />
+        {children}
       </div>
       {message.stopped && (
         <small className="italic text-secondary-text">Stopped</small>

@@ -1,11 +1,19 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { MAX_STOPPED_TEXT_LENGTH, MAX_STOPPED_TURNS } from "./chatLimits";
+import {
+  appendText,
+  endTool,
+  partsToText,
+  startTool,
+  stopTools,
+} from "./messageParts";
 import type {
+  ChatMessage,
   ChatRequest,
   ChatStreamEvent,
+  MessagePart,
   StoppedTurn,
-  Tmessage,
 } from "./protocol";
 
 export type ChatStatus = "idle" | "loading" | "streaming" | "error";
@@ -19,18 +27,20 @@ type UseChatOptions = {
 type Turn = {
   controller: AbortController;
   prompt: string;
-  text: string;
+  // the answer so far
+  parts: MessagePart[];
   // beforeSend passed and the prompt is shown in the chat
   accepted: boolean;
 };
 
 const MAX_MESSAGES = 10;
 
-const capped = (messages: Tmessage) => messages.slice(-MAX_MESSAGES);
+const capped = (messages: ChatMessage[]) => messages.slice(-MAX_MESSAGES);
 
 export function useChat({ beforeSend }: UseChatOptions = {}) {
-  const [messages, setMessages] = useState<Tmessage>([]);
-  const [streamingContent, setStreamingContent] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // the answer in flight: text and tool lines in order
+  const [streamingParts, setStreamingParts] = useState<MessagePart[]>([]);
   const [status, setStatus] = useState<ChatStatus>("idle");
   const turnRef = useRef<Turn | null>(null);
   // last completed turn, the next request continues from it
@@ -60,7 +70,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
     const turn: Turn = {
       controller: new AbortController(),
       prompt,
-      text: "",
+      parts: [],
       accepted: false,
     };
     const { signal } = turn.controller;
@@ -69,7 +79,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
     turnRef.current = turn;
 
     // set before beforeSend so the loader shows during verification
-    setStreamingContent("");
+    setStreamingParts([]);
     setStatus("loading");
 
     if (beforeSend) {
@@ -86,7 +96,10 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
 
     turn.accepted = true;
     setMessages((prev) =>
-      capped([...prev, { id: nextId(), role: "user", content: prompt }]),
+      capped([
+        ...prev,
+        { id: nextId(), role: "user", parts: [{ type: "text", text: prompt }] },
+      ]),
     );
     void streamReply(turn, isCurrent);
     return true;
@@ -134,9 +147,17 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
 
           // update streaming message content
           case "delta":
-            turn.text += serverEvent.text;
-            setStreamingContent(turn.text);
+            turn.parts = appendText(turn.parts, serverEvent.text);
+            setStreamingParts(turn.parts);
             setStatus("streaming");
+            break;
+          case "tool_start":
+            turn.parts = startTool(turn.parts, serverEvent, Date.now());
+            setStreamingParts(turn.parts);
+            break;
+          case "tool_end":
+            turn.parts = endTool(turn.parts, serverEvent.id, Date.now());
+            setStreamingParts(turn.parts);
             break;
           case "done":
             newInteractionId = serverEvent.interactionId;
@@ -184,11 +205,11 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
       interactionIdRef.current = newInteractionId;
       // the model has now seen the stopped turns as part of this interaction
       stoppedTurnsRef.current = [];
+      // every call has ended by now; stopTools only guards against a line
+      // that would spin forever in the history
+      const parts = stopTools(turn.parts, Date.now());
       setMessages((prev) =>
-        capped([
-          ...prev,
-          { id: nextId(), role: "assistant", content: turn.text },
-        ]),
+        capped([...prev, { id: nextId(), role: "assistant", parts }]),
       );
       setStatus("idle");
     } catch (error) {
@@ -207,7 +228,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
     }
 
     turnRef.current = null;
-    setStreamingContent("");
+    setStreamingParts([]);
   }
 
   // keeps the partial answer; the next send shares it with the model
@@ -220,6 +241,8 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
     turn.controller.abort();
 
     if (turn.accepted) {
+      // running tool lines keep the time they had at the stop
+      const parts = stopTools(turn.parts, Date.now());
       // don't continue from the stopped interaction: its state on Google's side
       // is unreliable, so interactionId stays on the last completed turn
       // keep the newest ones so the request stays within the server limit
@@ -227,7 +250,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
         ...stoppedTurnsRef.current,
         {
           prompt: turn.prompt,
-          partialText: turn.text.slice(0, MAX_STOPPED_TEXT_LENGTH),
+          partialText: partsToText(parts).slice(0, MAX_STOPPED_TEXT_LENGTH),
         },
       ].slice(-MAX_STOPPED_TURNS);
       setMessages((prev) =>
@@ -236,13 +259,13 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
           {
             id: nextId(),
             role: "assistant",
-            content: turn.text,
+            parts,
             stopped: true,
           },
         ]),
       );
     }
-    setStreamingContent("");
+    setStreamingParts([]);
     setStatus("idle");
   }
 
@@ -253,9 +276,9 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
     interactionIdRef.current = undefined;
     stoppedTurnsRef.current = [];
     setMessages([]);
-    setStreamingContent("");
+    setStreamingParts([]);
     setStatus("idle");
   }
 
-  return { messages, streamingContent, status, send, stop, reset };
+  return { messages, streamingParts, status, send, stop, reset };
 }

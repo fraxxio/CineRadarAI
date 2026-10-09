@@ -1,13 +1,26 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, test } from "vitest";
 import { AssistantMessage } from "./AssistantMessage";
+import type { MessagePart, ToolPart } from "./protocol";
+
+const text = (value: string): MessagePart => ({ type: "text", text: value });
+const tool = (label: string, calls = 1): ToolPart => ({
+  type: "tool",
+  name: label,
+  label,
+  callIds: Array.from({ length: calls }, (_, i) => `c${i}`),
+  runningIds: [],
+  elapsedMs: 2400,
+});
 
 const assistant = (content: string) =>
-  render(<AssistantMessage message={{ role: "assistant", content }} />);
+  render(
+    <AssistantMessage message={{ role: "assistant", parts: [text(content)] }} />,
+  );
 
 describe("AssistantMessage", () => {
   test("labels user messages", () => {
-    render(<AssistantMessage message={{ role: "user", content: "hi" }} />);
+    render(<AssistantMessage message={{ role: "user", parts: [text("hi")] }} />);
     expect(screen.getByText("You:")).toBeInTheDocument();
     expect(screen.queryByAltText("CineRadar Bot")).toBeNull();
   });
@@ -62,13 +75,70 @@ describe("AssistantMessage", () => {
     expect(container.querySelector("img[onerror], script")).toBeNull();
   });
 
-  test("children replace the markdown content", () => {
+  test("renders text and tool lines in order", () => {
     render(
-      <AssistantMessage message={{ role: "assistant", content: "content" }}>
+      <AssistantMessage
+        message={{
+          role: "assistant",
+          parts: [
+            text("Let me check."),
+            tool("Searching", 3),
+            tool("Browsing"),
+            text("Here you go."),
+          ],
+        }}
+      />,
+    );
+    const shown = [
+      screen.getByText("Let me check."),
+      screen.getByText(/^Searching/),
+      screen.getByText(/^Browsing/),
+      screen.getByText("Here you go."),
+    ];
+    for (let i = 1; i < shown.length; i++) {
+      expect(shown[i - 1].compareDocumentPosition(shown[i])).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    }
+    expect(shown[1]).toHaveTextContent("Searching (3x) - 2.4s");
+    expect(shown[2]).toHaveTextContent("Browsing - 2.4s");
+    // finished lines aren't live loaders
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  test("each text part is markdown on its own", () => {
+    const { container } = render(
+      <AssistantMessage
+        message={{
+          role: "assistant",
+          parts: [text("1. One"), tool("Searching"), text("2. Two")],
+        }}
+      />,
+    );
+    // two lists: the tool line sits between them
+    expect(container.querySelectorAll("ol")).toHaveLength(2);
+  });
+
+  test("children render after the parts, above the stopped note", () => {
+    render(
+      <AssistantMessage
+        message={{
+          role: "assistant",
+          parts: [text("Let me check.")],
+          stopped: true,
+        }}
+      >
         <span>loader</span>
       </AssistantMessage>,
     );
-    expect(screen.getByText("loader")).toBeInTheDocument();
-    expect(screen.queryByText("content")).toBeNull();
+    const content = screen.getByText("Let me check.");
+    const loader = screen.getByText("loader");
+    const stopped = screen.getByText("Stopped");
+    expect(content.compareDocumentPosition(loader)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(loader.compareDocumentPosition(stopped)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 });

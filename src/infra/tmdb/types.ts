@@ -23,6 +23,11 @@ export type TitleSummary = {
   voteCount: number;
 };
 
+// a search / discover hit with its genre ids, see getGenres for the names
+export type TitleHit = TitleSummary & { genreIds: number[] };
+
+export type Genre = { id: number; name: string };
+
 type TitleDetailsBase = {
   id: number;
   title: string;
@@ -52,6 +57,13 @@ export type TvDetails = TitleDetailsBase & {
 };
 
 export type TitleDetails = MovieDetails | TvDetails;
+
+export type TitleWithCredits = TitleDetails & {
+  // top-billed first
+  cast: string[];
+  // TV only, in minutes; null for movies and when TMDB has none
+  episodeRuntime: number | null;
+};
 
 export type TitleImage = {
   filePath: string;

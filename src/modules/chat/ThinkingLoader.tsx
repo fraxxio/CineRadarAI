@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
+import { BouncingText } from "./BouncingText";
 
-const STEP_MS = 60;
 const ROTATE_MS = 4000;
 
 type ThinkingLoaderProps = {
@@ -17,22 +17,10 @@ export function ThinkingLoader({ words, startIndex }: ThinkingLoaderProps) {
     return () => clearInterval(interval);
   }, []);
 
-  const word = words[index % words.length];
-
   return (
     <p role="status" className="italic">
       <span className="sr-only">Generating response</span>
-      <span key={word} aria-hidden>
-        {Array.from(word).map((char, i) => (
-          <span
-            key={i}
-            className="inline-block animate-letter-bounce motion-reduce:animate-none"
-            style={{ animationDelay: `${i * STEP_MS}ms` }}
-          >
-            {char === " " ? " " : char}
-          </span>
-        ))}
-      </span>
+      <BouncingText text={words[index % words.length]} />
     </p>
   );
 }

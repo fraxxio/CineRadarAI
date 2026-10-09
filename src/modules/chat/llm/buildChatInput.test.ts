@@ -16,9 +16,11 @@ describe("buildChatInput", () => {
   });
 
   test("one stopped turn: its prompt and partial answer, then the prompt", () => {
-    expect(buildChatInput("p2", [{ prompt: "p1", partialText: "A" }])).toEqual(
-      [user("p1"), model("A"), user("p2")],
-    );
+    expect(buildChatInput("p2", [{ prompt: "p1", partialText: "A" }])).toEqual([
+      user("p1"),
+      model("A"),
+      user("p2"),
+    ]);
   });
 
   test("an empty partial answer adds no model_output step", () => {

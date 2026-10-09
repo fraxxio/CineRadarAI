@@ -1,15 +1,18 @@
 // server-only: every TMDB request goes through these queries
 import "server-only";
-import { tmdbFetch } from "./client";
+import { tmdbFetch, type FetchOptions } from "./client";
 import {
   toDetails,
+  toHit,
   toImages,
   toLanguage,
   toPaged,
   toReview,
   toSummary,
+  toTitleWithCredits,
   toVideo,
   type RawDetails,
+  type RawGenres,
   type RawImages,
   type RawLanguage,
   type RawPaged,
@@ -18,18 +21,21 @@ import {
   type RawVideos,
 } from "./normalise";
 import type {
+  Genre,
   Language,
   MediaType,
   Paged,
   TitleDetails,
+  TitleHit,
   TitleId,
   TitleImages,
   TitleReview,
   TitleSummary,
   TitleVideo,
+  TitleWithCredits,
 } from "./types";
 
-export { TmdbError } from "./client";
+export { TmdbError, type FetchOptions } from "./client";
 
 export type FindTitlesParams = {
   mediaType: MediaType;
@@ -114,4 +120,120 @@ export async function getLanguages(): Promise<Language[]> {
     "languages",
   );
   return raw.map(toLanguage);
+}
+
+// movies filter on primary_release_year, TV on first_air_date_year; `year`
+// would match any release date of a movie and is ignored for TV discover
+const yearParam = (type: MediaType, year: number | undefined) =>
+  type === "movie"
+    ? { primary_release_year: year }
+    : { first_air_date_year: year };
+
+export type SearchTitlesParams = {
+  type: MediaType;
+  query: string;
+  year?: number;
+};
+
+export async function searchTitlesByYear(
+  { type, query, year }: SearchTitlesParams,
+  options?: FetchOptions,
+): Promise<Paged<TitleHit>> {
+  const raw = await tmdbFetch<RawPaged<RawSummary>>(
+    `/search/${type}`,
+    {
+      query,
+      language: "en-US",
+      include_adult: false,
+      ...yearParam(type, year),
+    },
+    "search results",
+    options,
+  );
+  return toPaged(raw, (result) => toHit(type, result));
+}
+
+export type DiscoverSort = "popular" | "top_rated";
+
+export type DiscoverTitlesParams = {
+  type: MediaType;
+  year?: number;
+  genreId?: number;
+  sort: DiscoverSort;
+  // "2026-10-08": leaves out titles released (first aired) after this date
+  releasedBy?: string;
+};
+
+const releasedByParam = (type: MediaType, date: string | undefined) =>
+  type === "movie"
+    ? { "primary_release_date.lte": date }
+    : { "first_air_date.lte": date };
+
+// without a vote floor, titles with a single 10/10 vote top the list
+const TOP_RATED_MIN_VOTES: Record<MediaType, number> = { movie: 200, tv: 100 };
+
+export async function discoverTitles(
+  { type, year, genreId, sort, releasedBy }: DiscoverTitlesParams,
+  options?: FetchOptions,
+): Promise<Paged<TitleHit>> {
+  const sortParams =
+    sort === "top_rated"
+      ? {
+          sort_by: "vote_average.desc",
+          "vote_count.gte": TOP_RATED_MIN_VOTES[type],
+        }
+      : { sort_by: "popularity.desc" };
+  const raw = await tmdbFetch<RawPaged<RawSummary>>(
+    `/discover/${type}`,
+    {
+      language: "en-US",
+      include_adult: false,
+      with_genres: genreId,
+      ...yearParam(type, year),
+      ...releasedByParam(type, releasedBy),
+      ...sortParams,
+    },
+    "discover results",
+    options,
+  );
+  return toPaged(raw, (result) => toHit(type, result));
+}
+
+// genre lists rarely change: kept for the life of the server instance;
+// the request itself is cached, so parallel calls share it (and the first
+// caller's signal); failures aren't cached, the next call retries
+const genreCache = new Map<MediaType, Promise<Genre[]>>();
+
+export function getGenres(
+  type: MediaType,
+  options?: FetchOptions,
+): Promise<Genre[]> {
+  const cached = genreCache.get(type);
+  if (cached) {
+    return cached;
+  }
+  const genres = tmdbFetch<RawGenres>(
+    `/genre/${type}/list`,
+    { language: "en-US" },
+    `${type} genres`,
+    options,
+  ).then((raw) => raw.genres);
+  genreCache.set(type, genres);
+  genres.catch(() => genreCache.delete(type));
+  return genres;
+}
+
+// details and cast in one request
+export async function getTitleWithCredits(
+  type: MediaType,
+  id: TitleId,
+  options?: FetchOptions,
+): Promise<TitleWithCredits> {
+  const raw = await tmdbFetch<RawDetails>(
+    `/${type}/${id}`,
+    { language: "en-US", append_to_response: "credits" },
+    `${type} details`,
+    options,
+  );
+  return toTitleWithCredits(type, raw);
 }
