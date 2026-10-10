@@ -120,6 +120,9 @@ describe("CHAT_TOOLS", () => {
       "search_titles",
       "search_person",
       "discover_titles",
+      "get_trending",
+      "get_recommendations",
+      "get_similar",
       "get_person_credits",
       "get_title_details",
     ]);
@@ -307,6 +310,52 @@ describe("CHAT_TOOLS", () => {
           ],
           "type": "object",
         },
+        "get_recommendations": {
+          "properties": {
+            "id": {
+              "description": "TMDB id of the title, from the same result as its type",
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer",
+            },
+            "type": {
+              "description": "movie for films, tv for TV shows",
+              "enum": [
+                "movie",
+                "tv",
+              ],
+              "type": "string",
+            },
+          },
+          "required": [
+            "type",
+            "id",
+          ],
+          "type": "object",
+        },
+        "get_similar": {
+          "properties": {
+            "id": {
+              "description": "TMDB id of the title, from the same result as its type",
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer",
+            },
+            "type": {
+              "description": "movie for films, tv for TV shows",
+              "enum": [
+                "movie",
+                "tv",
+              ],
+              "type": "string",
+            },
+          },
+          "required": [
+            "type",
+            "id",
+          ],
+          "type": "object",
+        },
         "get_title_details": {
           "properties": {
             "id": {
@@ -327,6 +376,31 @@ describe("CHAT_TOOLS", () => {
           "required": [
             "type",
             "id",
+          ],
+          "type": "object",
+        },
+        "get_trending": {
+          "properties": {
+            "type": {
+              "description": "movie for films, tv for TV shows",
+              "enum": [
+                "movie",
+                "tv",
+              ],
+              "type": "string",
+            },
+            "window": {
+              "default": "week",
+              "description": "day: trending today, week: trending this week",
+              "enum": [
+                "day",
+                "week",
+              ],
+              "type": "string",
+            },
+          },
+          "required": [
+            "type",
           ],
           "type": "object",
         },
@@ -385,6 +459,7 @@ describe("CHAT_TOOLS", () => {
       toolParameters(CHAT_TOOLS.find((tool) => tool.name === name)!).required;
     expect(required("discover_titles")).toEqual(["type"]);
     expect(required("get_person_credits")).toEqual(["id", "type"]);
+    expect(required("get_trending")).toEqual(["type"]);
   });
 
   // Gemini answers 400 to every request if it rejects one keyword
@@ -448,6 +523,9 @@ describe("statusFor", () => {
     ["search_titles", "Searching TMDB database..."],
     ["search_person", "Searching people..."],
     ["discover_titles", "Browsing TMDB database..."],
+    ["get_trending", "Checking what's trending..."],
+    ["get_recommendations", "Finding recommendations..."],
+    ["get_similar", "Finding similar titles..."],
     ["get_person_credits", "Checking filmography..."],
     ["get_title_details", "Checking title details..."],
     // the model's mistake
