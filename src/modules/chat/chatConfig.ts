@@ -1,3 +1,5 @@
+import { today as isoDate } from "./tools/shared";
+
 export const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 
 const THINKING_LEVELS = ["minimal", "low", "medium", "high"] as const;
@@ -31,7 +33,7 @@ export const MAX_TOOL_ROUNDS = 4;
 
 // rebuilt per request so the model knows the current date
 export function buildSystemInstruction(date = new Date()) {
-  const today = date.toISOString().slice(0, 10);
+  const today = isoDate(date);
   const year = today.slice(0, 4);
 
   return `# Role

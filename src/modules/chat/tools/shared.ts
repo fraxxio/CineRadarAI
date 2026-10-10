@@ -15,8 +15,9 @@ export const personIdArg = z
   .min(1)
   .describe("TMDB person id from search_person results");
 
-// "YYYY-MM-DD" in UTC, the same date the system prompt gives the model
-export const today = () => new Date().toISOString().slice(0, 10);
+// "YYYY-MM-DD" in UTC; the system prompt uses it too, so the tools and the
+// model agree on the date
+export const today = (date = new Date()) => date.toISOString().slice(0, 10);
 
 // TMDB lists upcoming and adult titles in trending, recommendations and
 // credits; only released, non-adult ones get recommended
