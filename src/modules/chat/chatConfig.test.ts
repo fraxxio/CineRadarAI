@@ -89,6 +89,13 @@ describe("tool rules", () => {
       "yearFrom and yearTo (for this year, both 2026)",
     );
   });
+
+  // discover's withCrew matches any crew job; /discover/tv has no cast filter
+  test("sends TV people and directors to get_person_credits", () => {
+    expect(prompt).toContain(
+      '"Shows with <person>" or "directed by <person>": search_person, then get_person_credits.',
+    );
+  });
 });
 
 // catches tool renames and prompt edits that would point the model at tools

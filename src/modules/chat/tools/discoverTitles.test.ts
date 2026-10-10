@@ -277,6 +277,17 @@ describe("discover_titles", () => {
     });
   });
 
+  // with_crew matches any job (writer, producer...), so it can't answer
+  // "directed by"
+  test('the description sends "directed by" to get_person_credits', () => {
+    expect(discoverTitles.description).toContain(
+      "withCrew matches any crew job",
+    );
+    expect(discoverTitles.description).toContain(
+      'for "directed by" use get_person_credits with role "crew"',
+    );
+  });
+
   test("zod rejects a genre outside the enum", () => {
     expect(
       discoverTitles.args.safeParse({ type: "movie", genres: ["Cartoons"] })
