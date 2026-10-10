@@ -95,3 +95,19 @@ export const rawShow = (id: number, extra: object = {}) => ({
   genre_ids: [10765],
   ...extra,
 });
+
+// a /search/person result; known_for mixes movies and TV by media_type
+export const rawPerson = (id: number, extra: object = {}) => ({
+  id,
+  name: `Person ${id}`,
+  original_name: `Original ${id}`,
+  gender: 2,
+  popularity: 50.5,
+  profile_path: "/f.jpg",
+  known_for_department: "Acting",
+  known_for: [
+    { ...rawMovie(550), media_type: "movie" },
+    { ...rawShow(1399), media_type: "tv" },
+  ],
+  ...extra,
+});

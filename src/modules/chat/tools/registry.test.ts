@@ -115,10 +115,12 @@ afterEach(() => {
 });
 
 describe("CHAT_TOOLS", () => {
-  test("the three TMDB tools", () => {
+  test("the TMDB tools", () => {
     expect(CHAT_TOOLS.map((tool) => tool.name)).toEqual([
       "search_titles",
+      "search_person",
       "discover_titles",
+      "get_person_credits",
       "get_title_details",
     ]);
   });
@@ -273,6 +275,38 @@ describe("CHAT_TOOLS", () => {
           ],
           "type": "object",
         },
+        "get_person_credits": {
+          "properties": {
+            "id": {
+              "description": "TMDB person id from search_person results",
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer",
+            },
+            "role": {
+              "default": "cast",
+              "description": "cast: acting credits, crew: jobs behind the camera",
+              "enum": [
+                "cast",
+                "crew",
+              ],
+              "type": "string",
+            },
+            "type": {
+              "description": "movie for films, tv for TV shows",
+              "enum": [
+                "movie",
+                "tv",
+              ],
+              "type": "string",
+            },
+          },
+          "required": [
+            "id",
+            "type",
+          ],
+          "type": "object",
+        },
         "get_title_details": {
           "properties": {
             "id": {
@@ -293,6 +327,20 @@ describe("CHAT_TOOLS", () => {
           "required": [
             "type",
             "id",
+          ],
+          "type": "object",
+        },
+        "search_person": {
+          "properties": {
+            "query": {
+              "description": "The person's name",
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          },
+          "required": [
+            "query",
           ],
           "type": "object",
         },
@@ -333,8 +381,10 @@ describe("CHAT_TOOLS", () => {
     for (const tool of CHAT_TOOLS) {
       expect(toolParameters(tool)).not.toHaveProperty("$schema");
     }
-    const discover = toolParameters(CHAT_TOOLS[1]);
-    expect(discover.required).toEqual(["type"]);
+    const required = (name: string) =>
+      toolParameters(CHAT_TOOLS.find((tool) => tool.name === name)!).required;
+    expect(required("discover_titles")).toEqual(["type"]);
+    expect(required("get_person_credits")).toEqual(["id", "type"]);
   });
 
   // Gemini answers 400 to every request if it rejects one keyword
@@ -396,7 +446,9 @@ describe("CHAT_TOOLS", () => {
 describe("statusFor", () => {
   it.each([
     ["search_titles", "Searching TMDB database..."],
+    ["search_person", "Searching people..."],
     ["discover_titles", "Browsing TMDB database..."],
+    ["get_person_credits", "Checking filmography..."],
     ["get_title_details", "Checking title details..."],
     // the model's mistake
     ["get_weather", "Checking TMDB database..."],

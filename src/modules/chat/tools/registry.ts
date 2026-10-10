@@ -1,7 +1,9 @@
 import { z } from "zod/v4";
 import { TmdbError } from "@/infra/tmdb/server";
 import { discoverTitles } from "./discoverTitles";
+import { getPersonCredits } from "./getPersonCredits";
 import { getTitleDetails } from "./getTitleDetails";
+import { searchPerson } from "./searchPerson";
 import { searchTitles } from "./searchTitles";
 import {
   ToolError,
@@ -12,7 +14,9 @@ import {
 
 export const CHAT_TOOLS: ChatTool[] = [
   searchTitles,
+  searchPerson,
   discoverTitles,
+  getPersonCredits,
   getTitleDetails,
 ];
 
