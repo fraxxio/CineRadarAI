@@ -133,18 +133,93 @@ describe("CHAT_TOOLS", () => {
       {
         "discover_titles": {
           "properties": {
-            "genre": {
-              "description": "TMDB genre name in English, e.g. "Action", "Science Fiction"",
-              "maxLength": 50,
-              "minLength": 1,
+            "excludeGenres": {
+              "description": "Titles must have none of these genres",
+              "items": {
+                "enum": [
+                  "Action",
+                  "Adventure",
+                  "Animation",
+                  "Comedy",
+                  "Crime",
+                  "Documentary",
+                  "Drama",
+                  "Family",
+                  "Fantasy",
+                  "History",
+                  "Horror",
+                  "Kids",
+                  "Music",
+                  "Mystery",
+                  "Reality",
+                  "Romance",
+                  "Science Fiction",
+                  "Thriller",
+                  "War",
+                  "Western",
+                ],
+                "type": "string",
+              },
+              "maxItems": 5,
+              "minItems": 1,
+              "type": "array",
+            },
+            "genres": {
+              "description": "Titles must have all of these genres",
+              "items": {
+                "enum": [
+                  "Action",
+                  "Adventure",
+                  "Animation",
+                  "Comedy",
+                  "Crime",
+                  "Documentary",
+                  "Drama",
+                  "Family",
+                  "Fantasy",
+                  "History",
+                  "Horror",
+                  "Kids",
+                  "Music",
+                  "Mystery",
+                  "Reality",
+                  "Romance",
+                  "Science Fiction",
+                  "Thriller",
+                  "War",
+                  "Western",
+                ],
+                "type": "string",
+              },
+              "maxItems": 3,
+              "minItems": 1,
+              "type": "array",
+            },
+            "minRating": {
+              "description": "Lowest TMDB rating, 0-10",
+              "maximum": 10,
+              "minimum": 0,
+              "type": "number",
+            },
+            "minVotes": {
+              "description": "Lowest TMDB vote count; replaces the default floor for top_rated, minRating and newest",
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer",
+            },
+            "originalLanguage": {
+              "description": "ISO 639-1 code of the original language, e.g. "ko"",
+              "maxLength": 2,
+              "minLength": 2,
               "type": "string",
             },
             "sort": {
               "default": "popular",
-              "description": "popular: most popular first, top_rated: best rated first",
+              "description": "popular: most popular first, top_rated: best rated first, newest: latest release first",
               "enum": [
                 "popular",
                 "top_rated",
+                "newest",
               ],
               "type": "string",
             },
@@ -156,8 +231,38 @@ describe("CHAT_TOOLS", () => {
               ],
               "type": "string",
             },
-            "year": {
-              "description": "Release year (first air year for TV)",
+            "withCast": {
+              "description": "Movies only: all of these people are in the cast",
+              "items": {
+                "description": "TMDB person id from search_person results",
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer",
+              },
+              "maxItems": 3,
+              "minItems": 1,
+              "type": "array",
+            },
+            "withCrew": {
+              "description": "Movies only: all of these people are in the crew, any job",
+              "items": {
+                "description": "TMDB person id from search_person results",
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer",
+              },
+              "maxItems": 3,
+              "minItems": 1,
+              "type": "array",
+            },
+            "yearFrom": {
+              "description": "First release year (first air year for TV), included",
+              "maximum": 2100,
+              "minimum": 1870,
+              "type": "integer",
+            },
+            "yearTo": {
+              "description": "Last release year, included. For one year, set both to it.",
               "maximum": 2100,
               "minimum": 1870,
               "type": "integer",
@@ -480,7 +585,7 @@ describe("runToolCalls", () => {
           {
             id: "c1",
             name: "discover_titles",
-            rawArgs: '{"type":"movie","genre":"Cartoons"}',
+            rawArgs: '{"type":"tv","genres":["Horror"]}',
           },
         ],
         live(),
@@ -488,12 +593,12 @@ describe("runToolCalls", () => {
 
       expect(result.isError).toBe(true);
       expect(result.output).toMatch(
-        /^Unknown genre "Cartoons"\. Valid movie genres: Drama, /,
+        /^"Horror" isn't a TMDB TV genre\. Valid TV genres: Action, /,
       );
       // the model's mistake: a warning, not a server error
       expect(console.warn).toHaveBeenCalledWith(
         expect.stringMatching(
-          /^Tool call discover_titles rejected: Unknown genre "Cartoons"/,
+          /^Tool call discover_titles rejected: "Horror" isn't a TMDB TV genre/,
         ),
       );
       expect(console.error).not.toHaveBeenCalled();
