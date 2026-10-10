@@ -1,6 +1,6 @@
 import { z } from "zod/v4";
 import { discoverTitles as discover, getGenres } from "@/infra/tmdb/server";
-import { mediaTypeArg, toTitleItem, yearArg } from "./shared";
+import { mediaTypeArg, toTitleItem, today, yearArg } from "./shared";
 import { ToolError, defineTool } from "./types";
 
 const MAX_RESULTS = 10;
@@ -41,7 +41,7 @@ export const discoverTitles = defineTool({
     }
 
     // upcoming titles rank high by popularity: only list released ones
-    const today = new Date().toISOString().slice(0, 10);
+    const now = today();
     const yearEnd = `${year}-12-31`;
     const page = await discover(
       {
@@ -49,7 +49,7 @@ export const discoverTitles = defineTool({
         sort,
         genreIds: genreId === undefined ? undefined : [genreId],
         releasedFrom: year === undefined ? undefined : `${year}-01-01`,
-        releasedTo: year !== undefined && yearEnd < today ? yearEnd : today,
+        releasedTo: year !== undefined && yearEnd < now ? yearEnd : now,
       },
       { signal },
     );
