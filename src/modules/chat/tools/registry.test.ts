@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
+import { z } from "zod/v4";
 import { deferred } from "@test/helpers/deferred";
 import { hangUntilAborted, mockTmdb, tmdbUrls } from "@test/helpers/tmdb";
 import { MOVIE_GENRES, TV_GENRES, page, rawMovie } from "../testing/tmdbData";
@@ -9,7 +10,88 @@ import {
   statusFor,
   toolParameters,
 } from "./registry";
-import type { ToolCall } from "./types";
+import { defineTool, type ToolCall } from "./types";
+
+// Gemini's JSON Schema subset:
+// https://ai.google.dev/gemini-api/docs/structured-output#json-schema-support
+// one rejected keyword fails every chat request, so add a keyword here only
+// after `npm run check:chat-tools` has shown Gemini accepts it
+const ALLOWED_SCHEMA_KEYWORDS = new Set([
+  "type",
+  "properties",
+  "required",
+  "description",
+  "enum",
+  "items",
+  "minimum",
+  "maximum",
+  "minLength",
+  "maxLength",
+  "minItems",
+  "maxItems",
+  "default",
+  "additionalProperties",
+]);
+const SCHEMA_TYPES = new Set([
+  "string",
+  "number",
+  "integer",
+  "boolean",
+  "object",
+  "array",
+]);
+
+const isSchema = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+// paths of keywords and types outside the subset, e.g.
+// "properties.originalLanguage.pattern"; descends only into sub-schemas, so
+// property names and enum, required or default values aren't keywords
+function schemaProblems(
+  schema: Record<string, unknown>,
+  path: string[] = [],
+): string[] {
+  const at = (...keys: string[]) => [...path, ...keys].join(".");
+  const problems: string[] = [];
+  for (const [key, value] of Object.entries(schema)) {
+    if (!ALLOWED_SCHEMA_KEYWORDS.has(key)) {
+      problems.push(at(key));
+    } else if (
+      key === "type" &&
+      !(typeof value === "string" && SCHEMA_TYPES.has(value))
+    ) {
+      problems.push(`${at(key)} = ${JSON.stringify(value)}`);
+    }
+  }
+  if (isSchema(schema.properties)) {
+    for (const [name, sub] of Object.entries(schema.properties)) {
+      if (isSchema(sub)) {
+        problems.push(...schemaProblems(sub, [...path, "properties", name]));
+      }
+    }
+  }
+  if (isSchema(schema.items)) {
+    problems.push(...schemaProblems(schema.items, [...path, "items"]));
+  }
+  if (isSchema(schema.additionalProperties)) {
+    problems.push(
+      ...schemaProblems(schema.additionalProperties, [
+        ...path,
+        "additionalProperties",
+      ]),
+    );
+  }
+  return problems;
+}
+
+const toolWithArgs = (args: z.ZodType) =>
+  defineTool({
+    name: "test_tool",
+    description: "",
+    status: "",
+    args,
+    run: async () => ({}),
+  });
 
 const GENRES = {
   "/3/genre/movie/list": MOVIE_GENRES,
@@ -148,6 +230,61 @@ describe("CHAT_TOOLS", () => {
     }
     const discover = toolParameters(CHAT_TOOLS[1]);
     expect(discover.required).toEqual(["type"]);
+  });
+
+  // Gemini answers 400 to every request if it rejects one keyword
+  test("schemas use only keywords Gemini supports", () => {
+    expect(
+      CHAT_TOOLS.flatMap((tool) =>
+        schemaProblems(toolParameters(tool)).map(
+          (problem) => `${tool.name}: ${problem}`,
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  // a walker that checks nothing would let the test above pass
+  test("the keyword check finds unsupported keywords and types", () => {
+    expect(
+      schemaProblems(
+        toolParameters(toolWithArgs(z.object({ a: z.string().regex(/x/) }))),
+      ),
+    ).toEqual(["properties.a.pattern"]);
+    expect(
+      schemaProblems(
+        toolParameters(
+          toolWithArgs(z.object({ list: z.array(z.string().regex(/x/)) })),
+        ),
+      ),
+    ).toEqual(["properties.list.items.pattern"]);
+    expect(schemaProblems({ type: "object", pattern: "x" })).toEqual([
+      "pattern",
+    ]);
+    expect(
+      schemaProblems({
+        type: "object",
+        properties: { a: { type: ["string", "null"] } },
+        additionalProperties: { type: "string", format: "date" },
+      }),
+    ).toEqual([
+      'properties.a.type = ["string","null"]',
+      "additionalProperties.format",
+    ]);
+  });
+
+  test("the keyword check skips property names and enum values", () => {
+    expect(
+      schemaProblems(
+        toolParameters(
+          toolWithArgs(
+            z.object({
+              pattern: z.enum(["format", "anyOf"]).default("format"),
+              items: z.array(z.string()).min(1).max(3),
+            }),
+          ),
+        ),
+      ),
+    ).toEqual([]);
   });
 });
 
