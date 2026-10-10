@@ -1,5 +1,7 @@
 import { describe, expect, it, test, vi } from "vitest";
 import { buildSystemInstruction } from "./chatConfig";
+import { discoverTitles } from "./tools/discoverTitles";
+import { CHAT_TOOLS, toolParameters } from "./tools/registry";
 import { movieFilterSchema } from "@/modules/search";
 
 describe("buildSystemInstruction", () => {
@@ -52,6 +54,77 @@ describe("buildSystemInstruction", () => {
       expect(parsed.query).toBeTruthy();
       expect(["movie", "tv"]).toContain(parsed.btn);
     }
+  });
+});
+
+describe("tool rules", () => {
+  const prompt = buildSystemInstruction();
+
+  test("recommends only titles a tool returned", () => {
+    expect(prompt).toContain(
+      "Recommend only titles a tool returned in this conversation",
+    );
+  });
+
+  test("asks for independent lookups as parallel calls in one round", () => {
+    expect(prompt).toContain(
+      "Make every lookup that doesn't depend on another one in the same round, as parallel calls",
+    );
+    expect(prompt).toContain(
+      "Only lookups that need an id from a previous result go in the next round.",
+    );
+  });
+
+  test("allows search links only when tool calls failed", () => {
+    expect(prompt).toContain(
+      "Only when tool calls failed (error results), you may recommend titles you know and link a search instead",
+    );
+    expect(prompt).toContain(
+      "Never link a search for a title a tool searched for and didn't find: leave it out.",
+    );
+  });
+
+  test("sets both years for this year's titles", () => {
+    expect(buildSystemInstruction(new Date("2026-10-07T12:00:00Z"))).toContain(
+      "yearFrom and yearTo (for this year, both 2026)",
+    );
+  });
+});
+
+// catches tool renames and prompt edits that would point the model at tools
+// or args that don't exist
+describe("prompt and tools stay in sync", () => {
+  const prompt = buildSystemInstruction();
+  const toolNames = CHAT_TOOLS.map((tool) => tool.name);
+
+  test("names every tool", () => {
+    for (const name of toolNames) {
+      expect(prompt).toContain(name);
+    }
+  });
+
+  test("names only tools that exist", () => {
+    const named = prompt.match(/\b(?:search|get|discover)_[a-z_]+\b/g) ?? [];
+    expect(named.length).toBeGreaterThan(0);
+    for (const name of named) {
+      expect(toolNames).toContain(name);
+    }
+  });
+
+  test.each([
+    "yearFrom",
+    "yearTo",
+    "withCast",
+    "minVotes",
+    "minRating",
+    "sort",
+    "genres",
+  ])("names the discover_titles arg %s, which exists", (arg) => {
+    const { properties } = toolParameters(discoverTitles) as {
+      properties: Record<string, unknown>;
+    };
+    expect(prompt).toContain(arg);
+    expect(properties).toHaveProperty(arg);
   });
 });
 
