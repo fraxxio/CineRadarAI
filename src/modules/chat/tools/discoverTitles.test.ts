@@ -87,18 +87,24 @@ describe("discover_titles", () => {
     expect(params.get("vote_count.gte")).toBe(floor);
   });
 
-  test("the year goes to the per-type param", async () => {
+  test("a past year goes to the per-type date range", async () => {
     const spy = mockDiscover();
 
-    await run({ type: "movie", year: 2026 });
-    await run({ type: "tv", year: 2026 });
+    await run({ type: "movie", year: 2014 });
+    await run({ type: "tv", year: 2014 });
 
-    const movie = discoverUrl(spy, "movie").searchParams;
-    const tv = discoverUrl(spy, "tv").searchParams;
-    expect(movie.get("primary_release_year")).toBe("2026");
-    expect(movie.has("first_air_date_year")).toBe(false);
-    expect(tv.get("first_air_date_year")).toBe("2026");
-    expect(tv.has("primary_release_year")).toBe(false);
+    expect([...discoverUrl(spy, "movie").searchParams]).toEqual(
+      expect.arrayContaining([
+        ["primary_release_date.gte", "2014-01-01"],
+        ["primary_release_date.lte", "2014-12-31"],
+      ]),
+    );
+    expect([...discoverUrl(spy, "tv").searchParams]).toEqual(
+      expect.arrayContaining([
+        ["first_air_date.gte", "2014-01-01"],
+        ["first_air_date.lte", "2014-12-31"],
+      ]),
+    );
   });
 
   test("lists only titles released by today", async () => {
@@ -107,12 +113,14 @@ describe("discover_titles", () => {
     const spy = mockDiscover();
 
     await run({ type: "movie", year: 2026 });
-    await run({ type: "tv", year: 2026 });
+    await run({ type: "tv" });
     vi.useRealTimers();
 
     const movie = discoverUrl(spy, "movie").searchParams;
     const tv = discoverUrl(spy, "tv").searchParams;
+    expect(movie.get("primary_release_date.gte")).toBe("2026-01-01");
     expect(movie.get("primary_release_date.lte")).toBe("2026-10-08");
+    expect(tv.has("first_air_date.gte")).toBe(false);
     expect(tv.get("first_air_date.lte")).toBe("2026-10-08");
   });
 

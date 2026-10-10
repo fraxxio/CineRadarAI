@@ -1,10 +1,14 @@
 // client-safe: types and URL builders, no fetch and no env
 export type {
+  CastCredit,
+  CrewCredit,
   Genre,
   Language,
   MediaType,
   MovieDetails,
   Paged,
+  PersonCredits,
+  PersonHit,
   TitleDetails,
   TitleHit,
   TitleId,

@@ -41,9 +41,16 @@ export const discoverTitles = defineTool({
     }
 
     // upcoming titles rank high by popularity: only list released ones
-    const releasedBy = new Date().toISOString().slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
+    const yearEnd = `${year}-12-31`;
     const page = await discover(
-      { type, year, genreId, sort, releasedBy },
+      {
+        type,
+        sort,
+        genreIds: genreId === undefined ? undefined : [genreId],
+        releasedFrom: year === undefined ? undefined : `${year}-01-01`,
+        releasedTo: year !== undefined && yearEnd < today ? yearEnd : today,
+      },
       { signal },
     );
     return {
