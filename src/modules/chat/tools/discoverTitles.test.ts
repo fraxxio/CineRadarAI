@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import { mockTmdb, tmdbUrls } from "@test/helpers/tmdb";
 import {
-  MOVIE_GENRES,
-  TV_GENRES,
+  FULL_MOVIE_GENRES,
+  FULL_TV_GENRES,
   page,
   rawMovie,
   rawShow,
@@ -17,8 +17,6 @@ beforeEach(async () => {
   ({ ToolError } = await import("./types"));
 });
 
-const ctx = () => ({ signal: new AbortController().signal });
-
 // handlers return plain JSON for the model
 type Items = { results: Record<string, unknown>[] };
 
@@ -26,8 +24,8 @@ const mockDiscover = (movies: object[] = [], shows: object[] = []) =>
   mockTmdb({
     "/3/discover/movie": page(movies),
     "/3/discover/tv": page(shows),
-    "/3/genre/movie/list": MOVIE_GENRES,
-    "/3/genre/tv/list": TV_GENRES,
+    "/3/genre/movie/list": FULL_MOVIE_GENRES,
+    "/3/genre/tv/list": FULL_TV_GENRES,
   });
 
 // args as the registry passes them: parsed, defaults applied
@@ -39,7 +37,22 @@ const run = async (args: object, signal = new AbortController().signal) =>
 const discoverUrl = (spy: ReturnType<typeof mockTmdb>, type = "movie") =>
   tmdbUrls(spy, `/3/discover/${type}`)[0];
 
+// the discover query without the params every request sends
+const filters = (url: URL) =>
+  [...url.searchParams].filter(
+    ([key]) => key !== "language" && key !== "include_adult",
+  );
+
+const atDate = (iso: string) => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(iso));
+};
+
 describe("discover_titles", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   test("returns the top 10 with only the listed fields", async () => {
     mockDiscover(Array.from({ length: 12 }, (_, i) => rawMovie(i + 1)));
 
@@ -67,83 +80,219 @@ describe("discover_titles", () => {
     });
   });
 
-  test("sorts by popularity by default", async () => {
+  test("no filters: popular titles released by today", async () => {
+    atDate("2026-10-08T12:00:00Z");
     const spy = mockDiscover();
+
     await run({ type: "movie" });
-    expect(discoverUrl(spy).searchParams.get("sort_by")).toBe(
-      "popularity.desc",
+
+    expect(filters(discoverUrl(spy))).toEqual([
+      ["primary_release_date.lte", "2026-10-08"],
+      ["sort_by", "popularity.desc"],
+    ]);
+  });
+
+  // "highly rated sci-fi from the 2010s"
+  test("the query of a typical call", async () => {
+    const spy = mockDiscover();
+
+    await run({
+      type: "movie",
+      genres: ["Science Fiction"],
+      yearFrom: 2010,
+      yearTo: 2019,
+      sort: "top_rated",
+    });
+
+    expect(discoverUrl(spy).search).toBe(
+      "?language=en-US&include_adult=false&with_genres=878&primary_release_date.gte=2010-01-01&primary_release_date.lte=2019-12-31&sort_by=vote_average.desc&vote_count.gte=200",
     );
-    expect(discoverUrl(spy).searchParams.has("vote_count.gte")).toBe(false);
+  });
+
+  test("every filter reaches the movie query", async () => {
+    const spy = mockDiscover();
+
+    await run({
+      type: "movie",
+      genres: ["War", "Drama"],
+      excludeGenres: ["Comedy", "Animation"],
+      yearFrom: 1990,
+      yearTo: 1999,
+      minRating: 7.5,
+      minVotes: 50,
+      withCast: [287, 1892],
+      withCrew: [138],
+      originalLanguage: "EN",
+      sort: "newest",
+    });
+
+    expect(filters(discoverUrl(spy))).toEqual([
+      ["with_genres", "10752,18"],
+      ["without_genres", "35,16"],
+      ["primary_release_date.gte", "1990-01-01"],
+      ["primary_release_date.lte", "1999-12-31"],
+      ["vote_average.gte", "7.5"],
+      ["with_cast", "287,1892"],
+      ["with_crew", "138"],
+      ["with_original_language", "en"],
+      ["sort_by", "primary_release_date.desc"],
+      ["vote_count.gte", "50"],
+    ]);
+  });
+
+  test("TV filters use TV genre ids and the first air date", async () => {
+    const spy = mockDiscover();
+
+    await run({
+      type: "tv",
+      genres: ["Science Fiction"],
+      excludeGenres: ["Action", "Adventure", "Kids"],
+      yearFrom: 2014,
+      yearTo: 2014,
+      originalLanguage: "ko",
+      sort: "top_rated",
+    });
+
+    // Action + Adventure is one TV genre: sent once
+    expect(filters(discoverUrl(spy, "tv"))).toEqual([
+      ["with_genres", "10765"],
+      ["without_genres", "10759,10762"],
+      ["first_air_date.gte", "2014-01-01"],
+      ["first_air_date.lte", "2014-12-31"],
+      ["with_original_language", "ko"],
+      ["sort_by", "vote_average.desc"],
+      ["vote_count.gte", "100"],
+    ]);
+  });
+
+  describe("release years", () => {
+    test("only yearFrom: from that year up to today", async () => {
+      atDate("2026-10-08T12:00:00Z");
+      const spy = mockDiscover();
+
+      await run({ type: "movie", yearFrom: 2020 });
+
+      expect(filters(discoverUrl(spy))).toEqual(
+        expect.arrayContaining([
+          ["primary_release_date.gte", "2020-01-01"],
+          ["primary_release_date.lte", "2026-10-08"],
+        ]),
+      );
+    });
+
+    test("only yearTo: up to the end of that year", async () => {
+      const spy = mockDiscover();
+      await run({ type: "tv", yearTo: 1999 });
+      const params = discoverUrl(spy, "tv").searchParams;
+      expect(params.has("first_air_date.gte")).toBe(false);
+      expect(params.get("first_air_date.lte")).toBe("1999-12-31");
+    });
+
+    // upcoming titles rank high by popularity
+    test("a yearTo in the future is capped at today", async () => {
+      atDate("2026-10-08T23:59:00Z");
+      const spy = mockDiscover();
+
+      await run({ type: "movie", yearFrom: 2026, yearTo: 2027 });
+
+      expect(filters(discoverUrl(spy))).toEqual(
+        expect.arrayContaining([
+          ["primary_release_date.gte", "2026-01-01"],
+          ["primary_release_date.lte", "2026-10-08"],
+        ]),
+      );
+    });
+
+    // the empty list tells the model none are released yet
+    test("a future yearFrom asks for an empty range", async () => {
+      atDate("2026-10-08T12:00:00Z");
+      const spy = mockDiscover();
+
+      await run({ type: "movie", yearFrom: 2027 });
+
+      expect(filters(discoverUrl(spy))).toEqual(
+        expect.arrayContaining([
+          ["primary_release_date.gte", "2027-01-01"],
+          ["primary_release_date.lte", "2026-10-08"],
+        ]),
+      );
+    });
   });
 
   it.each([
     ["movie", "200"],
     ["tv", "100"],
-  ])("top_rated %s: by rating, at least %s votes", async (type, floor) => {
+  ])("minRating %s: the default vote floor of %s", async (type, floor) => {
     const spy = mockDiscover();
-    await run({ type, sort: "top_rated" });
+    await run({ type, minRating: 8 });
     const params = discoverUrl(spy, type).searchParams;
-    expect(params.get("sort_by")).toBe("vote_average.desc");
+    expect(params.get("sort_by")).toBe("popularity.desc");
     expect(params.get("vote_count.gte")).toBe(floor);
   });
 
-  test("the year goes to the per-type param", async () => {
-    const spy = mockDiscover();
-
-    await run({ type: "movie", year: 2026 });
-    await run({ type: "tv", year: 2026 });
-
-    const movie = discoverUrl(spy, "movie").searchParams;
-    const tv = discoverUrl(spy, "tv").searchParams;
-    expect(movie.get("primary_release_year")).toBe("2026");
-    expect(movie.has("first_air_date_year")).toBe(false);
-    expect(tv.get("first_air_date_year")).toBe("2026");
-    expect(tv.has("primary_release_year")).toBe(false);
-  });
-
-  test("lists only titles released by today", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-10-08T12:00:00Z"));
-    const spy = mockDiscover();
-
-    await run({ type: "movie", year: 2026 });
-    await run({ type: "tv", year: 2026 });
-    vi.useRealTimers();
-
-    const movie = discoverUrl(spy, "movie").searchParams;
-    const tv = discoverUrl(spy, "tv").searchParams;
-    expect(movie.get("primary_release_date.lte")).toBe("2026-10-08");
-    expect(tv.get("first_air_date.lte")).toBe("2026-10-08");
-  });
-
-  it.each(["Science Fiction", "science fiction", "  SCIENCE FICTION "])(
-    "genre %j maps to its id",
-    async (genre) => {
+  describe("mistakes the model can fix", () => {
+    const rejects = async (args: object, message: string | RegExp) => {
       const spy = mockDiscover();
-      await run({ type: "movie", genre });
-      expect(discoverUrl(spy).searchParams.get("with_genres")).toBe("878");
-    },
-  );
+      const error = await run(args).catch((e) => e);
+      expect(error).toBeInstanceOf(ToolError);
+      expect(error.message).toMatch(message);
+      return spy;
+    };
 
-  test("no genre: no genre filter", async () => {
-    const spy = mockDiscover();
-    await run({ type: "movie" });
-    expect(discoverUrl(spy).searchParams.has("with_genres")).toBe(false);
+    test("yearFrom after yearTo", async () => {
+      const spy = await rejects(
+        { type: "movie", yearFrom: 2019, yearTo: 2010 },
+        "yearFrom (2019) is after yearTo (2010).",
+      );
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    // /discover/tv ignores with_cast and with_crew: unfiltered titles
+    it.each([{ withCast: [287] }, { withCrew: [138] }])(
+      "a person filter on TV: %j",
+      async (person) => {
+        const spy = await rejects(
+          { type: "tv", ...person },
+          "Cast and crew filters work for movies only. For TV, use get_person_credits.",
+        );
+        expect(spy).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ["tv", { genres: ["Horror"] }, '"Horror" isn\'t a TMDB TV genre.'],
+      ["tv", { excludeGenres: ["Romance"] }, '"Romance" isn\'t a TMDB TV'],
+      ["movie", { genres: ["Kids"] }, '"Kids" isn\'t a TMDB movie genre.'],
+    ])("a genre %s doesn't have: %j", async (type, genres, message) => {
+      const spy = await rejects({ type, ...genres }, message);
+      // the cached genre list may load; nothing is discovered
+      expect(tmdbUrls(spy, `/3/discover/${type}`)).toEqual([]);
+    });
+
+    test("the genre error lists the valid names for the type", async () => {
+      await rejects(
+        { type: "tv", genres: ["Horror"] },
+        /Valid TV genres: Action, Adventure, Animation, Comedy, .*, Western$/,
+      );
+    });
   });
 
-  test("an unknown genre throws a ToolError naming the valid ones", async () => {
-    const spy = mockDiscover();
-
-    const error = await run({ type: "tv", genre: "Science Fiction" }).catch(
-      (e) => e,
+  // with_crew matches any job (writer, producer...), so it can't answer
+  // "directed by"
+  test('the description sends "directed by" to get_person_credits', () => {
+    expect(discoverTitles.description).toContain(
+      "withCrew matches any crew job",
     );
-
-    expect(error).toBeInstanceOf(ToolError);
-    expect(error.message).toBe(
-      'Unknown genre "Science Fiction". Valid tv genres: Drama, Sci-Fi & Fantasy',
+    expect(discoverTitles.description).toContain(
+      'for "directed by" use get_person_credits with role "crew"',
     );
-    // nothing discovered with a wrong filter
-    expect(tmdbUrls(spy, "/3/discover/tv")).toEqual([]);
+  });
+
+  test("zod rejects a genre outside the enum", () => {
+    expect(
+      discoverTitles.args.safeParse({ type: "movie", genres: ["Cartoons"] })
+        .success,
+    ).toBe(false);
   });
 
   describe("a failed genre list", () => {
@@ -155,26 +304,29 @@ describe("discover_titles", () => {
       });
     };
 
-    test("no genre: still lists the titles, without genres", async () => {
+    test("no genre filter: still lists the titles, without genres", async () => {
       failGenres();
       const { results } = await run({ type: "movie" });
       expect(results).toEqual([expect.objectContaining({ id: 1, genres: [] })]);
     });
 
-    test("a genre filter: fails, nothing discovered", async () => {
-      const spy = failGenres();
-      await expect(run({ type: "movie", genre: "War" })).rejects.toMatchObject({
-        status: 503,
-      });
-      expect(tmdbUrls(spy, "/3/discover/movie")).toEqual([]);
-    });
+    it.each([{ genres: ["War"] }, { excludeGenres: ["War"] }])(
+      "a genre filter %j: fails, nothing discovered",
+      async (genres) => {
+        const spy = failGenres();
+        await expect(run({ type: "movie", ...genres })).rejects.toMatchObject({
+          status: 503,
+        });
+        expect(tmdbUrls(spy, "/3/discover/movie")).toEqual([]);
+      },
+    );
   });
 
   test("passes the signal to every TMDB request", async () => {
     const spy = mockDiscover();
     const { signal } = new AbortController();
 
-    await run({ type: "movie", genre: "War" }, signal);
+    await run({ type: "movie", genres: ["War"] }, signal);
 
     // the genre list and the discover request
     expect(spy).toHaveBeenCalledTimes(2);

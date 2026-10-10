@@ -1,9 +1,12 @@
 // TMDB wire shapes (only the fields we read) and their mapping to ./types
 import type {
+  CastCredit,
+  CrewCredit,
   Genre,
   Language,
   MediaType,
   Paged,
+  PersonHit,
   TitleDetails,
   TitleHit,
   TitleImages,
@@ -33,6 +36,9 @@ export type RawSummary = {
   vote_count: number;
   // search / discover only
   genre_ids?: number[];
+  // trending, recommendations, similar, credits and known_for
+  media_type?: string;
+  adult?: boolean;
 };
 
 export type RawDetails = RawSummary & {
@@ -68,6 +74,21 @@ export type RawReview = {
 
 export type RawLanguage = { iso_639_1: string; english_name: string };
 
+export type RawPerson = {
+  id: number;
+  name: string;
+  known_for_department?: string;
+  // movies and TV mixed, told apart by media_type
+  known_for?: RawSummary[];
+};
+
+// /person/{id}/movie_credits or tv_credits
+export type RawCredits = {
+  // episode_count: TV only
+  cast: (RawSummary & { character?: string; episode_count?: number })[];
+  crew: (RawSummary & { job?: string })[];
+};
+
 export const toPaged = <R, T>(
   raw: RawPaged<R>,
   map: (r: R) => T,
@@ -91,6 +112,41 @@ export const toSummary = (type: MediaType, raw: RawSummary): TitleSummary => ({
 export const toHit = (type: MediaType, raw: RawSummary): TitleHit => ({
   ...toSummary(type, raw),
   genreIds: raw.genre_ids ?? [],
+  adult: raw.adult ?? false,
+});
+
+const isMediaType = (value: string | undefined): value is MediaType =>
+  value === "movie" || value === "tv";
+
+export const toPersonHit = (raw: RawPerson): PersonHit => ({
+  id: raw.id,
+  name: raw.name,
+  department: raw.known_for_department ?? "",
+  // known_for can hold other items than titles: skip those
+  knownFor: (raw.known_for ?? []).flatMap((item) => {
+    if (!isMediaType(item.media_type)) {
+      return [];
+    }
+    const { title, releaseDate } = toSummary(item.media_type, item);
+    return [{ type: item.media_type, title, releaseDate }];
+  }),
+});
+
+export const toCastCredit = (
+  type: MediaType,
+  raw: RawCredits["cast"][number],
+): CastCredit => ({
+  ...toHit(type, raw),
+  character: raw.character ?? "",
+  episodeCount: raw.episode_count ?? null,
+});
+
+export const toCrewCredit = (
+  type: MediaType,
+  raw: RawCredits["crew"][number],
+): CrewCredit => ({
+  ...toHit(type, raw),
+  job: raw.job ?? "",
 });
 
 export function toDetails(type: MediaType, raw: RawDetails): TitleDetails {

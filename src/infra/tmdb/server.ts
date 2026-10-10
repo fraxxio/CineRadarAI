@@ -2,20 +2,25 @@
 import "server-only";
 import { tmdbFetch, type FetchOptions } from "./client";
 import {
+  toCastCredit,
+  toCrewCredit,
   toDetails,
   toHit,
   toImages,
   toLanguage,
   toPaged,
+  toPersonHit,
   toReview,
   toSummary,
   toTitleWithCredits,
   toVideo,
+  type RawCredits,
   type RawDetails,
   type RawGenres,
   type RawImages,
   type RawLanguage,
   type RawPaged,
+  type RawPerson,
   type RawReview,
   type RawSummary,
   type RawVideos,
@@ -25,6 +30,8 @@ import type {
   Language,
   MediaType,
   Paged,
+  PersonCredits,
+  PersonHit,
   TitleDetails,
   TitleHit,
   TitleId,
@@ -153,45 +160,89 @@ export async function searchTitlesByYear(
   return toPaged(raw, (result) => toHit(type, result));
 }
 
-export type DiscoverSort = "popular" | "top_rated";
+export type DiscoverSort = "popular" | "top_rated" | "newest";
 
 export type DiscoverTitlesParams = {
   type: MediaType;
-  year?: number;
-  genreId?: number;
   sort: DiscoverSort;
-  // "2026-10-08": leaves out titles released (first aired) after this date
-  releasedBy?: string;
+  // all of them must match; [] means no filter
+  genreIds?: number[];
+  withoutGenreIds?: number[];
+  // "2010-01-01": release (first air) date range, both ends included
+  releasedFrom?: string;
+  releasedTo?: string;
+  minRating?: number;
+  // overrides the default vote floor
+  minVotes?: number;
+  // movies only: /discover/tv ignores them
+  castIds?: number[];
+  crewIds?: number[];
+  // ISO 639-1, e.g. "ko"
+  originalLanguage?: string;
 };
 
-const releasedByParam = (type: MediaType, date: string | undefined) =>
-  type === "movie"
-    ? { "primary_release_date.lte": date }
-    : { "first_air_date.lte": date };
+// movies filter on the primary release date, TV on the first air date
+const releaseDateKey = (type: MediaType) =>
+  type === "movie" ? "primary_release_date" : "first_air_date";
+
+const SORT_BY: Record<DiscoverSort, (type: MediaType) => string> = {
+  popular: () => "popularity.desc",
+  top_rated: () => "vote_average.desc",
+  newest: (type) => `${releaseDateKey(type)}.desc`,
+};
 
 // without a vote floor, titles with a single 10/10 vote top the list
 const TOP_RATED_MIN_VOTES: Record<MediaType, number> = { movie: 200, tv: 100 };
+// newest first is otherwise led by zero-vote uploads
+const NEWEST_MIN_VOTES = 10;
+
+const minVotesFor = ({
+  type,
+  sort,
+  minRating,
+  minVotes,
+}: DiscoverTitlesParams) => {
+  if (minVotes !== undefined) {
+    return minVotes;
+  }
+  if (sort === "top_rated" || minRating !== undefined) {
+    return TOP_RATED_MIN_VOTES[type];
+  }
+  // popular needs none: popular titles have votes
+  return sort === "newest" ? NEWEST_MIN_VOTES : undefined;
+};
+
+// "," means all of them; an empty list sends nothing, never `with_genres=`
+const idList = (ids: number[] | undefined) =>
+  ids?.length ? ids.join(",") : undefined;
 
 export async function discoverTitles(
-  { type, year, genreId, sort, releasedBy }: DiscoverTitlesParams,
+  params: DiscoverTitlesParams,
   options?: FetchOptions,
 ): Promise<Paged<TitleHit>> {
-  const sortParams =
-    sort === "top_rated"
-      ? {
-          sort_by: "vote_average.desc",
-          "vote_count.gte": TOP_RATED_MIN_VOTES[type],
-        }
-      : { sort_by: "popularity.desc" };
+  const { type, sort, releasedFrom, releasedTo, minRating } = params;
+  const castIds = idList(params.castIds);
+  const crewIds = idList(params.crewIds);
+  // TMDB would ignore them and answer unfiltered titles
+  if (type === "tv" && (castIds || crewIds)) {
+    throw new Error("Cast and crew filters work for movies only");
+  }
+  const dateKey = releaseDateKey(type);
   const raw = await tmdbFetch<RawPaged<RawSummary>>(
     `/discover/${type}`,
     {
       language: "en-US",
       include_adult: false,
-      with_genres: genreId,
-      ...yearParam(type, year),
-      ...releasedByParam(type, releasedBy),
-      ...sortParams,
+      with_genres: idList(params.genreIds),
+      without_genres: idList(params.withoutGenreIds),
+      [`${dateKey}.gte`]: releasedFrom,
+      [`${dateKey}.lte`]: releasedTo,
+      "vote_average.gte": minRating,
+      with_cast: castIds,
+      with_crew: crewIds,
+      with_original_language: params.originalLanguage,
+      sort_by: SORT_BY[sort](type),
+      "vote_count.gte": minVotesFor(params),
     },
     "discover results",
     options,
@@ -236,4 +287,77 @@ export async function getTitleWithCredits(
     options,
   );
   return toTitleWithCredits(type, raw);
+}
+
+export async function searchPeople(
+  query: string,
+  options?: FetchOptions,
+): Promise<Paged<PersonHit>> {
+  const raw = await tmdbFetch<RawPaged<RawPerson>>(
+    "/search/person",
+    { query, language: "en-US", include_adult: false },
+    "people",
+    options,
+  );
+  return toPaged(raw, toPersonHit);
+}
+
+export async function getTrending(
+  type: MediaType,
+  window: "day" | "week",
+  options?: FetchOptions,
+): Promise<Paged<TitleHit>> {
+  const raw = await tmdbFetch<RawPaged<RawSummary>>(
+    `/trending/${type}/${window}`,
+    { language: "en-US" },
+    `trending ${type}`,
+    options,
+  );
+  return toPaged(raw, (result) => toHit(type, result));
+}
+
+export async function getRecommendations(
+  type: MediaType,
+  id: TitleId,
+  options?: FetchOptions,
+): Promise<Paged<TitleHit>> {
+  const raw = await tmdbFetch<RawPaged<RawSummary>>(
+    `/${type}/${id}/recommendations`,
+    { language: "en-US" },
+    `${type} recommendations`,
+    options,
+  );
+  return toPaged(raw, (result) => toHit(type, result));
+}
+
+export async function getSimilarTitles(
+  type: MediaType,
+  id: TitleId,
+  options?: FetchOptions,
+): Promise<Paged<TitleHit>> {
+  const raw = await tmdbFetch<RawPaged<RawSummary>>(
+    `/${type}/${id}/similar`,
+    { language: "en-US" },
+    `similar ${type} titles`,
+    options,
+  );
+  return toPaged(raw, (result) => toHit(type, result));
+}
+
+// a person's movies or TV shows, in front of (cast) or behind (crew) the camera
+export async function getPersonCredits(
+  type: MediaType,
+  personId: number,
+  options?: FetchOptions,
+): Promise<PersonCredits> {
+  const raw = await tmdbFetch<RawCredits>(
+    `/person/${personId}/${type}_credits`,
+    { language: "en-US" },
+    `person ${type} credits`,
+    options,
+  );
+  return {
+    cast: raw.cast.map((credit) => toCastCredit(type, credit)),
+    crew: raw.crew.map((credit) => toCrewCredit(type, credit)),
+  };
 }

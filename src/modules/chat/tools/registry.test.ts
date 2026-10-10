@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
+import { z } from "zod/v4";
 import { deferred } from "@test/helpers/deferred";
 import { hangUntilAborted, mockTmdb, tmdbUrls } from "@test/helpers/tmdb";
 import { MOVIE_GENRES, TV_GENRES, page, rawMovie } from "../testing/tmdbData";
@@ -9,7 +10,88 @@ import {
   statusFor,
   toolParameters,
 } from "./registry";
-import type { ToolCall } from "./types";
+import { defineTool, type ToolCall } from "./types";
+
+// Gemini's JSON Schema subset:
+// https://ai.google.dev/gemini-api/docs/structured-output#json-schema-support
+// one rejected keyword fails every chat request, so add a keyword here only
+// after `npm run check:chat-tools` has shown Gemini accepts it
+const ALLOWED_SCHEMA_KEYWORDS = new Set([
+  "type",
+  "properties",
+  "required",
+  "description",
+  "enum",
+  "items",
+  "minimum",
+  "maximum",
+  "minLength",
+  "maxLength",
+  "minItems",
+  "maxItems",
+  "default",
+  "additionalProperties",
+]);
+const SCHEMA_TYPES = new Set([
+  "string",
+  "number",
+  "integer",
+  "boolean",
+  "object",
+  "array",
+]);
+
+const isSchema = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+// paths of keywords and types outside the subset, e.g.
+// "properties.originalLanguage.pattern"; descends only into sub-schemas, so
+// property names and enum, required or default values aren't keywords
+function schemaProblems(
+  schema: Record<string, unknown>,
+  path: string[] = [],
+): string[] {
+  const at = (...keys: string[]) => [...path, ...keys].join(".");
+  const problems: string[] = [];
+  for (const [key, value] of Object.entries(schema)) {
+    if (!ALLOWED_SCHEMA_KEYWORDS.has(key)) {
+      problems.push(at(key));
+    } else if (
+      key === "type" &&
+      !(typeof value === "string" && SCHEMA_TYPES.has(value))
+    ) {
+      problems.push(`${at(key)} = ${JSON.stringify(value)}`);
+    }
+  }
+  if (isSchema(schema.properties)) {
+    for (const [name, sub] of Object.entries(schema.properties)) {
+      if (isSchema(sub)) {
+        problems.push(...schemaProblems(sub, [...path, "properties", name]));
+      }
+    }
+  }
+  if (isSchema(schema.items)) {
+    problems.push(...schemaProblems(schema.items, [...path, "items"]));
+  }
+  if (isSchema(schema.additionalProperties)) {
+    problems.push(
+      ...schemaProblems(schema.additionalProperties, [
+        ...path,
+        "additionalProperties",
+      ]),
+    );
+  }
+  return problems;
+}
+
+const toolWithArgs = (args: z.ZodType) =>
+  defineTool({
+    name: "test_tool",
+    description: "",
+    status: "",
+    args,
+    run: async () => ({}),
+  });
 
 const GENRES = {
   "/3/genre/movie/list": MOVIE_GENRES,
@@ -33,10 +115,15 @@ afterEach(() => {
 });
 
 describe("CHAT_TOOLS", () => {
-  test("the three TMDB tools", () => {
+  test("the TMDB tools", () => {
     expect(CHAT_TOOLS.map((tool) => tool.name)).toEqual([
       "search_titles",
+      "search_person",
       "discover_titles",
+      "get_trending",
+      "get_recommendations",
+      "get_similar",
+      "get_person_credits",
       "get_title_details",
     ]);
   });
@@ -51,18 +138,93 @@ describe("CHAT_TOOLS", () => {
       {
         "discover_titles": {
           "properties": {
-            "genre": {
-              "description": "TMDB genre name in English, e.g. "Action", "Science Fiction"",
-              "maxLength": 50,
-              "minLength": 1,
+            "excludeGenres": {
+              "description": "Titles must have none of these genres",
+              "items": {
+                "enum": [
+                  "Action",
+                  "Adventure",
+                  "Animation",
+                  "Comedy",
+                  "Crime",
+                  "Documentary",
+                  "Drama",
+                  "Family",
+                  "Fantasy",
+                  "History",
+                  "Horror",
+                  "Kids",
+                  "Music",
+                  "Mystery",
+                  "Reality",
+                  "Romance",
+                  "Science Fiction",
+                  "Thriller",
+                  "War",
+                  "Western",
+                ],
+                "type": "string",
+              },
+              "maxItems": 5,
+              "minItems": 1,
+              "type": "array",
+            },
+            "genres": {
+              "description": "Titles must have all of these genres",
+              "items": {
+                "enum": [
+                  "Action",
+                  "Adventure",
+                  "Animation",
+                  "Comedy",
+                  "Crime",
+                  "Documentary",
+                  "Drama",
+                  "Family",
+                  "Fantasy",
+                  "History",
+                  "Horror",
+                  "Kids",
+                  "Music",
+                  "Mystery",
+                  "Reality",
+                  "Romance",
+                  "Science Fiction",
+                  "Thriller",
+                  "War",
+                  "Western",
+                ],
+                "type": "string",
+              },
+              "maxItems": 3,
+              "minItems": 1,
+              "type": "array",
+            },
+            "minRating": {
+              "description": "Lowest TMDB rating, 0-10",
+              "maximum": 10,
+              "minimum": 0,
+              "type": "number",
+            },
+            "minVotes": {
+              "description": "Lowest TMDB vote count; replaces the default floor for top_rated, minRating and newest",
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer",
+            },
+            "originalLanguage": {
+              "description": "ISO 639-1 code of the original language, e.g. "ko"",
+              "maxLength": 2,
+              "minLength": 2,
               "type": "string",
             },
             "sort": {
               "default": "popular",
-              "description": "popular: most popular first, top_rated: best rated first",
+              "description": "popular: most popular first, top_rated: best rated first, newest: latest release first",
               "enum": [
                 "popular",
                 "top_rated",
+                "newest",
               ],
               "type": "string",
             },
@@ -74,8 +236,38 @@ describe("CHAT_TOOLS", () => {
               ],
               "type": "string",
             },
-            "year": {
-              "description": "Release year (first air year for TV)",
+            "withCast": {
+              "description": "Movies only: all of these people are in the cast",
+              "items": {
+                "description": "TMDB person id from search_person results",
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer",
+              },
+              "maxItems": 3,
+              "minItems": 1,
+              "type": "array",
+            },
+            "withCrew": {
+              "description": "Movies only: all of these people are in the crew, any job",
+              "items": {
+                "description": "TMDB person id from search_person results",
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer",
+              },
+              "maxItems": 3,
+              "minItems": 1,
+              "type": "array",
+            },
+            "yearFrom": {
+              "description": "First release year (first air year for TV), included",
+              "maximum": 2100,
+              "minimum": 1870,
+              "type": "integer",
+            },
+            "yearTo": {
+              "description": "Last release year, included. For one year, set both to it.",
               "maximum": 2100,
               "minimum": 1870,
               "type": "integer",
@@ -83,6 +275,84 @@ describe("CHAT_TOOLS", () => {
           },
           "required": [
             "type",
+          ],
+          "type": "object",
+        },
+        "get_person_credits": {
+          "properties": {
+            "id": {
+              "description": "TMDB person id from search_person results",
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer",
+            },
+            "role": {
+              "default": "cast",
+              "description": "cast: acting credits, crew: jobs behind the camera",
+              "enum": [
+                "cast",
+                "crew",
+              ],
+              "type": "string",
+            },
+            "type": {
+              "description": "movie for films, tv for TV shows",
+              "enum": [
+                "movie",
+                "tv",
+              ],
+              "type": "string",
+            },
+          },
+          "required": [
+            "id",
+            "type",
+          ],
+          "type": "object",
+        },
+        "get_recommendations": {
+          "properties": {
+            "id": {
+              "description": "TMDB id of the title, from the same result as its type",
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer",
+            },
+            "type": {
+              "description": "movie for films, tv for TV shows",
+              "enum": [
+                "movie",
+                "tv",
+              ],
+              "type": "string",
+            },
+          },
+          "required": [
+            "type",
+            "id",
+          ],
+          "type": "object",
+        },
+        "get_similar": {
+          "properties": {
+            "id": {
+              "description": "TMDB id of the title, from the same result as its type",
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer",
+            },
+            "type": {
+              "description": "movie for films, tv for TV shows",
+              "enum": [
+                "movie",
+                "tv",
+              ],
+              "type": "string",
+            },
+          },
+          "required": [
+            "type",
+            "id",
           ],
           "type": "object",
         },
@@ -106,6 +376,45 @@ describe("CHAT_TOOLS", () => {
           "required": [
             "type",
             "id",
+          ],
+          "type": "object",
+        },
+        "get_trending": {
+          "properties": {
+            "type": {
+              "description": "movie for films, tv for TV shows",
+              "enum": [
+                "movie",
+                "tv",
+              ],
+              "type": "string",
+            },
+            "window": {
+              "default": "week",
+              "description": "day: trending today, week: trending this week",
+              "enum": [
+                "day",
+                "week",
+              ],
+              "type": "string",
+            },
+          },
+          "required": [
+            "type",
+          ],
+          "type": "object",
+        },
+        "search_person": {
+          "properties": {
+            "query": {
+              "description": "The person's name",
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          },
+          "required": [
+            "query",
           ],
           "type": "object",
         },
@@ -146,15 +455,78 @@ describe("CHAT_TOOLS", () => {
     for (const tool of CHAT_TOOLS) {
       expect(toolParameters(tool)).not.toHaveProperty("$schema");
     }
-    const discover = toolParameters(CHAT_TOOLS[1]);
-    expect(discover.required).toEqual(["type"]);
+    const required = (name: string) =>
+      toolParameters(CHAT_TOOLS.find((tool) => tool.name === name)!).required;
+    expect(required("discover_titles")).toEqual(["type"]);
+    expect(required("get_person_credits")).toEqual(["id", "type"]);
+    expect(required("get_trending")).toEqual(["type"]);
+  });
+
+  // Gemini answers 400 to every request if it rejects one keyword
+  test("schemas use only keywords Gemini supports", () => {
+    expect(
+      CHAT_TOOLS.flatMap((tool) =>
+        schemaProblems(toolParameters(tool)).map(
+          (problem) => `${tool.name}: ${problem}`,
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  // a walker that checks nothing would let the test above pass
+  test("the keyword check finds unsupported keywords and types", () => {
+    expect(
+      schemaProblems(
+        toolParameters(toolWithArgs(z.object({ a: z.string().regex(/x/) }))),
+      ),
+    ).toEqual(["properties.a.pattern"]);
+    expect(
+      schemaProblems(
+        toolParameters(
+          toolWithArgs(z.object({ list: z.array(z.string().regex(/x/)) })),
+        ),
+      ),
+    ).toEqual(["properties.list.items.pattern"]);
+    expect(schemaProblems({ type: "object", pattern: "x" })).toEqual([
+      "pattern",
+    ]);
+    expect(
+      schemaProblems({
+        type: "object",
+        properties: { a: { type: ["string", "null"] } },
+        additionalProperties: { type: "string", format: "date" },
+      }),
+    ).toEqual([
+      'properties.a.type = ["string","null"]',
+      "additionalProperties.format",
+    ]);
+  });
+
+  test("the keyword check skips property names and enum values", () => {
+    expect(
+      schemaProblems(
+        toolParameters(
+          toolWithArgs(
+            z.object({
+              pattern: z.enum(["format", "anyOf"]).default("format"),
+              items: z.array(z.string()).min(1).max(3),
+            }),
+          ),
+        ),
+      ),
+    ).toEqual([]);
   });
 });
 
 describe("statusFor", () => {
   it.each([
     ["search_titles", "Searching TMDB database..."],
+    ["search_person", "Searching people..."],
     ["discover_titles", "Browsing TMDB database..."],
+    ["get_trending", "Checking what's trending..."],
+    ["get_recommendations", "Finding recommendations..."],
+    ["get_similar", "Finding similar titles..."],
+    ["get_person_credits", "Checking filmography..."],
     ["get_title_details", "Checking title details..."],
     // the model's mistake
     ["get_weather", "Checking TMDB database..."],
@@ -343,7 +715,7 @@ describe("runToolCalls", () => {
           {
             id: "c1",
             name: "discover_titles",
-            rawArgs: '{"type":"movie","genre":"Cartoons"}',
+            rawArgs: '{"type":"tv","genres":["Horror"]}',
           },
         ],
         live(),
@@ -351,12 +723,12 @@ describe("runToolCalls", () => {
 
       expect(result.isError).toBe(true);
       expect(result.output).toMatch(
-        /^Unknown genre "Cartoons"\. Valid movie genres: Drama, /,
+        /^"Horror" isn't a TMDB TV genre\. Valid TV genres: Action, /,
       );
       // the model's mistake: a warning, not a server error
       expect(console.warn).toHaveBeenCalledWith(
         expect.stringMatching(
-          /^Tool call discover_titles rejected: Unknown genre "Cartoons"/,
+          /^Tool call discover_titles rejected: "Horror" isn't a TMDB TV genre/,
         ),
       );
       expect(console.error).not.toHaveBeenCalled();

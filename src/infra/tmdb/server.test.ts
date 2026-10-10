@@ -4,11 +4,16 @@ import {
   discoverTitles,
   findTitles,
   getLanguages,
+  getPersonCredits,
+  getRecommendations,
+  getSimilarTitles,
   getTitle,
   getTitleImages,
   getTitleReviews,
   getTitleVideos,
   getTitleWithCredits,
+  getTrending,
+  searchPeople,
   searchTitlesByYear,
 } from "./server";
 import {
@@ -333,57 +338,435 @@ describe("searchTitlesByYear", () => {
 describe("discoverTitles", () => {
   test("popular: by popularity, no vote floor", async () => {
     const spy = mockSearch();
-    await discoverTitles({ type: "movie", year: 2026, sort: "popular" });
+    await discoverTitles({ type: "movie", sort: "popular" });
 
     expect(lastTmdbUrl(spy).pathname).toBe("/3/discover/movie");
     expect(params(spy)).toEqual([
       ["language", "en-US"],
       ["include_adult", "false"],
-      ["primary_release_year", "2026"],
       ["sort_by", "popularity.desc"],
     ]);
   });
 
   it.each([
-    ["movie", "primary_release_date.lte"],
-    ["tv", "first_air_date.lte"],
-  ] as const)("releasedBy %s: goes to %s", async (type, key) => {
+    ["movie", "primary_release_date"],
+    ["tv", "first_air_date"],
+  ] as const)("%s: the date range goes to %s", async (type, key) => {
     const spy = mockSearch();
-    await discoverTitles({ type, sort: "popular", releasedBy: "2026-10-08" });
+    // releasedTo = today keeps upcoming titles out
+    await discoverTitles({
+      type,
+      sort: "popular",
+      releasedFrom: "2026-01-01",
+      releasedTo: "2026-10-08",
+    });
 
+    expect(lastTmdbUrl(spy).pathname).toBe(`/3/discover/${type}`);
     expect(params(spy)).toEqual([
       ["language", "en-US"],
       ["include_adult", "false"],
-      [key, "2026-10-08"],
+      [`${key}.gte`, "2026-01-01"],
+      [`${key}.lte`, "2026-10-08"],
       ["sort_by", "popularity.desc"],
     ]);
   });
 
   it.each([
-    ["movie", "200", "primary_release_year"],
-    ["tv", "100", "first_air_date_year"],
+    ["movie", "popular", "popularity.desc"],
+    ["tv", "popular", "popularity.desc"],
+    ["movie", "top_rated", "vote_average.desc"],
+    ["tv", "top_rated", "vote_average.desc"],
+    ["movie", "newest", "primary_release_date.desc"],
+    ["tv", "newest", "first_air_date.desc"],
+  ] as const)("%s %s: sort_by=%s", async (type, sort, sortBy) => {
+    const spy = mockSearch();
+    await discoverTitles({ type, sort });
+    expect(lastTmdbUrl(spy).searchParams.get("sort_by")).toBe(sortBy);
+  });
+
+  it.each([
+    ["movie", "200"],
+    ["tv", "100"],
   ] as const)(
     "top_rated %s: by rating with a vote floor of %s",
-    async (type, floor, yearKey) => {
+    async (type, floor) => {
       const spy = mockSearch();
       await discoverTitles({
         type,
-        year: 2020,
-        genreId: 18,
         sort: "top_rated",
+        genreIds: [18],
+        releasedFrom: "2020-01-01",
+        releasedTo: "2020-12-31",
       });
 
-      expect(lastTmdbUrl(spy).pathname).toBe(`/3/discover/${type}`);
+      const key = type === "movie" ? "primary_release_date" : "first_air_date";
       expect(params(spy)).toEqual([
         ["language", "en-US"],
         ["include_adult", "false"],
         ["with_genres", "18"],
-        [yearKey, "2020"],
+        [`${key}.gte`, "2020-01-01"],
+        [`${key}.lte`, "2020-12-31"],
         ["sort_by", "vote_average.desc"],
         ["vote_count.gte", floor],
       ]);
     },
   );
+
+  describe("vote floor", () => {
+    const floor = async (params: Parameters<typeof discoverTitles>[0]) => {
+      const spy = mockSearch();
+      await discoverTitles(params);
+      return lastTmdbUrl(spy).searchParams.get("vote_count.gte");
+    };
+
+    it.each([
+      ["movie", "200"],
+      ["tv", "100"],
+    ] as const)(
+      "minRating alone: the top_rated floor for %s",
+      async (type, expected) => {
+        expect(await floor({ type, sort: "popular", minRating: 7.5 })).toBe(
+          expected,
+        );
+      },
+    );
+
+    test("newest: a small floor", async () => {
+      expect(await floor({ type: "tv", sort: "newest" })).toBe("10");
+    });
+
+    it.each(["popular", "top_rated", "newest"] as const)(
+      "%s: an explicit minVotes wins",
+      async (sort) => {
+        expect(
+          await floor({ type: "movie", sort, minRating: 8, minVotes: 20 }),
+        ).toBe("20");
+      },
+    );
+
+    test("minVotes 0 is sent, not dropped", async () => {
+      expect(
+        await floor({ type: "movie", sort: "top_rated", minVotes: 0 }),
+      ).toBe("0");
+    });
+
+    test("plain popular: none", async () => {
+      expect(await floor({ type: "movie", sort: "popular" })).toBeNull();
+    });
+  });
+
+  test("every movie filter, ids joined with ,", async () => {
+    const spy = mockSearch();
+    await discoverTitles({
+      type: "movie",
+      sort: "popular",
+      genreIds: [878, 18],
+      withoutGenreIds: [16, 10751],
+      releasedFrom: "2010-01-01",
+      releasedTo: "2019-12-31",
+      minRating: 7,
+      minVotes: 50,
+      castIds: [287, 1892],
+      crewIds: [138],
+      originalLanguage: "ko",
+    });
+
+    expect(params(spy)).toEqual([
+      ["language", "en-US"],
+      ["include_adult", "false"],
+      ["with_genres", "878,18"],
+      ["without_genres", "16,10751"],
+      ["primary_release_date.gte", "2010-01-01"],
+      ["primary_release_date.lte", "2019-12-31"],
+      ["vote_average.gte", "7"],
+      ["with_cast", "287,1892"],
+      ["with_crew", "138"],
+      ["with_original_language", "ko"],
+      ["sort_by", "popularity.desc"],
+      ["vote_count.gte", "50"],
+    ]);
+  });
+
+  test("TV: genre, rating and language filters", async () => {
+    const spy = mockSearch();
+    await discoverTitles({
+      type: "tv",
+      sort: "top_rated",
+      genreIds: [10765],
+      withoutGenreIds: [10767],
+      minRating: 8,
+      originalLanguage: "ja",
+    });
+
+    expect(lastTmdbUrl(spy).pathname).toBe("/3/discover/tv");
+    expect(params(spy)).toEqual([
+      ["language", "en-US"],
+      ["include_adult", "false"],
+      ["with_genres", "10765"],
+      ["without_genres", "10767"],
+      ["vote_average.gte", "8"],
+      ["with_original_language", "ja"],
+      ["sort_by", "vote_average.desc"],
+      ["vote_count.gte", "100"],
+    ]);
+  });
+
+  test("empty id lists aren't sent", async () => {
+    const spy = mockSearch();
+    await discoverTitles({
+      type: "movie",
+      sort: "popular",
+      genreIds: [],
+      withoutGenreIds: [],
+      castIds: [],
+      crewIds: [],
+    });
+
+    expect(params(spy)).toEqual([
+      ["language", "en-US"],
+      ["include_adult", "false"],
+      ["sort_by", "popularity.desc"],
+    ]);
+  });
+
+  // /discover/tv ignores with_cast / with_crew and answers unfiltered titles
+  it.each([{ castIds: [287] }, { crewIds: [138] }])(
+    "TV with %j throws, no request",
+    async (people) => {
+      const spy = mockSearch();
+      await expect(
+        discoverTitles({ type: "tv", sort: "popular", ...people }),
+      ).rejects.toThrow("movies only");
+      expect(spy).not.toHaveBeenCalled();
+    },
+  );
+
+  test("TV with empty cast and crew lists: no filter, no error", async () => {
+    const spy = mockSearch();
+    await discoverTitles({
+      type: "tv",
+      sort: "popular",
+      castIds: [],
+      crewIds: [],
+    });
+    expect(spy).toHaveBeenCalledOnce();
+  });
+});
+
+// trending, recommendations, similar and credits carry these
+const rawTitle = (id: number, extra: object = {}) => ({
+  id,
+  title: `Movie ${id}`,
+  name: `Show ${id}`,
+  release_date: "2014-10-15",
+  first_air_date: "2017-12-01",
+  vote_average: 7.5,
+  vote_count: 900,
+  genre_ids: [18],
+  ...extra,
+});
+
+describe("searchPeople", () => {
+  test("searches people in English, adult left out", async () => {
+    const spy = mockTmdb({ "/3/search/person": EMPTY });
+    await searchPeople("Brad Pitt");
+
+    expect(lastTmdbUrl(spy).pathname).toBe("/3/search/person");
+    expect(params(spy)).toEqual([
+      ["query", "Brad Pitt"],
+      ["language", "en-US"],
+      ["include_adult", "false"],
+    ]);
+  });
+
+  test("known_for: movies and TV mixed, other items dropped", async () => {
+    mockTmdb({
+      "/3/search/person": {
+        page: 1,
+        total_pages: 3,
+        total_results: 45,
+        results: [
+          {
+            id: 287,
+            name: "Brad Pitt",
+            known_for_department: "Acting",
+            popularity: 20,
+            known_for: [
+              { media_type: "movie", ...rawTitle(550) },
+              { media_type: "tv", ...rawTitle(1399) },
+              { media_type: "person", id: 1, name: "Not a title" },
+            ],
+          },
+          { id: 2, name: "Bare" },
+        ],
+      },
+    });
+
+    expect(await searchPeople("x")).toEqual({
+      page: 1,
+      totalPages: 3,
+      totalResults: 45,
+      results: [
+        {
+          id: 287,
+          name: "Brad Pitt",
+          department: "Acting",
+          knownFor: [
+            { type: "movie", title: "Movie 550", releaseDate: "2014-10-15" },
+            { type: "tv", title: "Show 1399", releaseDate: "2017-12-01" },
+          ],
+        },
+        { id: 2, name: "Bare", department: "", knownFor: [] },
+      ],
+    });
+  });
+});
+
+describe("getTrending", () => {
+  it.each([
+    ["movie", "day"],
+    ["movie", "week"],
+    ["tv", "day"],
+    ["tv", "week"],
+  ] as const)("%s, %s", async (type, window) => {
+    const spy = mockTmdb({ [`/3/trending/${type}/${window}`]: EMPTY });
+    await getTrending(type, window);
+
+    expect(lastTmdbUrl(spy).pathname).toBe(`/3/trending/${type}/${window}`);
+    expect(params(spy)).toEqual([["language", "en-US"]]);
+  });
+
+  test("hits keep the adult flag, false when missing", async () => {
+    mockTmdb({
+      "/3/trending/tv/week": {
+        ...EMPTY,
+        results: [
+          rawTitle(1, { media_type: "tv", adult: true }),
+          rawTitle(2, { media_type: "tv" }),
+        ],
+      },
+    });
+    const { results } = await getTrending("tv", "week");
+    expect(results).toEqual([
+      expect.objectContaining({ id: 1, title: "Show 1", adult: true }),
+      expect.objectContaining({ id: 2, title: "Show 2", adult: false }),
+    ]);
+  });
+});
+
+describe.each([
+  ["getRecommendations", getRecommendations, "recommendations"],
+  ["getSimilarTitles", getSimilarTitles, "similar"],
+] as const)("%s", (_, query, segment) => {
+  it.each(["movie", "tv"] as const)("%s: path and language", async (type) => {
+    const spy = mockTmdb({ [`/3/${type}/550/${segment}`]: EMPTY });
+    await query(type, 550);
+
+    expect(lastTmdbUrl(spy).pathname).toBe(`/3/${type}/550/${segment}`);
+    expect(params(spy)).toEqual([["language", "en-US"]]);
+  });
+
+  // movie and TV ids overlap: the requested type decides the fields
+  test("hits are mapped with the requested type", async () => {
+    mockTmdb({
+      [`/3/tv/1399/${segment}`]: {
+        ...EMPTY,
+        results: [rawTitle(66732, { media_type: "tv" })],
+      },
+    });
+    const { results } = await query("tv", 1399);
+    expect(results).toEqual([
+      {
+        id: 66732,
+        title: "Show 66732",
+        releaseDate: "2017-12-01",
+        posterPath: null,
+        backdropPath: null,
+        voteAverage: 7.5,
+        voteCount: 900,
+        genreIds: [18],
+        adult: false,
+      },
+    ]);
+  });
+});
+
+describe("getPersonCredits", () => {
+  it.each(["movie", "tv"] as const)("%s: path and language", async (type) => {
+    const spy = mockTmdb({
+      [`/3/person/287/${type}_credits`]: { cast: [], crew: [] },
+    });
+    await getPersonCredits(type, 287);
+
+    expect(lastTmdbUrl(spy).pathname).toBe(`/3/person/287/${type}_credits`);
+    expect(params(spy)).toEqual([["language", "en-US"]]);
+  });
+
+  test("movie: cast with character, crew with job", async () => {
+    mockTmdb({
+      "/3/person/287/movie_credits": {
+        id: 287,
+        cast: [
+          rawTitle(228150, { character: "Don 'Wardaddy' Collier" }),
+          rawTitle(1, { adult: true }),
+        ],
+        crew: [rawTitle(2, { job: "Producer", department: "Production" })],
+      },
+    });
+
+    const { cast, crew } = await getPersonCredits("movie", 287);
+
+    expect(cast).toEqual([
+      expect.objectContaining({
+        id: 228150,
+        title: "Movie 228150",
+        character: "Don 'Wardaddy' Collier",
+        episodeCount: null,
+        adult: false,
+      }),
+      expect.objectContaining({
+        id: 1,
+        character: "",
+        episodeCount: null,
+        adult: true,
+      }),
+    ]);
+    expect(crew).toEqual([
+      expect.objectContaining({ id: 2, job: "Producer", adult: false }),
+    ]);
+    expect(crew[0]).not.toHaveProperty("character");
+  });
+
+  test("TV: cast with the episode count", async () => {
+    mockTmdb({
+      "/3/person/287/tv_credits": {
+        cast: [
+          rawTitle(1399, { character: "Ned", episode_count: 9 }),
+          rawTitle(2734, { character: "Himself", genre_ids: [10767] }),
+        ],
+        crew: [rawTitle(3, { job: "Executive Producer" })],
+      },
+    });
+
+    const { cast, crew } = await getPersonCredits("tv", 287);
+
+    expect(cast).toEqual([
+      expect.objectContaining({
+        title: "Show 1399",
+        releaseDate: "2017-12-01",
+        character: "Ned",
+        episodeCount: 9,
+      }),
+      expect.objectContaining({
+        character: "Himself",
+        episodeCount: null,
+        genreIds: [10767],
+      }),
+    ]);
+    expect(crew).toEqual([
+      expect.objectContaining({ title: "Show 3", job: "Executive Producer" }),
+    ]);
+  });
 });
 
 describe("getGenres", () => {
@@ -517,11 +900,36 @@ describe("abort signal", () => {
       "getTitleWithCredits",
       (o: { signal: AbortSignal }) => getTitleWithCredits("movie", 550, o),
     ],
+    [
+      "searchPeople",
+      (o: { signal: AbortSignal }) => searchPeople("Brad Pitt", o),
+    ],
+    [
+      "getTrending",
+      (o: { signal: AbortSignal }) => getTrending("movie", "week", o),
+    ],
+    [
+      "getRecommendations",
+      (o: { signal: AbortSignal }) => getRecommendations("movie", 550, o),
+    ],
+    [
+      "getSimilarTitles",
+      (o: { signal: AbortSignal }) => getSimilarTitles("movie", 550, o),
+    ],
+    [
+      "getPersonCredits",
+      (o: { signal: AbortSignal }) => getPersonCredits("tv", 287, o),
+    ],
   ])("%s passes it to fetch", async (_, call) => {
     const spy = mockTmdb({
       "/3/search/movie": EMPTY,
       "/3/discover/tv": EMPTY,
       "/3/movie/550": tmdbFixture("movie-550"),
+      "/3/search/person": EMPTY,
+      "/3/trending/movie/week": EMPTY,
+      "/3/movie/550/recommendations": EMPTY,
+      "/3/movie/550/similar": EMPTY,
+      "/3/person/287/tv_credits": { cast: [], crew: [] },
     });
     const { signal } = new AbortController();
 

@@ -24,7 +24,32 @@ export type TitleSummary = {
 };
 
 // a search / discover hit with its genre ids, see getGenres for the names
-export type TitleHit = TitleSummary & { genreIds: number[] };
+export type TitleHit = TitleSummary & {
+  genreIds: number[];
+  // false when TMDB leaves it out
+  adult: boolean;
+};
+
+// one /search/person hit
+export type PersonHit = {
+  id: number;
+  name: string;
+  // e.g. "Acting", "Directing"
+  department: string;
+  // up to 3 titles TMDB lists for the person, movies and TV mixed
+  knownFor: { type: MediaType; title: string; releaseDate: string }[];
+};
+
+// a title in a person's filmography
+export type CastCredit = TitleHit & {
+  character: string;
+  // TV only, null for movies
+  episodeCount: number | null;
+};
+
+export type CrewCredit = TitleHit & { job: string };
+
+export type PersonCredits = { cast: CastCredit[]; crew: CrewCredit[] };
 
 export type Genre = { id: number; name: string };
 
