@@ -1,5 +1,8 @@
 name: tests
-on: [push, pull_request]
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
 jobs:
   vitest:
     runs-on: ubuntu-latest
