@@ -9,6 +9,7 @@ export type {
   ChatRequest,
   ChatStreamEvent,
   MessagePart,
+  RecommendedTitle,
   StoppedTurn,
   TextPart,
   ToolPart,

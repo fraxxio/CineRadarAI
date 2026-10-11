@@ -2,7 +2,7 @@ import { describe, expect, it, test } from "vitest";
 import { tmdbImageUrl, tmdbWatchUrl } from "./urls";
 
 describe("tmdbImageUrl", () => {
-  it.each(["w500", "w780", "w1280"] as const)("%s", (size) => {
+  it.each(["w342", "w500", "w780", "w1280"] as const)("%s", (size) => {
     expect(tmdbImageUrl("/p.jpg", size)).toBe(
       `https://image.tmdb.org/t/p/${size}/p.jpg`,
     );
