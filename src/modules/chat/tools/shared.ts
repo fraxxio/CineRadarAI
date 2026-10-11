@@ -1,6 +1,7 @@
 // args and result fields shared by the TMDB tools
 import { z } from "zod/v4";
 import type { Genre, MediaType, TitleHit } from "@/infra/tmdb";
+import { today } from "../date";
 
 export const mediaTypeArg = z
   .enum(["movie", "tv"])
@@ -8,6 +9,17 @@ export const mediaTypeArg = z
 
 // explicit bounds: a bare int() puts the safe-integer range in the schema
 export const yearArg = z.number().int().min(1870).max(2100);
+
+export const personIdArg = z
+  .number()
+  .int()
+  .min(1)
+  .describe("TMDB person id from search_person results");
+
+// TMDB lists upcoming and adult titles in trending, recommendations and
+// credits; the tools list only released, non-adult ones
+export const isListable = (hit: TitleHit, asOf: string) =>
+  hit.releaseDate !== "" && hit.releaseDate <= asOf && !hit.adult;
 
 // "2014-10-15" -> 2014, null when TMDB has no date
 export const yearOf = (date: string) =>
@@ -18,6 +30,10 @@ export const roundRating = (voteAverage: number) =>
 
 export const genreNames = (ids: number[], genres: Genre[]) =>
   ids.flatMap((id) => genres.find((genre) => genre.id === id)?.name ?? []);
+
+// the fields of toTitleItem, for the tool descriptions
+export const TITLE_ITEM_FIELDS =
+  "their TMDB id, title, release year, rating, vote count and genres";
 
 // one search / discover result as the model sees it
 export const toTitleItem = (
@@ -33,3 +49,18 @@ export const toTitleItem = (
   votes: hit.voteCount,
   genres: genreNames(hit.genreIds, genres),
 });
+
+// the listable ones of a TMDB list, as model items; the limit counts after
+// filtering
+export const toTitleItems = (
+  type: MediaType,
+  hits: TitleHit[],
+  genres: Genre[],
+  limit: number,
+) => {
+  const asOf = today();
+  return hits
+    .filter((hit) => isListable(hit, asOf))
+    .slice(0, limit)
+    .map((hit) => toTitleItem(type, hit, genres));
+};

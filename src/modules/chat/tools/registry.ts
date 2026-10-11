@@ -1,7 +1,12 @@
 import { z } from "zod/v4";
 import { TmdbError } from "@/infra/tmdb/server";
 import { discoverTitles } from "./discoverTitles";
+import { getPersonCredits } from "./getPersonCredits";
+import { getRecommendations } from "./getRecommendations";
+import { getSimilar } from "./getSimilar";
 import { getTitleDetails } from "./getTitleDetails";
+import { getTrending } from "./getTrending";
+import { searchPerson } from "./searchPerson";
 import { searchTitles } from "./searchTitles";
 import {
   ToolError,
@@ -12,7 +17,12 @@ import {
 
 export const CHAT_TOOLS: ChatTool[] = [
   searchTitles,
+  searchPerson,
   discoverTitles,
+  getTrending,
+  getRecommendations,
+  getSimilar,
+  getPersonCredits,
   getTitleDetails,
 ];
 
@@ -111,7 +121,12 @@ function parseArgs(tool: ChatTool, rawArgs: string | object): ParsedArgs {
       return { ok: false, error: "Arguments are not valid JSON" };
     }
   }
-  const parsed = tool.args.safeParse(json);
+  // z.object drops unknown keys: a model repeating an old arg (e.g. the
+  // former discover_titles `year`) would get an unfiltered list. Strict only
+  // here, so the schema the model sees stays the same.
+  const schema =
+    tool.args instanceof z.ZodObject ? tool.args.strict() : tool.args;
+  const parsed = schema.safeParse(json);
   if (parsed.success) {
     return { ok: true, value: parsed.data };
   }

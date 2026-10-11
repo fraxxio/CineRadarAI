@@ -14,6 +14,52 @@ export const TV_GENRES = {
   ],
 };
 
+// the complete lists TMDB returns from /genre/{type}/list
+export const FULL_MOVIE_GENRES = {
+  genres: [
+    { id: 28, name: "Action" },
+    { id: 12, name: "Adventure" },
+    { id: 16, name: "Animation" },
+    { id: 35, name: "Comedy" },
+    { id: 80, name: "Crime" },
+    { id: 99, name: "Documentary" },
+    { id: 18, name: "Drama" },
+    { id: 10751, name: "Family" },
+    { id: 14, name: "Fantasy" },
+    { id: 36, name: "History" },
+    { id: 27, name: "Horror" },
+    { id: 10402, name: "Music" },
+    { id: 9648, name: "Mystery" },
+    { id: 10749, name: "Romance" },
+    { id: 878, name: "Science Fiction" },
+    { id: 10770, name: "TV Movie" },
+    { id: 53, name: "Thriller" },
+    { id: 10752, name: "War" },
+    { id: 37, name: "Western" },
+  ],
+};
+
+export const FULL_TV_GENRES = {
+  genres: [
+    { id: 10759, name: "Action & Adventure" },
+    { id: 16, name: "Animation" },
+    { id: 35, name: "Comedy" },
+    { id: 80, name: "Crime" },
+    { id: 99, name: "Documentary" },
+    { id: 18, name: "Drama" },
+    { id: 10751, name: "Family" },
+    { id: 10762, name: "Kids" },
+    { id: 9648, name: "Mystery" },
+    { id: 10763, name: "News" },
+    { id: 10764, name: "Reality" },
+    { id: 10765, name: "Sci-Fi & Fantasy" },
+    { id: 10766, name: "Soap" },
+    { id: 10767, name: "Talk" },
+    { id: 10768, name: "War & Politics" },
+    { id: 37, name: "Western" },
+  ],
+};
+
 export const page = (results: object[]) => ({
   page: 1,
   results,
@@ -47,5 +93,21 @@ export const rawShow = (id: number, extra: object = {}) => ({
   vote_average: 8.04,
   vote_count: 50,
   genre_ids: [10765],
+  ...extra,
+});
+
+// a /search/person result; known_for mixes movies and TV by media_type
+export const rawPerson = (id: number, extra: object = {}) => ({
+  id,
+  name: `Person ${id}`,
+  original_name: `Original ${id}`,
+  gender: 2,
+  popularity: 50.5,
+  profile_path: "/f.jpg",
+  known_for_department: "Acting",
+  known_for: [
+    { ...rawMovie(550), media_type: "movie" },
+    { ...rawShow(1399), media_type: "tv" },
+  ],
   ...extra,
 });

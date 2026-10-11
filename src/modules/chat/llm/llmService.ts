@@ -45,6 +45,18 @@ export function buildChatInput(
   return steps;
 }
 
+// the fields every round sends; scripts/check-chat-tools.ts sends them too,
+// so the live check can't drift from the app's request
+export function baseRequest() {
+  return {
+    model: CHAT_MODEL,
+    // interaction-scoped: must be resent every round
+    tools: toGeminiTools(CHAT_TOOLS),
+    system_instruction: buildSystemInstruction(),
+    generation_config: { thinking_level: CHAT_THINKING_LEVEL },
+  };
+}
+
 type GeminiStream = AsyncIterable<Interactions.InteractionSSEEvent>;
 
 type RoundRequest = {
@@ -63,21 +75,17 @@ export async function streamChatReply({
   signal,
 }: ChatReplyParams): Promise<AsyncIterable<ChatStreamEvent>> {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const tools = toGeminiTools(CHAT_TOOLS);
-  const systemInstruction = buildSystemInstruction();
+  const base = baseRequest();
 
   // every round is a new interaction continuing the previous one
   const openRound = (request: RoundRequest): Promise<GeminiStream> =>
     ai.interactions.create(
       {
-        model: CHAT_MODEL,
+        ...base,
         input: request.input,
         previous_interaction_id: request.previousInteractionId,
-        // interaction-scoped: must be resent every round
-        tools,
-        system_instruction: systemInstruction,
         generation_config: {
-          thinking_level: CHAT_THINKING_LEVEL,
+          ...base.generation_config,
           tool_choice: request.toolChoice,
         },
         stream: true,

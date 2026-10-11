@@ -1,0 +1,165 @@
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { mockTmdb, tmdbUrls } from "@test/helpers/tmdb";
+import {
+  MOVIE_GENRES,
+  TV_GENRES,
+  page,
+  rawMovie,
+  rawShow,
+} from "../testing/tmdbData";
+
+// handlers return plain JSON for the model
+type Items = { results: Record<string, unknown>[] };
+
+const ids = (items: Items) => items.results.map((r) => r.id);
+
+// the tools built by relatedTitlesTool differ only in the TMDB path
+describe.each([
+  {
+    name: "get_recommendations",
+    path: "recommendations",
+    load: async () => (await import("./getRecommendations")).getRecommendations,
+  },
+  {
+    name: "get_similar",
+    path: "similar",
+    load: async () => (await import("./getSimilar")).getSimilar,
+  },
+])("$name", ({ name, path, load }) => {
+  // fresh module per test: the genre list is cached at module level
+  let tool: Awaited<ReturnType<typeof load>>;
+  beforeEach(async () => {
+    vi.resetModules();
+    tool = await load();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-01T12:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const run = async (args: object, signal = new AbortController().signal) =>
+    (await tool.run(tool.args.parse(args), { signal })) as Items;
+
+  // movie and TV ids overlap: 1399 is a movie and a show
+  const mockList = (movies: object[], shows: object[] = []) =>
+    mockTmdb({
+      [`/3/movie/1399/${path}`]: page(movies),
+      [`/3/tv/1399/${path}`]: page(shows),
+      "/3/genre/movie/list": MOVIE_GENRES,
+      "/3/genre/tv/list": TV_GENRES,
+    });
+
+  test("has its name", () => {
+    expect(tool.name).toBe(name);
+  });
+
+  test("movies: only the listed fields", async () => {
+    mockList([rawMovie(550, { adult: false })]);
+
+    const { results } = await run({ type: "movie", id: 1399 });
+
+    expect(results).toEqual([
+      {
+        id: 550,
+        type: "movie",
+        title: "Movie 550",
+        year: 2014,
+        rating: 7.5,
+        votes: 1234,
+        genres: ["War", "Drama"],
+      },
+    ]);
+  });
+
+  test("the same id as TV asks the TV path and maps shows", async () => {
+    const spy = mockList([rawMovie(550)], [rawShow(66732)]);
+
+    const { results } = await run({ type: "tv", id: 1399 });
+
+    expect(results).toEqual([
+      {
+        id: 66732,
+        type: "tv",
+        title: "Show 66732",
+        year: 2017,
+        rating: 8,
+        votes: 50,
+        genres: ["Sci-Fi & Fantasy"],
+      },
+    ]);
+    expect(tmdbUrls(spy, `/3/tv/1399/${path}`)).toHaveLength(1);
+    expect(tmdbUrls(spy, `/3/movie/1399/${path}`)).toHaveLength(0);
+  });
+
+  test("keeps TMDB's order, the top 10 counted after filtering", async () => {
+    mockList([
+      // the title itself and an upcoming one: dropped before the limit
+      rawMovie(1399),
+      rawMovie(101, { release_date: "2027-01-01" }),
+      ...Array.from({ length: 12 }, (_, i) =>
+        rawMovie(20 - i, { vote_count: i }),
+      ),
+    ]);
+
+    const items = await run({ type: "movie", id: 1399 });
+
+    expect(ids(items)).toEqual(Array.from({ length: 10 }, (_, i) => 20 - i));
+  });
+
+  test("the title itself, unreleased, undated and adult titles are dropped", async () => {
+    mockList([
+      rawMovie(1),
+      rawMovie(1399),
+      rawMovie(2, { release_date: "2026-06-02" }),
+      rawMovie(3, { release_date: "" }),
+      rawMovie(4, { adult: true }),
+      // released today
+      rawMovie(5, { release_date: "2026-06-01" }),
+    ]);
+
+    expect(ids(await run({ type: "movie", id: 1399 }))).toEqual([1, 5]);
+  });
+
+  test("an empty list from TMDB: an empty list", async () => {
+    mockList([]);
+    expect(await run({ type: "movie", id: 1399 })).toEqual({ results: [] });
+  });
+
+  test("a failed genre list still returns the titles, without genres", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockTmdb({
+      [`/3/movie/1399/${path}`]: page([rawMovie(1)]),
+      "/3/genre/movie/list": new Response("boom", { status: 503 }),
+    });
+
+    const { results } = await run({ type: "movie", id: 1399 });
+
+    expect(results).toEqual([expect.objectContaining({ id: 1, genres: [] })]);
+  });
+
+  // the genre list is one request shared across chats: it never gets a
+  // caller's signal (see getGenres)
+  test("passes the signal to the list, not to the shared genre list", async () => {
+    const spy = mockList([rawMovie(1)]);
+    const { signal } = new AbortController();
+
+    await run({ type: "movie", id: 1399 }, signal);
+
+    expect(spy).toHaveBeenCalledTimes(2);
+    for (const [input, init] of spy.mock.calls) {
+      const isGenres = String(input).includes("/genre/");
+      expect(init?.signal === signal).toBe(!isGenres);
+    }
+  });
+
+  test("args: a movie/tv type and a positive integer id", () => {
+    const parse = (args: object) => tool.args.safeParse(args).success;
+
+    expect(parse({ type: "tv", id: 1399 })).toBe(true);
+    expect(parse({ type: "movie", id: 0 })).toBe(false);
+    expect(parse({ type: "movie", id: 2.5 })).toBe(false);
+    expect(parse({ type: "film", id: 1399 })).toBe(false);
+    expect(parse({ type: "movie" })).toBe(false);
+  });
+});

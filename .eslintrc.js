@@ -60,7 +60,8 @@ module.exports = {
   },
   overrides: [
     {
-      files: ["src/modules/chat/llm/**"],
+      // the live schema check sends the chat's real request
+      files: ["src/modules/chat/llm/**", "scripts/check-chat-tools.ts"],
       rules: { "no-restricted-imports": "off" },
     },
   ],

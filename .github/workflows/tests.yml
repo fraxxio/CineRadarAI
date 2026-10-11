@@ -12,6 +12,8 @@ jobs:
         with: { node-version: 24, cache: npm }
       - run: npm ci
       - run: npm run typecheck:tests
+      # loads the tool schemas and prompt like the live check, sends nothing
+      - run: npm run check:chat-tools -- --dry-run
       - run: npm run test:coverage
   e2e:
     runs-on: ubuntu-latest
