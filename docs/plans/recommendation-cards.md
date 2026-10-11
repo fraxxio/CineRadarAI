@@ -723,3 +723,28 @@ Template:
 - **Checks:** `npm run lint`, `npx tsc --noEmit`, `npm run typecheck:tests`
   and `npm run test:run` (69 files, 866 tests) all green. E2E not run (not
   part of this phase's checks; nothing renders the cards yet).
+
+### Phase 2: Chat client
+
+- **Status:** done
+- **Commits:** feat(chat): stream and render recommendation cards in chat
+  messages (this commit)
+- **Deviations from the plan:** one commit instead of two. Splitting
+  protocol/`useChat` from rendering leaves the first commit failing the type
+  check (`MessagePartView`'s `satisfies never` needs the `cards` case).
+  `HomePage.test.tsx` doesn't add its own `getSession` mock: it is already
+  mocked for every test in `tests/setup/shared.ts` (resolves `null`), so the
+  signed-in cases use `mockResolvedValueOnce(makeSession())`. The test wraps
+  the real `ChatAssistant` in `vi.fn` to read the `signedIn` prop. I also
+  added an `AssistantMessage` test for text → tool → cards → text order.
+- **For the next phase:** two `cards` events in one turn give two separate
+  `Recommendations` lists (no merge), and a tool call after cards starts a new
+  tool line. A stopped turn's `partialText` for cards is
+  `[Shown as cards: 1. Fury (movie 228150, 2014); …]` (no reasons).
+  `ChatAssistant.test.tsx` has `card(id, extra)`, `cards(items)` and
+  `showStart(id)` builders; reuse them.
+- **Checks:** `npm run lint`, `npx tsc --noEmit`, `npm run typecheck:tests`
+  and `npm run test:run` (69 files, 890 tests) green.
+  `npx playwright test tests/e2e/chat.spec.ts` green (11 tests).
+  `npm run test:e2e:variants` green too (chat-disabled and recaptcha), though
+  that's a phase 4 check.

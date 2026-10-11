@@ -2,19 +2,22 @@ import { ChatAssistant } from "@/modules/chat";
 import RecaptchaWrapper from "@/infra/recaptcha/RecaptchaWrapper";
 import { DeleteResult } from "@/modules/account";
 import { isRecaptchaEnabled } from "@/infra/recaptcha/recaptcha";
+import { getSession } from "@/infra/auth/session";
 
 export const runtime = "edge";
 
 const greeting =
   "Ask me for movie or TV show recommendations! Describe what you would like to watch: genre, actors, style, mood and other movie related criteria.";
 
-export default function Home({
+export default async function Home({
   searchParams,
 }: {
   searchParams: { deleteAcc: string };
 }) {
   const aiChatEnabled = process.env.AI_CHAT_ENABLED === "true";
   const recaptchaEnabled = isRecaptchaEnabled();
+  // cached: the layout already read the session
+  const signedIn = (await getSession())?.user !== undefined;
 
   return (
     <main className="container py-10">
@@ -22,10 +25,18 @@ export default function Home({
       {aiChatEnabled ? (
         recaptchaEnabled ? (
           <RecaptchaWrapper>
-            <ChatAssistant greeting={greeting} recaptchaEnabled />
+            <ChatAssistant
+              greeting={greeting}
+              recaptchaEnabled
+              signedIn={signedIn}
+            />
           </RecaptchaWrapper>
         ) : (
-          <ChatAssistant greeting={greeting} recaptchaEnabled={false} />
+          <ChatAssistant
+            greeting={greeting}
+            recaptchaEnabled={false}
+            signedIn={signedIn}
+          />
         )
       ) : (
         <div className="relative overflow-hidden">
@@ -34,6 +45,7 @@ export default function Home({
             <ChatAssistant
               greeting={greeting}
               recaptchaEnabled={recaptchaEnabled}
+              signedIn={signedIn}
             />
           </div>
           <div className="absolute inset-0 z-10 rounded-sm bg-black/70" />

@@ -1,6 +1,15 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
+import { makeSession } from "@test/helpers/factories";
 import Home from "@/app/page";
+import { getSession } from "@/infra/auth/session";
+import { ChatAssistant } from "@/modules/chat";
+
+// the real chat, with its props recorded
+vi.mock("@/modules/chat", async (importOriginal) => {
+  const chat = await importOriginal<typeof import("@/modules/chat")>();
+  return { ...chat, ChatAssistant: vi.fn(chat.ChatAssistant) };
+});
 
 vi.mock("@/infra/recaptcha/RecaptchaWrapper", () => ({
   default: ({ children }: { children: React.ReactNode }) => (
@@ -16,12 +25,14 @@ function stubChat(enabled: boolean, recaptcha: boolean) {
   vi.stubEnv("RECAPTCHA_SECRET_KEY", recaptcha ? "secret-key" : "");
 }
 
-const renderHome = () => render(Home({ searchParams: {} as any }));
+// getSession resolves null (signed out) unless a test says otherwise
+const renderHome = async () => render(await Home({ searchParams: {} as any }));
+const chatProps = () => vi.mocked(ChatAssistant).mock.calls.at(-1)![0];
 
 describe("Home page", () => {
-  test("chat enabled with reCAPTCHA -> the chat inside the wrapper", () => {
+  test("chat enabled with reCAPTCHA -> the chat inside the wrapper", async () => {
     stubChat(true, true);
-    renderHome();
+    await renderHome();
 
     const wrapper = screen.getByTestId("recaptcha-wrapper");
     expect(
@@ -31,9 +42,9 @@ describe("Home page", () => {
     expect(screen.queryByText(/OUT OF ORDER/)).toBeNull();
   });
 
-  test("chat enabled without reCAPTCHA -> the chat, no wrapper", () => {
+  test("chat enabled without reCAPTCHA -> the chat, no wrapper", async () => {
     stubChat(true, false);
-    renderHome();
+    await renderHome();
 
     expect(screen.queryByTestId("recaptcha-wrapper")).toBeNull();
     expect(
@@ -44,21 +55,40 @@ describe("Home page", () => {
     expect(screen.queryByText(/OUT OF ORDER/)).toBeNull();
   });
 
-  test("chat disabled -> the out-of-order overlay", () => {
+  test("chat disabled -> the out-of-order overlay", async () => {
     stubChat(false, true);
-    renderHome();
+    await renderHome();
 
     expect(screen.getAllByText(/OUT OF ORDER/).length).toBeGreaterThan(0);
     expect(screen.getByText(/no longer available/)).toBeInTheDocument();
     expect(screen.queryByTestId("recaptcha-wrapper")).toBeNull();
   });
 
-  test("[B9] chat disabled -> the chat input is inert", () => {
+  test("[B9] chat disabled -> the chat input is inert", async () => {
     stubChat(false, false);
-    const { container } = renderHome();
+    const { container } = await renderHome();
 
     const inert = container.querySelector("[inert]");
     expect(inert).not.toBeNull();
     expect(inert).toContainElement(screen.getByPlaceholderText(PLACEHOLDER));
   });
+
+  test.each([
+    [true, true],
+    [true, false],
+    [false, true],
+    [false, false],
+  ])(
+    "chat enabled: %s, signed in: %s -> passes signedIn to the chat",
+    async (enabled, signedIn) => {
+      stubChat(enabled, false);
+      if (signedIn) {
+        vi.mocked(getSession).mockResolvedValueOnce(makeSession());
+      }
+
+      await renderHome();
+
+      expect(chatProps().signedIn).toBe(signedIn);
+    },
+  );
 });

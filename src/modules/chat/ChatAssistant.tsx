@@ -8,18 +8,20 @@ import { useChat } from "./useChat";
 import { useRecaptchaCheck } from "@/infra/recaptcha/useRecaptchaCheck";
 import { MAX_PROMPT_LENGTH } from "./chatLimits";
 import { LOADER_WORDS } from "./loaderWords";
-import { lastPartIsFinishedTool } from "./messageParts";
+import { isWaitingForModel } from "./messageParts";
 import type { ChatMessage } from "./protocol";
 import { shuffle } from "@/shared/lib/shuffle";
 
 type ChatAssistantProps = {
   greeting: string;
   recaptchaEnabled: boolean;
+  signedIn: boolean;
 };
 
 export default function ChatAssistant({
   greeting = "Ask me for movie or TV show suggestions. Describe what would you like to watch, for example: genre, actors, style...",
   recaptchaEnabled,
+  signedIn,
 }: ChatAssistantProps) {
   const recaptcha = useRecaptchaCheck(recaptchaEnabled);
   const { messages, streamingParts, status, send, stop, reset } = useChat({
@@ -32,10 +34,9 @@ export default function ChatAssistant({
 
   const isBusy = status === "loading" || status === "streaming";
   const isEmpty = messages.length === 0 && status === "idle";
-  // nothing has arrived yet, or the tools are done and the model is reading
-  // their results; a running tool line has its own spinner
-  const showLoader =
-    streamingParts.length === 0 || lastPartIsFinishedTool(streamingParts);
+  // nothing has arrived yet, or the model is working on its next round after
+  // the tools or the cards; a running tool line has its own spinner
+  const showLoader = isWaitingForModel(streamingParts);
 
   const assistantText = (text: string): Omit<ChatMessage, "id"> => ({
     role: "assistant",
@@ -73,13 +74,17 @@ export default function ChatAssistant({
       </div>
       <div className="flex max-h-full flex-col-reverse overflow-y-auto">
         <div>
-          <AssistantMessage message={assistantText(greeting)} />
+          <AssistantMessage
+            message={assistantText(greeting)}
+            signedIn={signedIn}
+          />
           {messages.map((m) => (
-            <AssistantMessage key={m.id} message={m} />
+            <AssistantMessage key={m.id} message={m} signedIn={signedIn} />
           ))}
           {isBusy && (
             <AssistantMessage
               message={{ role: "assistant", parts: streamingParts }}
+              signedIn={signedIn}
             >
               {showLoader && (
                 <ThinkingLoader
@@ -94,6 +99,7 @@ export default function ChatAssistant({
               message={assistantText(
                 "Unfortunately an error occurred. Try again later.",
               )}
+              signedIn={signedIn}
             />
           )}
         </div>

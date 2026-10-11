@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import ChatAssistant from "./ChatAssistant";
 import {
@@ -8,7 +9,7 @@ import {
   MAX_STOPPED_TEXT_LENGTH,
   MAX_STOPPED_TURNS,
 } from "./chatLimits";
-import type { StoppedTurn } from "./protocol";
+import type { RecommendedTitle, StoppedTurn } from "./protocol";
 import { controlledStream, ndjson, streamResponse } from "./testing/stream";
 
 const GREETING = "Hi! What would you like to watch?";
@@ -27,6 +28,31 @@ const toolStart = (id: string, text = SEARCHING) => ({
   text,
 });
 const toolEnd = (id: string) => ({ type: "tool_end", id });
+const PREPARING = "Preparing recommendations...";
+const showStart = (id: string) => ({
+  type: "tool_start",
+  id,
+  name: "show_recommendations",
+  text: PREPARING,
+});
+const card = (
+  id: number,
+  extra: Partial<RecommendedTitle> = {},
+): RecommendedTitle => ({
+  type: "movie",
+  id,
+  title: `Title ${id}`,
+  year: 2014,
+  rating: 7.5,
+  genres: ["War"],
+  posterPath: `/poster${id}.jpg`,
+  backdropPath: `/backdrop${id}.jpg`,
+  reason: `Reason ${id}.`,
+  ...extra,
+});
+const cards = (items: RecommendedTitle[]) => ({ type: "cards", items });
+const FURY = card(228150, { title: "Fury", year: 2014 });
+const DUNKIRK = card(374720, { title: "Dunkirk", year: 2017 });
 // one complete, successful turn
 const answer = (id: string, text: string) =>
   streamResponse([ndjson(start(id), delta(text), done(id))]);
@@ -63,9 +89,13 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const renderChat = ({ recaptchaEnabled = false } = {}) =>
+const renderChat = ({ recaptchaEnabled = false, signedIn = false } = {}) =>
   render(
-    <ChatAssistant greeting={GREETING} recaptchaEnabled={recaptchaEnabled} />,
+    <ChatAssistant
+      greeting={GREETING}
+      recaptchaEnabled={recaptchaEnabled}
+      signedIn={signedIn}
+    />,
   );
 const input = () => screen.getByPlaceholderText(/Suggest me movies/);
 const submitBtn = () => screen.getByRole("button", { name: /submit|stop/i });
@@ -703,6 +733,213 @@ describe("ChatAssistant", () => {
           { prompt: "p2", partialText: "Let me check.\n\nFury is" },
         ],
       });
+    });
+  });
+
+  describe("cards", () => {
+    const stopBtn = () => screen.getByRole("button", { name: "Stop" });
+    const thinking = () => screen.queryByText("Generating response");
+    const cardLists = () =>
+      screen.queryAllByRole("list", { name: "Recommendations" });
+    const cardTitles = (list: HTMLElement) =>
+      within(list)
+        .getAllByRole("heading")
+        .map((heading) => heading.textContent);
+    const isBefore = (a: Element, b: Element) =>
+      a.compareDocumentPosition(b) === Node.DOCUMENT_POSITION_FOLLOWING;
+    // intro, show_recommendations line, cards
+    const cardsRound = (...items: RecommendedTitle[]) =>
+      ndjson(
+        start("i1"),
+        delta("Intro."),
+        showStart("s1"),
+        toolEnd("s1"),
+        cards(items),
+      );
+
+    test("render live and stay after done", async () => {
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("war films");
+
+      stream.push(cardsRound(FURY, DUNKIRK));
+
+      await waitFor(() => expect(cardLists()).toHaveLength(1));
+      expect(cardTitles(cardLists()[0])).toEqual(["Fury", "Dunkirk"]);
+      expect(input()).toBeDisabled();
+
+      stream.push(ndjson(done("i1")));
+      stream.close();
+      await settled();
+      expect(cardLists()).toHaveLength(1);
+      expect(cardTitles(cardLists()[0])).toEqual(["Fury", "Dunkirk"]);
+      expect(screen.getByRole("link", { name: "Fury" })).toHaveAttribute(
+        "href",
+        "/search/movie/228150",
+      );
+    });
+
+    test("intro, tool line, cards and closing line in arrival order", async () => {
+      routeFetch({
+        "/api/assistant": [
+          streamResponse([
+            cardsRound(FURY),
+            ndjson(delta("Want older ones?"), done("i1")),
+          ]),
+        ],
+      });
+      renderChat();
+      await send("war films");
+      await settled();
+
+      const shown = [
+        screen.getByText("Intro."),
+        screen.getByText(PREPARING, { exact: false }),
+        cardLists()[0],
+        screen.getByText("Want older ones?"),
+      ];
+      for (let i = 1; i < shown.length; i++) {
+        expect(isBefore(shown[i - 1], shown[i])).toBe(true);
+      }
+    });
+
+    test("the rotating loader shows after the cards until the next delta", async () => {
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("war films");
+      stream.push(ndjson(start("i1"), delta("Intro."), showStart("s1")));
+      await waitFor(() => expect(thinking()).toBeNull());
+
+      stream.push(ndjson(toolEnd("s1"), cards([FURY])));
+
+      // the model works on its next round
+      await waitFor(() => expect(cardLists()).toHaveLength(1));
+      expect(thinking()).toBeInTheDocument();
+      expect(isBefore(cardLists()[0], screen.getByRole("status"))).toBe(true);
+
+      stream.push(ndjson(delta("Want older ones?")));
+      await screen.findByText("Want older ones?");
+      expect(thinking()).toBeNull();
+    });
+
+    test("a stop after the cards keeps them and shares them with the model", async () => {
+      const stream = controlledStream();
+      const { bodies } = routeFetch({
+        "/api/assistant": [stream.response, answer("i2", "a2")],
+      });
+      renderChat();
+      await send("war films");
+      stream.push(cardsRound(FURY, card(5, { title: "Untitled", year: null })));
+      await waitFor(() => expect(cardLists()).toHaveLength(1));
+
+      await user.click(stopBtn());
+
+      const stopped = screen.getByText("Stopped").parentElement!;
+      expect(
+        cardTitles(
+          within(stopped).getByRole("list", { name: "Recommendations" }),
+        ),
+      ).toEqual(["Fury", "Untitled"]);
+
+      await send("more like the first one");
+      await settled();
+      expect(bodies("/api/assistant")[1]).toEqual({
+        content: "more like the first one",
+        stoppedTurns: [
+          {
+            prompt: "war films",
+            partialText:
+              "Intro.\n\n[Shown as cards: 1. Fury (movie 228150, 2014); 2. Untitled (movie 5, unknown year)]",
+          },
+        ],
+      });
+      // the stopped turn's cards stay above the new answer
+      expect(cardLists()).toHaveLength(1);
+      expect(isBefore(cardLists()[0], screen.getByText("a2"))).toBe(true);
+    });
+
+    test("a stop before the cards leaves none in the history", async () => {
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("war films");
+      stream.push(ndjson(start("i1"), delta("Intro."), showStart("s1")));
+      await waitFor(() => expect(thinking()).toBeNull());
+
+      await user.click(stopBtn());
+
+      expect(() => stream.push(ndjson(toolEnd("s1"), cards([FURY])))).toThrow();
+      expect(screen.getByText("Stopped")).toBeInTheDocument();
+      expect(screen.getByText(PREPARING, { exact: false })).toBeInTheDocument();
+      expect(cardLists()).toHaveLength(0);
+    });
+
+    test("an error after the cards drops the answer", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("war films");
+      stream.push(cardsRound(FURY));
+      await waitFor(() => expect(cardLists()).toHaveLength(1));
+
+      stream.push(ndjson({ type: "error" }));
+
+      expect(await screen.findByText(ERROR_TEXT)).toBeInTheDocument();
+      await settled();
+      expect(cardLists()).toHaveLength(0);
+      expect(screen.queryByText("Intro.")).toBeNull();
+    });
+
+    test("cards of earlier answers stay while the next turn streams", async () => {
+      const second = controlledStream();
+      routeFetch({
+        "/api/assistant": [
+          streamResponse([cardsRound(FURY), ndjson(done("i1"))]),
+          second.response,
+        ],
+      });
+      renderChat();
+      await send("p1");
+      await settled();
+
+      await send("p2");
+      second.push(
+        ndjson(start("i2"), showStart("s2"), toolEnd("s2"), cards([DUNKIRK])),
+      );
+
+      await waitFor(() => expect(cardLists()).toHaveLength(2));
+      const [first, latest] = cardLists();
+      expect(cardTitles(first)).toEqual(["Fury"]);
+      expect(cardTitles(latest)).toEqual(["Dunkirk"]);
+      expect(isBefore(first, screen.getByText("p2"))).toBe(true);
+      expect(isBefore(screen.getByText("p2"), latest)).toBe(true);
+    });
+
+    test("signed in: Add to list on a card saves it", async () => {
+      const { bodies } = routeFetch({
+        "/api/assistant": [
+          streamResponse([cardsRound(FURY), ndjson(done("i1"))]),
+        ],
+        "/api/add-to-list": [Response.json({ addToListResult: "success" })],
+      });
+      renderChat({ signedIn: true });
+      await send("war films");
+      await settled();
+
+      await user.click(screen.getByRole("button", { name: /add to list/i }));
+      const dialog = within(screen.getByRole("dialog"));
+      await user.selectOptions(dialog.getByLabelText("Status:"), "Completed");
+      await user.click(dialog.getByRole("button", { name: "Add to list" }));
+
+      await waitFor(() =>
+        expect(bodies("/api/add-to-list")).toEqual([
+          expect.objectContaining({ movieId: "228150", title: "Fury" }),
+        ]),
+      );
+      expect(toast.warning).not.toHaveBeenCalled();
     });
   });
 

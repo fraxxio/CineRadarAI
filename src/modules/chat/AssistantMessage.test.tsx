@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, test } from "vitest";
 import { AssistantMessage } from "./AssistantMessage";
-import type { MessagePart, ToolPart } from "./protocol";
+import type { MessagePart, RecommendedTitle, ToolPart } from "./protocol";
 
 const text = (value: string): MessagePart => ({ type: "text", text: value });
 const tool = (label: string, calls = 1): ToolPart => ({
@@ -12,15 +12,34 @@ const tool = (label: string, calls = 1): ToolPart => ({
   runningIds: [],
   elapsedMs: 2400,
 });
+const FURY: RecommendedTitle = {
+  type: "movie",
+  id: 228150,
+  title: "Fury",
+  year: 2014,
+  rating: 7.5,
+  genres: ["War", "Drama"],
+  posterPath: "/fury.jpg",
+  backdropPath: null,
+  reason: "A tense WWII tank-crew drama.",
+};
 
 const assistant = (content: string) =>
   render(
-    <AssistantMessage message={{ role: "assistant", parts: [text(content)] }} />,
+    <AssistantMessage
+      message={{ role: "assistant", parts: [text(content)] }}
+      signedIn={false}
+    />,
   );
 
 describe("AssistantMessage", () => {
   test("labels user messages", () => {
-    render(<AssistantMessage message={{ role: "user", parts: [text("hi")] }} />);
+    render(
+      <AssistantMessage
+        message={{ role: "user", parts: [text("hi")] }}
+        signedIn={false}
+      />,
+    );
     expect(screen.getByText("You:")).toBeInTheDocument();
     expect(screen.queryByAltText("CineRadar Bot")).toBeNull();
   });
@@ -78,6 +97,7 @@ describe("AssistantMessage", () => {
   test("renders text and tool lines in order", () => {
     render(
       <AssistantMessage
+        signedIn={false}
         message={{
           role: "assistant",
           parts: [
@@ -106,9 +126,42 @@ describe("AssistantMessage", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
+  test("renders cards between the text parts", () => {
+    render(
+      <AssistantMessage
+        signedIn={false}
+        message={{
+          role: "assistant",
+          parts: [
+            text("Here are some."),
+            tool("Preparing recommendations..."),
+            { type: "cards", items: [FURY] },
+            text("Want older ones?"),
+          ],
+        }}
+      />,
+    );
+    const shown = [
+      screen.getByText("Here are some."),
+      screen.getByText(/^Preparing recommendations/),
+      screen.getByRole("list", { name: "Recommendations" }),
+      screen.getByText("Want older ones?"),
+    ];
+    for (let i = 1; i < shown.length; i++) {
+      expect(shown[i - 1].compareDocumentPosition(shown[i])).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    }
+    expect(screen.getByRole("link", { name: "Fury" })).toHaveAttribute(
+      "href",
+      "/search/movie/228150",
+    );
+  });
+
   test("each text part is markdown on its own", () => {
     const { container } = render(
       <AssistantMessage
+        signedIn={false}
         message={{
           role: "assistant",
           parts: [text("1. One"), tool("Searching"), text("2. Two")],
@@ -122,6 +175,7 @@ describe("AssistantMessage", () => {
   test("children render after the parts, above the stopped note", () => {
     render(
       <AssistantMessage
+        signedIn={false}
         message={{
           role: "assistant",
           parts: [text("Let me check.")],

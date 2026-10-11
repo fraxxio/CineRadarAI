@@ -9,6 +9,9 @@ export type ChatStreamEvent =
   | { type: "tool_start"; id: string; name: string; text: string }
   // the call with this id finished (not sent when the turn is stopped or fails)
   | { type: "tool_end"; id: string }
+  // a show_recommendations call finished; only the titles TMDB confirmed, in
+  // the model's order
+  | { type: "cards"; items: RecommendedTitle[] }
   | { type: "done"; interactionId: string }
   | { type: "error" };
 
@@ -57,8 +60,9 @@ export type ToolPart = {
   runningSince?: number;
 };
 
-// future: | { type: "titles"; items: ... } for movie cards
-export type MessagePart = TextPart | ToolPart;
+export type CardsPart = { type: "cards"; items: RecommendedTitle[] };
+
+export type MessagePart = TextPart | ToolPart | CardsPart;
 
 export type ChatMessage = {
   id: string;

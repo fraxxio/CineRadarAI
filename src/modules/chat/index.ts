@@ -5,6 +5,7 @@ export {
   MAX_STOPPED_TURNS,
 } from "./chatLimits";
 export type {
+  CardsPart,
   ChatMessage,
   ChatRequest,
   ChatStreamEvent,
