@@ -22,6 +22,7 @@ import {
   mockTmdb,
   tmdbFixture,
 } from "@test/helpers/tmdb";
+import { deferred } from "@test/helpers/deferred";
 
 const EMPTY = { page: 1, results: [], total_pages: 0, total_results: 0 };
 
@@ -702,7 +703,7 @@ describe("getPersonCredits", () => {
     expect(params(spy)).toEqual([["language", "en-US"]]);
   });
 
-  test("movie: cast with character, crew with job", async () => {
+  test("movie: cast with character, crew with job and department", async () => {
     mockTmdb({
       "/3/person/287/movie_credits": {
         id: 287,
@@ -732,7 +733,12 @@ describe("getPersonCredits", () => {
       }),
     ]);
     expect(crew).toEqual([
-      expect.objectContaining({ id: 2, job: "Producer", adult: false }),
+      expect.objectContaining({
+        id: 2,
+        job: "Producer",
+        department: "Production",
+        adult: false,
+      }),
     ]);
     expect(crew[0]).not.toHaveProperty("character");
   });
@@ -826,6 +832,67 @@ describe("getGenres", () => {
     fail = false;
     expect(await getGenres("movie")).toEqual(GENRES.genres);
     expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  // the edge runtime serves many chats from one instance: a stopped chat
+  // mustn't fail another chat's genre lookup
+  test("one caller's abort rejects only that caller", async () => {
+    const { getGenres } = await freshServer();
+    const answer = deferred<unknown>();
+    const spy = mockTmdb({ "/3/genre/movie/list": () => answer.promise });
+    const stopped = new AbortController();
+
+    const first = getGenres("movie", { signal: stopped.signal });
+    const second = getGenres("movie", {
+      signal: new AbortController().signal,
+    });
+    stopped.abort();
+    answer.resolve(GENRES);
+
+    await expect(first).rejects.toBe(stopped.signal.reason);
+    expect(await second).toEqual(GENRES.genres);
+    expect(spy).toHaveBeenCalledOnce();
+    expect(init(spy).signal?.aborted).toBe(false);
+  });
+
+  test("an already aborted caller rejects without a request", async () => {
+    const { getGenres } = await freshServer();
+    const spy = mockTmdb({ "/3/genre/movie/list": GENRES });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      getGenres("movie", { signal: controller.signal }),
+    ).rejects.toBe(controller.signal.reason);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  test("the shared request times out after 8 s and isn't cached", async () => {
+    vi.useFakeTimers();
+    try {
+      const { getGenres } = await freshServer();
+      let hang = true;
+      const spy = mockTmdb({
+        "/3/genre/movie/list": (url: URL, requestInit?: RequestInit) =>
+          hang ? hangUntilAborted(url, requestInit) : GENRES,
+      });
+
+      const loading = getGenres("movie");
+      const failed = expect(loading).rejects.toMatchObject({
+        name: "TimeoutError",
+      });
+      await vi.advanceTimersByTimeAsync(7999);
+      expect(init(spy).signal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await failed;
+
+      hang = false;
+      expect(await getGenres("movie")).toEqual(GENRES.genres);
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -934,17 +1001,6 @@ describe("abort signal", () => {
     const { signal } = new AbortController();
 
     await call({ signal });
-
-    expect(init(spy).signal).toBe(signal);
-  });
-
-  test("getGenres passes it to fetch", async () => {
-    vi.resetModules();
-    const { getGenres } = await import("./server");
-    const spy = mockTmdb({ "/3/genre/movie/list": { genres: [] } });
-    const { signal } = new AbortController();
-
-    await getGenres("movie", { signal });
 
     expect(init(spy).signal).toBe(signal);
   });

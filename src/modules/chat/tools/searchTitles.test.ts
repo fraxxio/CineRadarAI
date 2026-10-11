@@ -108,16 +108,18 @@ describe("search_titles", () => {
     ).toEqual({ results: [] });
   });
 
-  test("passes the signal to every TMDB request", async () => {
+  // the genre list is one request shared across chats: it never gets a
+  // caller's signal (see getGenres)
+  test("passes the signal to the search, not to the shared genre list", async () => {
     const spy = mockSearch([rawMovie(1)]);
     const { signal } = new AbortController();
 
     await searchTitles.run({ query: "Fury", type: "movie" }, { signal });
 
-    // the search and the genre list
     expect(spy).toHaveBeenCalledTimes(2);
-    for (const [, init] of spy.mock.calls) {
-      expect(init?.signal).toBe(signal);
+    for (const [input, init] of spy.mock.calls) {
+      const isGenres = String(input).includes("/genre/");
+      expect(init?.signal === signal).toBe(!isGenres);
     }
   });
 

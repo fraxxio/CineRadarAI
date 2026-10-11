@@ -9,9 +9,11 @@ import {
 
 // fresh module per test: the genre list is cached at module level
 let getPersonCredits: typeof import("./getPersonCredits").getPersonCredits;
+let ToolError: typeof import("./types").ToolError;
 beforeEach(async () => {
   vi.resetModules();
   ({ getPersonCredits } = await import("./getPersonCredits"));
+  ({ ToolError } = await import("./types"));
 });
 
 // handlers return plain JSON for the model
@@ -190,6 +192,68 @@ describe("get_person_credits", () => {
     ]);
   });
 
+  // "directed by": a director's better-voted producer credits would fill the
+  // top 20 and push out the films they directed
+  test("crew department: filtered before the limit", async () => {
+    const produced = Array.from({ length: 25 }, (_, i) =>
+      rawMovie(100 + i, {
+        job: "Executive Producer",
+        department: "Production",
+        vote_count: 9000 + i,
+      }),
+    );
+    const directed = [1, 2, 3].map((id) =>
+      rawMovie(id, {
+        job: "Director",
+        department: "Directing",
+        vote_count: id,
+      }),
+    );
+    mockCredits(
+      credits(
+        [],
+        [
+          ...produced,
+          ...directed,
+          // the same title in another department: only the filtered job
+          rawMovie(3, { job: "Producer", department: "Production" }),
+        ],
+      ),
+    );
+
+    const all = await run({ id: 287, type: "movie", role: "crew" });
+    expect(ids(all)).not.toContain(1);
+
+    const { results } = await run({
+      id: 287,
+      type: "movie",
+      role: "crew",
+      department: "Directing",
+    });
+    expect(results).toEqual([
+      expect.objectContaining({ id: 3, jobs: ["Director"] }),
+      expect.objectContaining({ id: 2, jobs: ["Director"] }),
+      expect.objectContaining({ id: 1, jobs: ["Director"] }),
+    ]);
+  });
+
+  test("department with role cast: a ToolError, no request", async () => {
+    const spy = mockCredits(credits([rawMovie(1)]));
+
+    const error = await run({
+      id: 287,
+      type: "movie",
+      department: "Directing",
+    }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ToolError);
+    expect(error).toHaveProperty(
+      "message",
+      'department works with role "crew" only.',
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   test("role defaults to cast", () => {
     expect(getPersonCredits.args.parse({ id: 287, type: "movie" })).toEqual({
       id: 287,
@@ -220,16 +284,18 @@ describe("get_person_credits", () => {
     expect(results).toEqual([expect.objectContaining({ id: 1, genres: [] })]);
   });
 
-  test("passes the signal to every TMDB request", async () => {
+  // the genre list is one request shared across chats: it never gets a
+  // caller's signal (see getGenres)
+  test("passes the signal to the credits, not to the shared genre list", async () => {
     const spy = mockCredits(credits([rawMovie(1)]));
     const { signal } = new AbortController();
 
     await run({ id: 287, type: "movie" }, signal);
 
-    // the credits and the genre list
     expect(spy).toHaveBeenCalledTimes(2);
-    for (const [, init] of spy.mock.calls) {
-      expect(init?.signal).toBe(signal);
+    for (const [input, init] of spy.mock.calls) {
+      const isGenres = String(input).includes("/genre/");
+      expect(init?.signal === signal).toBe(!isGenres);
     }
   });
 
@@ -242,6 +308,12 @@ describe("get_person_credits", () => {
     expect(parse({ id: 2.5, type: "movie" })).toBe(false);
     expect(parse({ id: 287, type: "film" })).toBe(false);
     expect(parse({ id: 287, type: "movie", role: "director" })).toBe(false);
+    expect(
+      parse({ id: 287, type: "movie", role: "crew", department: "Writing" }),
+    ).toBe(true);
+    expect(
+      parse({ id: 287, type: "movie", role: "crew", department: "Director" }),
+    ).toBe(false);
     expect(parse({ type: "movie" })).toBe(false);
   });
 });

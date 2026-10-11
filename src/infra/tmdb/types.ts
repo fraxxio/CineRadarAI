@@ -47,7 +47,11 @@ export type CastCredit = TitleHit & {
   episodeCount: number | null;
 };
 
-export type CrewCredit = TitleHit & { job: string };
+export type CrewCredit = TitleHit & {
+  job: string;
+  // e.g. "Directing" for the jobs "Director" and "Assistant Director"
+  department: string;
+};
 
 export type PersonCredits = { cast: CastCredit[]; crew: CrewCredit[] };
 

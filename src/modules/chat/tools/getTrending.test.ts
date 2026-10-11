@@ -110,6 +110,21 @@ describe("get_trending", () => {
     expect(ids(await run({ type: "movie" }))).toEqual([1, 5]);
   });
 
+  test("TV: talk and news shows are dropped before the limit", async () => {
+    mockTrending(
+      [],
+      [
+        show(101, { genre_ids: [35, 10767] }),
+        show(102, { genre_ids: [10763] }),
+        ...Array.from({ length: 12 }, (_, i) => show(i + 1)),
+      ],
+    );
+
+    const items = await run({ type: "tv" });
+
+    expect(ids(items)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
   test("asks the path of the type and window, week by default", async () => {
     const spy = mockTrending([]);
 
@@ -141,16 +156,18 @@ describe("get_trending", () => {
     expect(await run({ type: "movie" })).toEqual({ results: [] });
   });
 
-  test("passes the signal to every TMDB request", async () => {
+  // the genre list is one request shared across chats: it never gets a
+  // caller's signal (see getGenres)
+  test("passes the signal to the trending list, not to the shared genre list", async () => {
     const spy = mockTrending([movie(1)]);
     const { signal } = new AbortController();
 
     await run({ type: "movie" }, signal);
 
-    // the trending list and the genre list
     expect(spy).toHaveBeenCalledTimes(2);
-    for (const [, init] of spy.mock.calls) {
-      expect(init?.signal).toBe(signal);
+    for (const [input, init] of spy.mock.calls) {
+      const isGenres = String(input).includes("/genre/");
+      expect(init?.signal === signal).toBe(!isGenres);
     }
   });
 

@@ -1,6 +1,6 @@
 // one genre enum for the tool args, mapped to TMDB's per-type genre lists
 import { z } from "zod/v4";
-import type { Genre, MediaType } from "@/infra/tmdb";
+import type { Genre, MediaType, TitleHit } from "@/infra/tmdb";
 import { ToolError } from "./types";
 
 // one list for movies and TV; TMDB's TV list merges some genres
@@ -35,6 +35,13 @@ export const genreArg = z.enum(GENRE_NAMES);
 // hits the other half too
 export const TV_GENRE_NOTE =
   "On TV, Action and Adventure are one genre, so are Science Fiction and Fantasy, and War includes Politics.";
+
+// TMDB TV genre ids of Talk and News: not shows to recommend, and the enum
+// can't exclude them. Movies never have these ids.
+const TALK_AND_NEWS_GENRE_IDS = [10767, 10763];
+
+export const isTalkOrNews = (hit: TitleHit) =>
+  hit.genreIds.some((id) => TALK_AND_NEWS_GENRE_IDS.includes(id));
 
 // the TMDB genre name per type; null when the type has no equivalent
 const TMDB_GENRE: Record<GenreName, Record<MediaType, string | null>> = {

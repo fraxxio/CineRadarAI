@@ -251,27 +251,62 @@ export async function discoverTitles(
 }
 
 // genre lists rarely change: kept for the life of the server instance;
-// the request itself is cached, so parallel calls share it (and the first
-// caller's signal); failures aren't cached, the next call retries
+// the request itself is cached, so parallel calls share it; failures aren't
+// cached, the next call retries
 const genreCache = new Map<MediaType, Promise<Genre[]>>();
+// the shared request has no caller's signal, so it gets its own timeout
+const GENRES_TIMEOUT_MS = 8000;
 
+// one instance serves many chats (edge runtime): the shared request runs
+// without any caller's signal, so a stopped chat can't fail another chat's
+// lookup; each caller stops waiting when its own signal aborts
 export function getGenres(
   type: MediaType,
-  options?: FetchOptions,
+  { signal }: FetchOptions = {},
 ): Promise<Genre[]> {
-  const cached = genreCache.get(type);
-  if (cached) {
-    return cached;
+  if (signal?.aborted) {
+    return Promise.reject(signal.reason);
   }
-  const genres = tmdbFetch<RawGenres>(
+  let genres = genreCache.get(type);
+  if (!genres) {
+    genres = fetchGenres(type);
+    genreCache.set(type, genres);
+    genres.catch(() => genreCache.delete(type));
+  }
+  return untilAborted(genres, signal);
+}
+
+function fetchGenres(type: MediaType): Promise<Genre[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () =>
+      controller.abort(
+        new DOMException("Genre list timed out", "TimeoutError"),
+      ),
+    GENRES_TIMEOUT_MS,
+  );
+  return tmdbFetch<RawGenres>(
     `/genre/${type}/list`,
     { language: "en-US" },
     `${type} genres`,
-    options,
-  ).then((raw) => raw.genres);
-  genreCache.set(type, genres);
-  genres.catch(() => genreCache.delete(type));
-  return genres;
+    { signal: controller.signal },
+  )
+    .then((raw) => raw.genres)
+    .finally(() => clearTimeout(timer));
+}
+
+// settles like the promise, or rejects with the signal's reason first
+function untilAborted<T>(promise: Promise<T>, signal?: AbortSignal) {
+  if (!signal) {
+    return promise;
+  }
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    promise
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", abort));
+  });
 }
 
 // details and cast in one request

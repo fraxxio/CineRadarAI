@@ -1,6 +1,11 @@
 import { z } from "zod/v4";
 import { discoverTitles as discover, getGenres } from "@/infra/tmdb/server";
-import { TV_GENRE_NOTE, genreArg, resolveGenreIds } from "./genres";
+import {
+  TV_GENRE_NOTE,
+  genreArg,
+  isTalkOrNews,
+  resolveGenreIds,
+} from "./genres";
 import {
   mediaTypeArg,
   personIdArg,
@@ -18,7 +23,7 @@ const personIdsArg = z.array(personIdArg).min(1).max(3);
 
 export const discoverTitles = defineTool({
   name: "discover_titles",
-  description: `List released movies or TV shows from TMDB by genre, release years, rating, vote count, original language and (movies only) cast or crew, sorted by popularity, rating or release date; returns the top 10 with their TMDB id, title, release year, rating, vote count and genres. Person ids come from search_person, and withCrew matches any crew job, so for "directed by" use get_person_credits with role "crew" instead. ${TV_GENRE_NOTE}`,
+  description: `List released movies or TV shows from TMDB by genre, release years, rating, vote count, original language and (movies only) cast or crew, sorted by popularity, rating or release date; returns the top 10 with their TMDB id, title, release year, rating, vote count and genres. Person ids come from search_person, and withCrew matches any crew job, so for "directed by" use get_person_credits with role "crew" instead. Talk and news shows are left out. ${TV_GENRE_NOTE}`,
   status: "Browsing TMDB database...",
   args: z.object({
     type: mediaTypeArg,
@@ -112,6 +117,10 @@ export const discoverTitles = defineTool({
     );
     return {
       results: page.results
+        // popular TV is full of them, and the genre enum can't exclude them;
+        // dropped here, before the limit (without_genres' comma semantics
+        // aren't documented)
+        .filter((hit) => !isTalkOrNews(hit))
         .slice(0, MAX_RESULTS)
         .map((hit) => toTitleItem(type, hit, genres)),
     };

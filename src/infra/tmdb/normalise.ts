@@ -86,7 +86,7 @@ export type RawPerson = {
 export type RawCredits = {
   // episode_count: TV only
   cast: (RawSummary & { character?: string; episode_count?: number })[];
-  crew: (RawSummary & { job?: string })[];
+  crew: (RawSummary & { job?: string; department?: string })[];
 };
 
 export const toPaged = <R, T>(
@@ -147,6 +147,7 @@ export const toCrewCredit = (
 ): CrewCredit => ({
   ...toHit(type, raw),
   job: raw.job ?? "",
+  department: raw.department ?? "",
 });
 
 export function toDetails(type: MediaType, raw: RawDetails): TitleDetails {

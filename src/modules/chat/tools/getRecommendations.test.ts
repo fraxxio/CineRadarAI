@@ -127,16 +127,18 @@ describe("get_recommendations", () => {
     expect(results).toEqual([expect.objectContaining({ id: 1, genres: [] })]);
   });
 
-  test("passes the signal to every TMDB request", async () => {
+  // the genre list is one request shared across chats: it never gets a
+  // caller's signal (see getGenres)
+  test("passes the signal to the list, not to the shared genre list", async () => {
     const spy = mockList([rawMovie(1)]);
     const { signal } = new AbortController();
 
     await run({ type: "movie", id: 1399 }, signal);
 
-    // the list and the genre list
     expect(spy).toHaveBeenCalledTimes(2);
-    for (const [, init] of spy.mock.calls) {
-      expect(init?.signal).toBe(signal);
+    for (const [input, init] of spy.mock.calls) {
+      const isGenres = String(input).includes("/genre/");
+      expect(init?.signal === signal).toBe(!isGenres);
     }
   });
 

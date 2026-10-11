@@ -280,6 +280,23 @@ describe("CHAT_TOOLS", () => {
         },
         "get_person_credits": {
           "properties": {
+            "department": {
+              "description": "Crew only: only the jobs in this department, e.g. Directing for directors, Writing for writers",
+              "enum": [
+                "Directing",
+                "Writing",
+                "Production",
+                "Sound",
+                "Camera",
+                "Editing",
+                "Art",
+                "Costume & Make-Up",
+                "Visual Effects",
+                "Lighting",
+                "Crew",
+              ],
+              "type": "string",
+            },
             "id": {
               "description": "TMDB person id from search_person results",
               "maximum": 9007199254740991,
@@ -653,6 +670,31 @@ describe("runToolCalls", () => {
           "c1",
           "search_titles",
           "Invalid arguments: year: Invalid input: expected int, received number",
+        ),
+      ]);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    // e.g. a call from before discover_titles' new args, repeated from an
+    // older interaction: stripped, it would list unfiltered titles
+    test("unknown arguments are rejected, not dropped", async () => {
+      const fetch = mockTmdb({});
+      expect(
+        await runToolCalls(
+          [
+            {
+              id: "c1",
+              name: "discover_titles",
+              rawArgs: '{"type":"movie","year":2014,"genre":"War"}',
+            },
+          ],
+          live(),
+        ),
+      ).toEqual([
+        errorResult(
+          "c1",
+          "discover_titles",
+          'Invalid arguments: Unrecognized keys: "year", "genre"',
         ),
       ]);
       expect(fetch).not.toHaveBeenCalled();

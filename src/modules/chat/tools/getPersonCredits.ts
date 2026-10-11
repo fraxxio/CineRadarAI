@@ -1,6 +1,7 @@
 import { z } from "zod/v4";
 import type { CastCredit, CrewCredit, MediaType, TitleHit } from "@/infra/tmdb";
 import { getGenres, getPersonCredits as getCredits } from "@/infra/tmdb/server";
+import { isTalkOrNews } from "./genres";
 import {
   isReleased,
   mediaTypeArg,
@@ -8,15 +9,27 @@ import {
   toTitleItem,
   today,
 } from "./shared";
-import { defineTool } from "./types";
+import { ToolError, defineTool } from "./types";
 
 const MAX_RESULTS = 20;
 
 // documentaries, award shows and the like: the person plays themselves
 const SELF_APPEARANCE = /^(self|himself|herself)\b/i;
-// TMDB TV genre ids of Talk and News: guest spots there aren't "shows with
-// <actor>"
-const TALK_AND_NEWS_GENRE_IDS = [10767, 10763];
+
+// TMDB's crew departments
+const DEPARTMENTS = [
+  "Directing",
+  "Writing",
+  "Production",
+  "Sound",
+  "Camera",
+  "Editing",
+  "Art",
+  "Costume & Make-Up",
+  "Visual Effects",
+  "Lighting",
+  "Crew",
+] as const;
 
 // one credit per title, with the fields only this role has
 type Entry = { hit: TitleHit; extra: object };
@@ -24,7 +37,7 @@ type Entry = { hit: TitleHit; extra: object };
 export const getPersonCredits = defineTool({
   name: "get_person_credits",
   description:
-    'List the released movies or TV shows of a person from TMDB, most voted first; returns the top 20 with their TMDB id, title, release year, rating, vote count and genres, plus the character (cast) or jobs (crew). The id comes from search_person. For "directed by", use role "crew" and keep the titles whose jobs include "Director".',
+    'List the released movies or TV shows of a person from TMDB, most voted first; returns the top 20 with their TMDB id, title, release year, rating, vote count and genres, plus the character (cast) or jobs (crew). The id comes from search_person. For "directed by", use role "crew" with department "Directing" and keep the titles whose jobs include "Director".',
   status: "Checking filmography...",
   args: z.object({
     id: personIdArg,
@@ -33,8 +46,19 @@ export const getPersonCredits = defineTool({
       .enum(["cast", "crew"])
       .default("cast")
       .describe("cast: acting credits, crew: jobs behind the camera"),
+    // applied before the limit: a director's producer credits would
+    // otherwise crowd out the films they directed
+    department: z
+      .enum(DEPARTMENTS)
+      .optional()
+      .describe(
+        "Crew only: only the jobs in this department, e.g. Directing for directors, Writing for writers",
+      ),
   }),
-  async run({ id, type, role }, { signal }) {
+  async run({ id, type, role, department }, { signal }) {
+    if (role === "cast" && department) {
+      throw new ToolError('department works with role "crew" only.');
+    }
     const [credits, genres] = await Promise.all([
       getCredits(type, id, { signal }),
       // genres are extra detail: a credit still counts without them
@@ -44,7 +68,12 @@ export const getPersonCredits = defineTool({
     const entries =
       role === "cast"
         ? castEntries(type, credits.cast, asOf)
-        : crewEntries(credits.crew, asOf);
+        : crewEntries(
+            credits.crew.filter(
+              (credit) => !department || credit.department === department,
+            ),
+            asOf,
+          );
     return {
       results: entries
         // votes as a proxy for the person's well-known titles
@@ -68,7 +97,8 @@ function castEntries(
     const keep =
       isReleased(credit, asOf) &&
       !SELF_APPEARANCE.test(credit.character) &&
-      !credit.genreIds.some((id) => TALK_AND_NEWS_GENRE_IDS.includes(id)) &&
+      // guest spots on talk and news shows aren't "shows with <actor>"
+      !isTalkOrNews(credit) &&
       // two roles in one title are listed twice: keep the first
       !entries.some((entry) => entry.hit.id === credit.id);
     if (keep) {

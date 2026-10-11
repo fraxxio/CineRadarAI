@@ -80,6 +80,24 @@ describe("discover_titles", () => {
     });
   });
 
+  // "popular comedy shows": late-night talk shows are tagged Comedy + Talk
+  test("TV: talk and news shows are dropped before the limit", async () => {
+    mockDiscover(
+      [],
+      [
+        rawShow(101, { genre_ids: [35, 10767] }),
+        rawShow(102, { genre_ids: [10763] }),
+        ...Array.from({ length: 12 }, (_, i) =>
+          rawShow(i + 1, { genre_ids: [35] }),
+        ),
+      ],
+    );
+
+    const { results } = await run({ type: "tv", genres: ["Comedy"] });
+
+    expect(results.map((r) => r.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
   test("no filters: popular titles released by today", async () => {
     atDate("2026-10-08T12:00:00Z");
     const spy = mockDiscover();
@@ -322,16 +340,18 @@ describe("discover_titles", () => {
     );
   });
 
-  test("passes the signal to every TMDB request", async () => {
+  // the genre list is one request shared across chats: it never gets a
+  // caller's signal (see getGenres)
+  test("passes the signal to the discover request, not to the shared genre list", async () => {
     const spy = mockDiscover();
     const { signal } = new AbortController();
 
     await run({ type: "movie", genres: ["War"] }, signal);
 
-    // the genre list and the discover request
     expect(spy).toHaveBeenCalledTimes(2);
-    for (const [, init] of spy.mock.calls) {
-      expect(init?.signal).toBe(signal);
+    for (const [input, init] of spy.mock.calls) {
+      const isGenres = String(input).includes("/genre/");
+      expect(init?.signal === signal).toBe(!isGenres);
     }
   });
 });
