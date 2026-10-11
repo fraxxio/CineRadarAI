@@ -6,11 +6,12 @@ import {
   isTalkOrNews,
   resolveGenreIds,
 } from "./genres";
+import { today } from "../date";
 import {
+  TITLE_ITEM_FIELDS,
   mediaTypeArg,
   personIdArg,
   toTitleItem,
-  today,
   yearArg,
 } from "./shared";
 import { ToolError, defineTool } from "./types";
@@ -23,7 +24,7 @@ const personIdsArg = z.array(personIdArg).min(1).max(3);
 
 export const discoverTitles = defineTool({
   name: "discover_titles",
-  description: `List released movies or TV shows from TMDB by genre, release years, rating, vote count, original language and (movies only) cast or crew, sorted by popularity, rating or release date; returns the top 10 with their TMDB id, title, release year, rating, vote count and genres. Person ids come from search_person, and withCrew matches any crew job, so for "directed by" use get_person_credits with role "crew" instead. Talk and news shows are left out. ${TV_GENRE_NOTE}`,
+  description: `List released movies or TV shows from TMDB by genre, release years, rating, vote count, original language and (movies only) cast or crew, sorted by popularity, rating or release date; returns the top ${MAX_RESULTS} with ${TITLE_ITEM_FIELDS}. Person ids come from search_person, and withCrew matches any crew job, so for "directed by" use get_person_credits with role "crew" instead. Talk and news shows are left out. ${TV_GENRE_NOTE}`,
   status: "Browsing TMDB database...",
   args: z.object({
     type: mediaTypeArg,
@@ -93,34 +94,44 @@ export const discoverTitles = defineTool({
 
     const filtersGenres = Boolean(args.genres || args.excludeGenres);
     const loading = getGenres(type, { signal });
-    // needed to filter by genre; otherwise just extra detail
-    const genres = await (filtersGenres ? loading : loading.catch(() => []));
-
-    const page = await discover(
-      {
-        type,
-        sort: args.sort,
-        genreIds: resolveGenreIds(type, args.genres ?? [], genres),
-        withoutGenreIds: resolveGenreIds(
-          type,
-          args.excludeGenres ?? [],
-          genres,
-        ),
-        ...releaseRange(yearFrom, yearTo),
-        minRating: args.minRating,
-        minVotes: args.minVotes,
-        castIds: withCast,
-        crewIds: withCrew,
-        originalLanguage: args.originalLanguage?.toLowerCase(),
-      },
-      { signal },
+    // a genre filter needs the ids before discover; otherwise the list is
+    // just extra detail and loads alongside it
+    const genreList = filtersGenres ? await loading : [];
+    const withoutGenreIds = resolveGenreIds(
+      type,
+      args.excludeGenres ?? [],
+      genreList,
     );
+
+    const [page, genres] = await Promise.all([
+      discover(
+        {
+          type,
+          sort: args.sort,
+          genreIds: resolveGenreIds(type, args.genres ?? [], genreList),
+          withoutGenreIds,
+          ...releaseRange(yearFrom, yearTo),
+          minRating: args.minRating,
+          minVotes: args.minVotes,
+          castIds: withCast,
+          crewIds: withCrew,
+          originalLanguage: args.originalLanguage?.toLowerCase(),
+        },
+        { signal },
+      ),
+      filtersGenres ? genreList : loading.catch(() => []),
+    ]);
     return {
       results: page.results
-        // popular TV is full of them, and the genre enum can't exclude them;
-        // dropped here, before the limit (without_genres' comma semantics
-        // aren't documented)
-        .filter((hit) => !isTalkOrNews(hit))
+        // popular TV is full of talk and news shows, and the genre enum can't
+        // exclude them. The excluded genres are checked again because TMDB
+        // doesn't document whether without_genres' "," means none or not
+        // all of them. Both dropped here, before the limit.
+        .filter(
+          (hit) =>
+            !isTalkOrNews(hit) &&
+            !hit.genreIds.some((id) => withoutGenreIds.includes(id)),
+        )
         .slice(0, MAX_RESULTS)
         .map((hit) => toTitleItem(type, hit, genres)),
     };

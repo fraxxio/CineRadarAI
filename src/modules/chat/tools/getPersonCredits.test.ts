@@ -159,6 +159,39 @@ describe("get_person_credits", () => {
     ]);
   });
 
+  test("cast: a dropped self appearance doesn't hide a later real role", async () => {
+    mockCredits(
+      credits([
+        rawMovie(1, { character: "Himself" }),
+        rawMovie(1, { character: "Tyler Durden" }),
+      ]),
+    );
+
+    const { results } = await run({ id: 287, type: "movie" });
+
+    expect(results).toEqual([
+      expect.objectContaining({ id: 1, character: "Tyler Durden" }),
+    ]);
+  });
+
+  // unlike cast guest spots, producing or writing a talk show is real work
+  test("TV crew: talk and news shows are kept", async () => {
+    mockCredits(
+      credits([]),
+      credits(
+        [],
+        [
+          rawShow(1, { job: "Executive Producer", genre_ids: [10767] }),
+          rawShow(2, { job: "Writer", genre_ids: [35, 10763] }),
+        ],
+      ),
+    );
+
+    expect(ids(await run({ id: 287, type: "tv", role: "crew" }))).toEqual([
+      1, 2,
+    ]);
+  });
+
   test("crew: one item per title with its jobs merged, most voted first", async () => {
     mockCredits(
       credits(

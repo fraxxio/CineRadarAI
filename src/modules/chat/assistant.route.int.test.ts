@@ -39,6 +39,7 @@ import {
   TV_GENRES,
   page,
   rawMovie,
+  rawPerson,
   rawShow,
 } from "./testing/tmdbData";
 
@@ -510,6 +511,79 @@ describe("POST /api/assistant", () => {
           /^Tool round 1: search_titles \(\d+ ms, 0 errors\)$/,
         ),
       );
+    });
+
+    // the real tools across rounds: the id from round 1's result goes into
+    // round 2's call
+    test("two rounds: search_person, then discover_titles with the person's id", async () => {
+      const spy = tmdb({
+        "/3/search/person": page([rawPerson(287, { name: "Brad Pitt" })]),
+        "/3/discover/movie": page([FURY]),
+      });
+      rounds(
+        toolRound("i1", {
+          id: "c1",
+          name: "search_person",
+          args: { query: "Brad Pitt" },
+        }),
+        toolRound("i2", {
+          id: "c2",
+          name: "discover_titles",
+          args: { type: "movie", withCast: [287], genres: ["War"] },
+        }),
+        answerRound("i3", "Watch Fury."),
+      );
+
+      const { events } = await readNdjson(
+        await post({ content: "war movies with Brad Pitt" }),
+      );
+
+      expect(events).toEqual([
+        { type: "start", interactionId: "i1" },
+        {
+          type: "tool_start",
+          id: "c1",
+          name: "search_person",
+          text: "Searching people...",
+        },
+        ended("c1"),
+        {
+          type: "tool_start",
+          id: "c2",
+          name: "discover_titles",
+          text: "Browsing TMDB database...",
+        },
+        ended("c2"),
+        { type: "delta", text: "Watch Fury." },
+        { type: "done", interactionId: "i3" },
+      ]);
+      expect(create).toHaveBeenCalledTimes(3);
+      expect(request(1)).toMatchObject({ previous_interaction_id: "i1" });
+      expect(results(1)).toEqual([
+        {
+          type: "function_result",
+          call_id: "c1",
+          name: "search_person",
+          result: {
+            results: [expect.objectContaining({ id: 287, name: "Brad Pitt" })],
+          },
+        },
+      ]);
+      const [discover] = tmdbUrls(spy, "/3/discover/movie");
+      expect(discover.searchParams.get("with_cast")).toBe("287");
+      expect(discover.searchParams.get("with_genres")).toBe("10752");
+      expect(request(2)).toMatchObject({
+        previous_interaction_id: "i2",
+        generation_config: { tool_choice: "auto" },
+      });
+      expect(results(2)).toEqual([
+        {
+          type: "function_result",
+          call_id: "c2",
+          name: "discover_titles",
+          result: { results: [FURY_ITEM] },
+        },
+      ]);
     });
 
     test("parallel calls: all requests start at once, results come back in call order", async () => {

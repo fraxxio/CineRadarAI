@@ -20,7 +20,7 @@ export const getTitleDetails = defineTool({
       .number()
       .int()
       .min(1)
-      .describe("TMDB id from search or discover results"),
+      .describe("TMDB id of the title, from the same result as its type"),
   }),
   async run({ type, id }, { signal }) {
     const title = await getTitleWithCredits(type, id, { signal });

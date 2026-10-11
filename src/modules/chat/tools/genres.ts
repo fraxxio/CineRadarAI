@@ -37,7 +37,9 @@ export const TV_GENRE_NOTE =
   "On TV, Action and Adventure are one genre, so are Science Fiction and Fantasy, and War includes Politics.";
 
 // TMDB TV genre ids of Talk and News: not shows to recommend, and the enum
-// can't exclude them. Movies never have these ids.
+// can't exclude them. Movies never have these ids. Ids, not names as in
+// resolveGenreIds: this filter must also work when the genre list fails to
+// load (TMDB genre ids are stable).
 const TALK_AND_NEWS_GENRE_IDS = [10767, 10763];
 
 export const isTalkOrNews = (hit: TitleHit) =>

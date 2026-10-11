@@ -8,37 +8,50 @@ import {
   rawShow,
 } from "../testing/tmdbData";
 
-// fresh module per test: the genre list is cached at module level
-let getSimilar: typeof import("./getSimilar").getSimilar;
-beforeEach(async () => {
-  vi.resetModules();
-  ({ getSimilar } = await import("./getSimilar"));
-});
-
 // handlers return plain JSON for the model
 type Items = { results: Record<string, unknown>[] };
 
-const run = async (args: object, signal = new AbortController().signal) =>
-  (await getSimilar.run(getSimilar.args.parse(args), { signal })) as Items;
-
-// movie and TV ids overlap: 1399 is a movie and a show
-const mockList = (movies: object[], shows: object[] = []) =>
-  mockTmdb({
-    "/3/movie/1399/similar": page(movies),
-    "/3/tv/1399/similar": page(shows),
-    "/3/genre/movie/list": MOVIE_GENRES,
-    "/3/genre/tv/list": TV_GENRES,
-  });
-
 const ids = (items: Items) => items.results.map((r) => r.id);
 
-describe("get_similar", () => {
-  beforeEach(() => {
+// the tools built by relatedTitlesTool differ only in the TMDB path
+describe.each([
+  {
+    name: "get_recommendations",
+    path: "recommendations",
+    load: async () => (await import("./getRecommendations")).getRecommendations,
+  },
+  {
+    name: "get_similar",
+    path: "similar",
+    load: async () => (await import("./getSimilar")).getSimilar,
+  },
+])("$name", ({ name, path, load }) => {
+  // fresh module per test: the genre list is cached at module level
+  let tool: Awaited<ReturnType<typeof load>>;
+  beforeEach(async () => {
+    vi.resetModules();
+    tool = await load();
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-06-01T12:00:00Z"));
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  const run = async (args: object, signal = new AbortController().signal) =>
+    (await tool.run(tool.args.parse(args), { signal })) as Items;
+
+  // movie and TV ids overlap: 1399 is a movie and a show
+  const mockList = (movies: object[], shows: object[] = []) =>
+    mockTmdb({
+      [`/3/movie/1399/${path}`]: page(movies),
+      [`/3/tv/1399/${path}`]: page(shows),
+      "/3/genre/movie/list": MOVIE_GENRES,
+      "/3/genre/tv/list": TV_GENRES,
+    });
+
+  test("has its name", () => {
+    expect(tool.name).toBe(name);
   });
 
   test("movies: only the listed fields", async () => {
@@ -75,8 +88,8 @@ describe("get_similar", () => {
         genres: ["Sci-Fi & Fantasy"],
       },
     ]);
-    expect(tmdbUrls(spy, "/3/tv/1399/similar")).toHaveLength(1);
-    expect(tmdbUrls(spy, "/3/movie/1399/similar")).toHaveLength(0);
+    expect(tmdbUrls(spy, `/3/tv/1399/${path}`)).toHaveLength(1);
+    expect(tmdbUrls(spy, `/3/movie/1399/${path}`)).toHaveLength(0);
   });
 
   test("keeps TMDB's order, the top 10 counted after filtering", async () => {
@@ -108,7 +121,7 @@ describe("get_similar", () => {
     expect(ids(await run({ type: "movie", id: 1399 }))).toEqual([1, 5]);
   });
 
-  test("no similar titles: an empty list", async () => {
+  test("an empty list from TMDB: an empty list", async () => {
     mockList([]);
     expect(await run({ type: "movie", id: 1399 })).toEqual({ results: [] });
   });
@@ -116,7 +129,7 @@ describe("get_similar", () => {
   test("a failed genre list still returns the titles, without genres", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     mockTmdb({
-      "/3/movie/1399/similar": page([rawMovie(1)]),
+      [`/3/movie/1399/${path}`]: page([rawMovie(1)]),
       "/3/genre/movie/list": new Response("boom", { status: 503 }),
     });
 
@@ -141,7 +154,7 @@ describe("get_similar", () => {
   });
 
   test("args: a movie/tv type and a positive integer id", () => {
-    const parse = (args: object) => getSimilar.args.safeParse(args).success;
+    const parse = (args: object) => tool.args.safeParse(args).success;
 
     expect(parse({ type: "tv", id: 1399 })).toBe(true);
     expect(parse({ type: "movie", id: 0 })).toBe(false);

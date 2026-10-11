@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, test, vi } from "vitest";
 import type { TitleHit } from "@/infra/tmdb";
-import { isReleased, toTitleItems, today } from "./shared";
+import { isListable, toTitleItems } from "./shared";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -24,19 +24,7 @@ const hit = (id: number, extra: Partial<TitleHit> = {}): TitleHit => ({
   ...extra,
 });
 
-describe("today", () => {
-  it.each([
-    ["2026-10-08T00:00:00Z", "2026-10-08"],
-    ["2026-10-08T23:59:59.999Z", "2026-10-08"],
-    // just after midnight in UTC+3 is still the day before in UTC
-    ["2026-10-09T01:30:00+03:00", "2026-10-08"],
-  ])("%s -> %s", (now, date) => {
-    setNow(now);
-    expect(today()).toBe(date);
-  });
-});
-
-describe("isReleased", () => {
+describe("isListable", () => {
   const asOf = "2026-10-08";
 
   it.each([
@@ -45,8 +33,8 @@ describe("isReleased", () => {
     ["tomorrow", hit(1, { releaseDate: "2026-10-09" }), false],
     ["no date", hit(1, { releaseDate: "" }), false],
     ["adult", hit(1, { adult: true }), false],
-  ])("%s: %s", (_, title, released) => {
-    expect(isReleased(title, asOf)).toBe(released);
+  ])("%s: %s", (_, title, listable) => {
+    expect(isListable(title, asOf)).toBe(listable);
   });
 });
 

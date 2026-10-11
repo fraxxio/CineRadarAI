@@ -1,13 +1,20 @@
 import { z } from "zod/v4";
-import type { CastCredit, CrewCredit, MediaType, TitleHit } from "@/infra/tmdb";
+import type {
+  CastCredit,
+  CrewCredit,
+  Genre,
+  MediaType,
+  TitleHit,
+} from "@/infra/tmdb";
 import { getGenres, getPersonCredits as getCredits } from "@/infra/tmdb/server";
+import { today } from "../date";
 import { isTalkOrNews } from "./genres";
 import {
-  isReleased,
+  TITLE_ITEM_FIELDS,
+  isListable,
   mediaTypeArg,
   personIdArg,
   toTitleItem,
-  today,
 } from "./shared";
 import { ToolError, defineTool } from "./types";
 
@@ -32,12 +39,13 @@ const DEPARTMENTS = [
 ] as const;
 
 // one credit per title, with the fields only this role has
-type Entry = { hit: TitleHit; extra: object };
+type Entry<Extra> = { hit: TitleHit; extra: Extra };
+type CastExtra = { character: string; episodes?: number | null };
+type CrewExtra = { jobs: string[] };
 
 export const getPersonCredits = defineTool({
   name: "get_person_credits",
-  description:
-    'List the released movies or TV shows of a person from TMDB, most voted first; returns the top 20 with their TMDB id, title, release year, rating, vote count and genres, plus the character (cast) or jobs (crew). The id comes from search_person. For "directed by", use role "crew" with department "Directing" and keep the titles whose jobs include "Director".',
+  description: `List the released movies or TV shows of a person from TMDB, most voted first; returns the top ${MAX_RESULTS} with ${TITLE_ITEM_FIELDS}, plus the character (cast) or jobs (crew). The id comes from search_person. For "directed by", use role "crew" with department "Directing" and keep the titles whose jobs include "Director". TV cast also gets episodes: a few episodes in a long show is a guest role, not a main one.`,
   status: "Checking filmography...",
   args: z.object({
     id: personIdArg,
@@ -65,71 +73,83 @@ export const getPersonCredits = defineTool({
       getGenres(type, { signal }).catch(() => []),
     ]);
     const asOf = today();
-    const entries =
-      role === "cast"
-        ? castEntries(type, credits.cast, asOf)
-        : crewEntries(
-            credits.crew.filter(
-              (credit) => !department || credit.department === department,
-            ),
-            asOf,
-          );
     return {
-      results: entries
-        // votes as a proxy for the person's well-known titles
-        .sort((a, b) => b.hit.voteCount - a.hit.voteCount)
-        .slice(0, MAX_RESULTS)
-        .map(({ hit, extra }) => ({
-          ...toTitleItem(type, hit, genres),
-          ...extra,
-        })),
+      results:
+        role === "cast"
+          ? toItems(type, castEntries(type, credits.cast, asOf), genres)
+          : toItems(
+              type,
+              crewEntries(
+                credits.crew.filter(
+                  (credit) => !department || credit.department === department,
+                ),
+                asOf,
+              ),
+              genres,
+            ),
     };
   },
 });
+
+// the top entries as model items, with their role's fields
+function toItems<Extra extends object>(
+  type: MediaType,
+  entries: Entry<Extra>[],
+  genres: Genre[],
+) {
+  return (
+    entries
+      // votes as a proxy for the person's well-known titles
+      .sort((a, b) => b.hit.voteCount - a.hit.voteCount)
+      .slice(0, MAX_RESULTS)
+      .map(({ hit, extra }) => ({
+        ...toTitleItem(type, hit, genres),
+        ...extra,
+      }))
+  );
+}
 
 function castEntries(
   type: MediaType,
   cast: CastCredit[],
   asOf: string,
-): Entry[] {
-  const entries: Entry[] = [];
+): Entry<CastExtra>[] {
+  const entries: Entry<CastExtra>[] = [];
+  const seen = new Set<number>();
   for (const credit of cast) {
     const keep =
-      isReleased(credit, asOf) &&
+      isListable(credit, asOf) &&
       !SELF_APPEARANCE.test(credit.character) &&
       // guest spots on talk and news shows aren't "shows with <actor>"
       !isTalkOrNews(credit) &&
       // two roles in one title are listed twice: keep the first
-      !entries.some((entry) => entry.hit.id === credit.id);
+      !seen.has(credit.id);
     if (keep) {
-      entries.push({
-        hit: credit,
-        extra: {
-          character: credit.character,
-          ...(type === "tv" ? { episodes: credit.episodeCount } : {}),
-        },
-      });
+      seen.add(credit.id);
+      const extra: CastExtra = { character: credit.character };
+      if (type === "tv") {
+        extra.episodes = credit.episodeCount;
+      }
+      entries.push({ hit: credit, extra });
     }
   }
   return entries;
 }
 
-// TMDB lists a title once per job: one entry per title, its jobs merged
-function crewEntries(crew: CrewCredit[], asOf: string): Entry[] {
-  const byTitle = new Map<number, { hit: TitleHit; jobs: string[] }>();
+// TMDB lists a title once per job: one entry per title, its jobs merged.
+// Talk and news shows stay: a crew credit there (e.g. producer) is real work
+function crewEntries(crew: CrewCredit[], asOf: string): Entry<CrewExtra>[] {
+  const byTitle = new Map<number, Entry<CrewExtra>>();
   for (const credit of crew) {
-    if (!isReleased(credit, asOf)) {
+    if (!isListable(credit, asOf)) {
       continue;
     }
     const entry = byTitle.get(credit.id);
     if (!entry) {
-      byTitle.set(credit.id, { hit: credit, jobs: [credit.job] });
-    } else if (!entry.jobs.includes(credit.job)) {
-      entry.jobs.push(credit.job);
+      byTitle.set(credit.id, { hit: credit, extra: { jobs: [credit.job] } });
+    } else if (!entry.extra.jobs.includes(credit.job)) {
+      entry.extra.jobs.push(credit.job);
     }
   }
-  return Array.from(byTitle.values(), ({ hit, jobs }) => ({
-    hit,
-    extra: { jobs },
-  }));
+  return Array.from(byTitle.values());
 }

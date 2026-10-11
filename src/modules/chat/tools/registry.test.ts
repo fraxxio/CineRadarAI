@@ -128,6 +128,21 @@ describe("CHAT_TOOLS", () => {
     ]);
   });
 
+  // catches tool renames that leave a description pointing the model at a
+  // tool that doesn't exist; arg descriptions name tools too
+  test("descriptions name only tools that exist", () => {
+    const names = CHAT_TOOLS.map((tool) => tool.name);
+    const named = CHAT_TOOLS.flatMap((tool) => {
+      const text = tool.description + JSON.stringify(toolParameters(tool));
+      const found = text.match(/\b(?:search|get|discover)_[a-z_]+\b/g) ?? [];
+      return found.map((name) => `${tool.name} -> ${name}`);
+    });
+    expect(named.length).toBeGreaterThan(0);
+    expect(
+      named.filter((pair) => !names.includes(pair.split(" -> ")[1])),
+    ).toEqual([]);
+  });
+
   // what the model sees: review any change here against the Gemini docs
   test("generated parameter schemas", () => {
     expect(
@@ -376,7 +391,7 @@ describe("CHAT_TOOLS", () => {
         "get_title_details": {
           "properties": {
             "id": {
-              "description": "TMDB id from search or discover results",
+              "description": "TMDB id of the title, from the same result as its type",
               "maximum": 9007199254740991,
               "minimum": 1,
               "type": "integer",

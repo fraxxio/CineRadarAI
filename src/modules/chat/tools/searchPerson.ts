@@ -8,8 +8,7 @@ const MAX_KNOWN_FOR = 3;
 
 export const searchPerson = defineTool({
   name: "search_person",
-  description:
-    "Search TMDB for a person (actor, director, writer...) by name. Returns the top 5 matches with their TMDB person id, main department and up to 3 titles they're known for. Use it to get the id for discover_titles (movies) or get_person_credits; when several people share a name, pick by department and knownFor.",
+  description: `Search TMDB for a person (actor, director, writer...) by name. Returns the top ${MAX_RESULTS} matches with their TMDB person id, main department and up to ${MAX_KNOWN_FOR} titles they're known for. Use it to get the id for discover_titles (movies) or get_person_credits; when several people share a name, pick by department and knownFor.`,
   status: "Searching people...",
   args: z.object({
     query: z.string().min(1).max(100).describe("The person's name"),

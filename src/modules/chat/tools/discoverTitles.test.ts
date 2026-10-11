@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
+import { deferred } from "@test/helpers/deferred";
 import { mockTmdb, tmdbUrls } from "@test/helpers/tmdb";
 import {
   FULL_MOVIE_GENRES,
@@ -297,6 +298,46 @@ describe("discover_titles", () => {
 
   // with_crew matches any job (writer, producer...), so it can't answer
   // "directed by"
+  // TMDB doesn't document whether without_genres' "," excludes titles with
+  // any of the ids or only with all of them
+  test("excluded genres are dropped even when TMDB returns them", async () => {
+    const spy = mockDiscover([
+      rawMovie(1, { genre_ids: [35] }),
+      rawMovie(2, { genre_ids: [35, 16] }),
+      rawMovie(3, { genre_ids: [35, 10751] }),
+      rawMovie(4, { genre_ids: [35, 16, 10751] }),
+      rawMovie(5, { genre_ids: [35, 18] }),
+    ]);
+
+    const { results } = await run({
+      type: "movie",
+      genres: ["Comedy"],
+      excludeGenres: ["Animation", "Family"],
+    });
+
+    expect(results.map((r) => r.id)).toEqual([1, 5]);
+    expect(discoverUrl(spy).searchParams.get("without_genres")).toBe(
+      "16,10751",
+    );
+  });
+
+  // without a genre filter the list is extra detail: no extra round trip
+  test("no genre filter: discover doesn't wait for the genre list", async () => {
+    const genreList = deferred<unknown>();
+    const spy = mockTmdb({
+      "/3/discover/movie": page([rawMovie(1)]),
+      "/3/genre/movie/list": () => genreList.promise,
+    });
+
+    const running = run({ type: "movie" });
+    await vi.waitFor(() => expect(discoverUrl(spy)).toBeDefined());
+    genreList.resolve(FULL_MOVIE_GENRES);
+
+    expect((await running).results).toEqual([
+      expect.objectContaining({ id: 1, genres: ["War", "Drama"] }),
+    ]);
+  });
+
   test('the description sends "directed by" to get_person_credits', () => {
     expect(discoverTitles.description).toContain(
       "withCrew matches any crew job",

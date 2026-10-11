@@ -118,20 +118,41 @@ describe("prompt and tools stay in sync", () => {
     }
   });
 
-  test.each([
-    "yearFrom",
-    "yearTo",
-    "withCast",
-    "minVotes",
-    "minRating",
-    "sort",
-    "genres",
-  ])("names the discover_titles arg %s, which exists", (arg) => {
-    const { properties } = toolParameters(discoverTitles) as {
-      properties: Record<string, unknown>;
-    };
-    expect(prompt).toContain(arg);
-    expect(properties).toHaveProperty(arg);
+  // the prompt names only discover_titles args
+  const { properties: discoverArgs } = toolParameters(discoverTitles) as {
+    properties: Record<string, { enum?: string[] }>;
+  };
+
+  // camelCase words in the prompt are arg names, unlike "sort" or "genres",
+  // which are also plain words
+  test("every camelCase arg it names exists", () => {
+    const named = new Set(prompt.match(/\b[a-z]+[A-Z]\w*\b/g));
+    // guards the pattern: it must find the args the prompt names today
+    expect([...named]).toEqual(
+      expect.arrayContaining([
+        "yearFrom",
+        "yearTo",
+        "withCast",
+        "minVotes",
+        "minRating",
+      ]),
+    );
+    for (const arg of named) {
+      expect(discoverArgs).toHaveProperty(arg);
+    }
+  });
+
+  test('every sort "<value>" it names is a discover_titles sort', () => {
+    const sorts = [...prompt.matchAll(/\bsort "(\w+)"/g)].map((m) => m[1]);
+    expect(sorts).toEqual(expect.arrayContaining(["popular", "top_rated"]));
+    for (const sort of sorts) {
+      expect(discoverArgs.sort.enum).toContain(sort);
+    }
+  });
+
+  test("names genres as a discover_titles filter, which exists", () => {
+    expect(prompt).toContain("discover_titles filters, e.g. genres");
+    expect(discoverArgs).toHaveProperty("genres");
   });
 });
 

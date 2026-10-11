@@ -2,9 +2,8 @@
 //
 // What: sends one real request to Gemini with the exact tool schemas, model
 // and system prompt the AI chat uses, and reports whether Gemini accepts
-// them. Everything comes from the app's own exports (chatConfig.ts,
-// llm/geminiTools.ts, tools/registry.ts), so it can't drift from what the
-// chat sends.
+// them. The request is the chat's own baseRequest() (llm/llmService.ts), so
+// it can't drift from what the chat sends.
 //
 // Why: the tool schemas go out with every chat request, also requests that
 // never call a tool. Gemini supports only a subset of JSON Schema, and if it
@@ -34,12 +33,8 @@
 // hand-write that tool's schema), and keep ALLOWED_SCHEMA_KEYWORDS in
 // registry.test.ts in line with what Gemini accepts.
 import { GoogleGenAI } from "@google/genai";
-import {
-  CHAT_MODEL,
-  CHAT_THINKING_LEVEL,
-  buildSystemInstruction,
-} from "@/modules/chat/chatConfig";
-import { toGeminiTools } from "@/modules/chat/llm/geminiTools";
+import { CHAT_MODEL, CHAT_THINKING_LEVEL } from "@/modules/chat/chatConfig";
+import { baseRequest } from "@/modules/chat/llm/llmService";
 import { CHAT_TOOLS } from "@/modules/chat/tools/registry";
 
 const dryRun = process.argv.includes("--dry-run");
@@ -48,8 +43,7 @@ const names = CHAT_TOOLS.map((tool) => tool.name).join(", ");
 async function main(): Promise<number> {
   console.log(`Model: ${CHAT_MODEL}, thinking level: ${CHAT_THINKING_LEVEL}`);
   console.log(`Tools (${CHAT_TOOLS.length}): ${names}`);
-  const tools = toGeminiTools(CHAT_TOOLS);
-  const systemInstruction = buildSystemInstruction();
+  const request = baseRequest();
 
   if (dryRun) {
     console.log("Dry run: no request sent");
@@ -64,12 +58,10 @@ async function main(): Promise<number> {
   const ai = new GoogleGenAI({ apiKey });
   try {
     const interaction = await ai.interactions.create({
-      model: CHAT_MODEL,
+      ...request,
       input: "Reply with the single word OK.",
-      tools,
-      system_instruction: systemInstruction,
       generation_config: {
-        thinking_level: CHAT_THINKING_LEVEL,
+        ...request.generation_config,
         // "none" might skip the tools; a tool call is fine, it isn't run
         tool_choice: "auto",
       },
