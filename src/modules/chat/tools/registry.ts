@@ -8,7 +8,9 @@ import { getTitleDetails } from "./getTitleDetails";
 import { getTrending } from "./getTrending";
 import { searchPerson } from "./searchPerson";
 import { searchTitles } from "./searchTitles";
+import { showRecommendations } from "./showRecommendations";
 import {
+  CardsOutput,
   ToolError,
   type ChatTool,
   type ToolCall,
@@ -24,9 +26,10 @@ export const CHAT_TOOLS: ChatTool[] = [
   getSimilar,
   getPersonCredits,
   getTitleDetails,
+  showRecommendations,
 ];
 
-// 10 recommendations max, one call each
+// enough for a round of parallel lookups
 export const MAX_CALLS_PER_ROUND = 10;
 const TOOL_TIMEOUT_MS = 8000;
 const MAX_ISSUES = 5;
@@ -94,8 +97,16 @@ async function runToolCall(
 
   const timeout = withTimeout(signal, TOOL_TIMEOUT_MS);
   try {
-    const output = await tool.run(args.value, { signal: timeout.signal });
-    return { callId: call.id, name: call.name, output, isError: false };
+    const value = await tool.run(args.value, { signal: timeout.signal });
+    return value instanceof CardsOutput
+      ? {
+          callId: call.id,
+          name: call.name,
+          output: value.output,
+          cards: value.cards,
+          isError: false,
+        }
+      : { callId: call.id, name: call.name, output: value, isError: false };
   } catch (error) {
     if (signal.aborted) {
       throw error;

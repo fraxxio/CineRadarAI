@@ -2,7 +2,6 @@ import { describe, expect, it, test, vi } from "vitest";
 import { buildSystemInstruction } from "./chatConfig";
 import { discoverTitles } from "./tools/discoverTitles";
 import { CHAT_TOOLS, toolParameters } from "./tools/registry";
-import { movieFilterSchema } from "@/modules/search";
 
 describe("buildSystemInstruction", () => {
   test("includes the given date as YYYY-MM-DD (UTC)", () => {
@@ -17,43 +16,22 @@ describe("buildSystemInstruction", () => {
     );
   });
 
-  test("contains the link formats the app relies on", () => {
+  // the cards replaced the markdown links
+  test("asks for no links", () => {
     const prompt = buildSystemInstruction();
-    expect(prompt).toContain("[Title](/search/movie/{id}) (YYYY)");
-    expect(prompt).toContain("[Title](/search/tv/{id}) (TV, YYYY)");
-    expect(prompt).toContain("(/search?query=Title&btn=movie&year=YYYY)");
-    expect(prompt).toContain("(/search?query=Title&btn=tv)");
+    expect(prompt).not.toContain("](/search");
+    expect(prompt).not.toContain("/search?query=");
   });
 
-  // catches prompt edits that would link to pages that don't exist
-  test("every exact title link points to a title page", () => {
-    const links = [
-      ...buildSystemInstruction().matchAll(/\]\((\/search\/[^)\s]+)\)/g),
-    ].map((m) => m[1]);
-
-    for (const link of links) {
-      expect(link).toMatch(/^\/search\/(movie|tv)\/(\d+|\{id\})$/);
-    }
-    // the example uses real TMDB ids: Fury and Inglourious Basterds
-    expect(links.filter((link) => /\d+$/.test(link))).toEqual([
-      "/search/movie/228150",
-      "/search/movie/16869",
-    ]);
-  });
-
-  // catches prompt edits that would produce links the search page can't parse
-  test("every fallback link matches the search page's contract", () => {
-    const links = [
-      ...buildSystemInstruction().matchAll(/\((\/search\?[^)\s]+)\)/g),
-    ].map((m) => m[1]);
-    expect(links).toHaveLength(2);
-
-    for (const link of links) {
-      const params = Object.fromEntries(new URL(link, "http://x").searchParams);
-      const parsed = movieFilterSchema.parse(params);
-      expect(parsed.query).toBeTruthy();
-      expect(["movie", "tv"]).toContain(parsed.btn);
-    }
+  test("the example passes the real TMDB ids of Fury and Inglourious Basterds", () => {
+    const example = buildSystemInstruction().split("# Example")[1];
+    const ids = [...example.matchAll(/show_recommendations\((.+)\)/g)].flatMap(
+      (m) =>
+        (JSON.parse(m[1]) as { items: { id: number }[] }).items.map(
+          (item) => item.id,
+        ),
+    );
+    expect(ids).toEqual([228150, 16869]);
   });
 });
 
@@ -75,13 +53,15 @@ describe("tool rules", () => {
     );
   });
 
-  test("allows search links only when tool calls failed", () => {
+  test("shows recommendations only as cards", () => {
+    expect(prompt).toContain("show_recommendations");
     expect(prompt).toContain(
-      "Only when tool calls failed (error results), you may recommend titles you know and link a search instead",
+      "Never write recommendations in text, as a list or in sentences.",
     );
-    expect(prompt).toContain(
-      "Never link a search for a title a tool searched for and didn't find: leave it out.",
-    );
+  });
+
+  test("recommends nothing from memory when the tools fail", () => {
+    expect(prompt).toContain("Don't recommend titles from memory.");
   });
 
   test("sets both years for this year's titles", () => {

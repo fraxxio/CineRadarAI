@@ -748,3 +748,42 @@ Template:
   `npx playwright test tests/e2e/chat.spec.ts` green (11 tests).
   `npm run test:e2e:variants` green too (chat-disabled and recaptcha), though
   that's a phase 4 check.
+
+### Phase 3: Server and prompt
+
+- **Status:** done
+- **Commits:** 6fc1674 feat(chat): add show_recommendations tool; feat(chat):
+  stream cards and prompt the model to show them (this commit)
+- **Deviations from the plan:**
+  - `DISPLAY_ONLY_TOOL_CHOICE` uses mode **`validated`**, not `auto`. The
+    live check failed with `400 allowed_tools mode must be either ANY or
+    VALIDATED`, though the Interactions API reference lists `auto`.
+    `validated` limits calls to the listed tools and still allows a text
+    answer. The live check confirmed that: the display-only request ended
+    `completed` with a text reply.
+  - Two commits instead of three. Registering the tool without the round loop
+    and the prompt would break `chatConfig.test.ts` and the app.
+  - `check-chat-tools.ts` now also prints each request's status
+    (`completed` = text, `requires_action` = tool call).
+  - `notShown` lists the "listed twice" entries first, then the failed
+    lookups in arg order.
+- **For the next phase:**
+  - The registry's `.strict()` applies only to the top-level args. Unknown
+    keys inside an item (e.g. a `title` the model adds) are dropped silently,
+    not rejected.
+  - A `show_recommendations` call in round `MAX_TOOL_ROUNDS` runs as tool
+    round 5, so the server log can show "Tool round 5: show_recommendations".
+  - `getTitle` details have no `adult` flag, so the tool checks only the
+    release date, not adult content.
+  - `npx prettier --check src/modules/chat` warns about
+    `ChatAssistant.test.tsx`, `messageParts.test.ts` and `genres.test.ts`.
+    The warnings were already there before this phase; I left those files
+    alone.
+  - The live check passed here. Re-run it if phase 4 changes the tool args
+    or the tool choice.
+- **Checks:** `npm run lint`, `npx tsc --noEmit`, `npm run typecheck:tests`
+  and `npm run test:run` (70 files, 910 tests) green.
+  `npx playwright test tests/e2e/chat.spec.ts` green (11 tests).
+  `npm run check:chat-tools` green with the real key: both requests accepted
+  (`auto` → completed, display only → completed). The first commit was
+  checked on its own (tsc, typecheck:tests, lint, chat module tests green).

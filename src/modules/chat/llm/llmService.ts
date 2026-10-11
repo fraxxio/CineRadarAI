@@ -8,6 +8,7 @@ import {
 } from "../chatConfig";
 import type { ChatStreamEvent, StoppedTurn } from "../protocol";
 import { CHAT_TOOLS, runToolCalls } from "../tools/registry";
+import { SHOW_RECOMMENDATIONS } from "../tools/showRecommendations";
 import { toFunctionResults, toGeminiTools } from "./geminiTools";
 import { readRound, type RoundOutcome } from "./readRound";
 
@@ -57,12 +58,29 @@ export function baseRequest() {
   };
 }
 
+// the last tool round may only show the cards; "validated" still lets the
+// model answer with text (Gemini rejects "auto" in allowed_tools)
+export const DISPLAY_ONLY_TOOL_CHOICE: Interactions.ToolChoiceConfig = {
+  allowed_tools: { mode: "validated", tools: [SHOW_RECOMMENDATIONS] },
+};
+
+type ToolChoice = Interactions.ToolChoiceConfig | Interactions.ToolChoiceType;
+
+// the request carrying the results of round `round`'s calls; once the cards
+// are shown, the model only writes text
+function nextToolChoice(round: number, shownCards: boolean): ToolChoice {
+  if (shownCards || round >= MAX_TOOL_ROUNDS) {
+    return "none";
+  }
+  return round + 1 >= MAX_TOOL_ROUNDS ? DISPLAY_ONLY_TOOL_CHOICE : "auto";
+}
+
 type GeminiStream = AsyncIterable<Interactions.InteractionSSEEvent>;
 
 type RoundRequest = {
   input: string | Interactions.Step[];
   previousInteractionId?: string;
-  toolChoice: Interactions.ToolChoiceType;
+  toolChoice: ToolChoice;
 };
 
 // throws if Gemini refuses to start (e.g. expired/unknown previous
@@ -126,8 +144,13 @@ async function* runTurn(
       yield { type: "error" };
       return;
     }
-    // tool_choice "none" was ignored
-    if (round >= MAX_TOOL_ROUNDS) {
+    // round MAX_TOOL_ROUNDS was sent DISPLAY_ONLY_TOOL_CHOICE, later rounds
+    // "none": the choice was ignored
+    if (
+      round > MAX_TOOL_ROUNDS ||
+      (round === MAX_TOOL_ROUNDS &&
+        outcome.calls.some((call) => call.name !== SHOW_RECOMMENDATIONS))
+    ) {
       console.error(`Gemini still wants tools after ${MAX_TOOL_ROUNDS} rounds`);
       yield { type: "error" };
       return;
@@ -145,11 +168,19 @@ async function* runTurn(
     for (const call of outcome.calls) {
       yield { type: "tool_end", id: call.id };
     }
+    // below the paused tool line
+    let shownCards = false;
+    for (const result of results) {
+      if (result.cards?.length) {
+        shownCards = true;
+        yield { type: "cards", items: result.cards };
+      }
+    }
 
     stream = await openRound({
       input: toFunctionResults(results),
       previousInteractionId: outcome.interactionId,
-      toolChoice: round + 1 >= MAX_TOOL_ROUNDS ? "none" : "auto",
+      toolChoice: nextToolChoice(round, shownCards),
     });
   }
 }

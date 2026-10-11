@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import { z } from "zod/v4";
 import { deferred } from "@test/helpers/deferred";
 import { hangUntilAborted, mockTmdb, tmdbUrls } from "@test/helpers/tmdb";
-import { MOVIE_GENRES, TV_GENRES, page, rawMovie } from "../testing/tmdbData";
+import {
+  MOVIE_GENRES,
+  TV_GENRES,
+  page,
+  rawDetails,
+  rawMovie,
+} from "../testing/tmdbData";
 import {
   CHAT_TOOLS,
   MAX_CALLS_PER_ROUND,
@@ -115,7 +121,7 @@ afterEach(() => {
 });
 
 describe("CHAT_TOOLS", () => {
-  test("the TMDB tools", () => {
+  test("the TMDB tools, then the display tool", () => {
     expect(CHAT_TOOLS.map((tool) => tool.name)).toEqual([
       "search_titles",
       "search_person",
@@ -125,6 +131,7 @@ describe("CHAT_TOOLS", () => {
       "get_similar",
       "get_person_credits",
       "get_title_details",
+      "show_recommendations",
     ]);
   });
 
@@ -479,6 +486,49 @@ describe("CHAT_TOOLS", () => {
           ],
           "type": "object",
         },
+        "show_recommendations": {
+          "properties": {
+            "items": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "description": "TMDB id of the title, exactly as a tool returned it in this conversation",
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer",
+                  },
+                  "reason": {
+                    "description": "One sentence on why it fits, in the user's language",
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string",
+                  },
+                  "type": {
+                    "description": "movie for films, tv for TV shows",
+                    "enum": [
+                      "movie",
+                      "tv",
+                    ],
+                    "type": "string",
+                  },
+                },
+                "required": [
+                  "type",
+                  "id",
+                  "reason",
+                ],
+                "type": "object",
+              },
+              "maxItems": 10,
+              "minItems": 1,
+              "type": "array",
+            },
+          },
+          "required": [
+            "items",
+          ],
+          "type": "object",
+        },
       }
     `);
   });
@@ -560,6 +610,7 @@ describe("statusFor", () => {
     ["get_similar", "Finding similar titles..."],
     ["get_person_credits", "Checking filmography..."],
     ["get_title_details", "Checking title details..."],
+    ["show_recommendations", "Preparing recommendations..."],
     // the model's mistake
     ["get_weather", "Checking TMDB database..."],
     ["", "Checking TMDB database..."],
@@ -629,6 +680,45 @@ describe("runToolCalls", () => {
     expect(tmdbUrls(spy, "/3/search/movie")[0].searchParams.get("query")).toBe(
       "Fury",
     );
+  });
+
+  test("a CardsOutput becomes the model output plus the cards", async () => {
+    mockTmdb({ "/3/movie/1": rawDetails(1) });
+
+    const [result] = await runToolCalls(
+      [
+        {
+          id: "c1",
+          name: "show_recommendations",
+          rawArgs: { items: [{ type: "movie", id: 1, reason: "Fits." }] },
+        },
+      ],
+      live(),
+    );
+
+    expect(result).toEqual({
+      callId: "c1",
+      name: "show_recommendations",
+      output: {
+        shown: [
+          { position: 1, id: 1, type: "movie", title: "Movie 1", year: 2014 },
+        ],
+        notShown: [],
+      },
+      cards: [expect.objectContaining({ id: 1, reason: "Fits." })],
+      isError: false,
+    });
+  });
+
+  test("a plain output has no cards key", async () => {
+    mockTmdb({ ...GENRES, "/3/search/movie": page([]) });
+
+    const [result] = await runToolCalls(
+      [search("c1", { query: "Fury", type: "movie" })],
+      live(),
+    );
+
+    expect(result).not.toHaveProperty("cards");
   });
 
   test("defaults are applied before the handler runs", async () => {
