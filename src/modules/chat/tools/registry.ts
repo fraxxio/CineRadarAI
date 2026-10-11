@@ -8,7 +8,10 @@ import { getTitleDetails } from "./getTitleDetails";
 import { getTrending } from "./getTrending";
 import { searchPerson } from "./searchPerson";
 import { searchTitles } from "./searchTitles";
-import { showRecommendations } from "./showRecommendations";
+import {
+  SHOW_RECOMMENDATIONS,
+  showRecommendations,
+} from "./showRecommendations";
 import {
   CardsOutput,
   ToolError,
@@ -57,15 +60,27 @@ export async function runToolCalls(
   calls: ToolCall[],
   signal: AbortSignal,
 ): Promise<ToolResult[]> {
+  // one list of cards per round: each item is a TMDB request, so more calls
+  // could flood TMDB
+  const firstShow = calls.findIndex(
+    (call) => call.name === SHOW_RECOMMENDATIONS,
+  );
   const settled = await Promise.allSettled(
-    calls.map((call, i) =>
-      i < MAX_CALLS_PER_ROUND
-        ? runToolCall(call, signal)
-        : rejected(
-            call,
-            `Too many calls in one round (max ${MAX_CALLS_PER_ROUND})`,
-          ),
-    ),
+    calls.map((call, i) => {
+      if (i >= MAX_CALLS_PER_ROUND) {
+        return rejected(
+          call,
+          `Too many calls in one round (max ${MAX_CALLS_PER_ROUND})`,
+        );
+      }
+      if (call.name === SHOW_RECOMMENDATIONS && i !== firstShow) {
+        return rejected(
+          call,
+          `Call ${SHOW_RECOMMENDATIONS} once per answer, with every title`,
+        );
+      }
+      return runToolCall(call, signal);
+    }),
   );
   // stopped turn: no results, the loop ends here
   if (signal.aborted) {

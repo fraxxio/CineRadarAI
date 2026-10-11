@@ -8,12 +8,22 @@ import { CardsOutput, defineTool } from "./types";
 
 export const SHOW_RECOMMENDATIONS = "show_recommendations";
 const MAX_ITEMS = 10;
+const MAX_TITLE_LENGTH = 300;
 const MAX_REASON_LENGTH = 200;
 
 type NotShown = { id: number; type: MediaType; reason: string };
 
 const isNotFound = (error: unknown) =>
   error instanceof TmdbError && error.status === 404;
+
+// anything but letters and digits, in any script; a literal /u regex fails
+// tsc's default ES5 target, the runtimes support it
+const NOT_LETTER_OR_DIGIT = new RegExp("[^\\p{L}\\p{N}]", "gu");
+
+// ignores case, accents, spaces and punctuation: "Ford v. Ferrari" matches
+// "Ford v Ferrari"
+const titleKey = (title: string) =>
+  title.normalize("NFKD").replace(NOT_LETTER_OR_DIGIT, "").toLowerCase();
 
 export const showRecommendations = defineTool({
   name: SHOW_RECOMMENDATIONS,
@@ -32,6 +42,11 @@ export const showRecommendations = defineTool({
             .describe(
               "TMDB id of the title, exactly as a tool returned it in this conversation",
             ),
+          title: z
+            .string()
+            .min(1)
+            .max(MAX_TITLE_LENGTH)
+            .describe("Title of that id, exactly as the tool returned it"),
           reason: z
             .string()
             .min(1)
@@ -77,6 +92,22 @@ export const showRecommendations = defineTool({
         return;
       }
       const title = lookup.value;
+      // like the lookup tools, which list no adult titles; the title isn't
+      // named, so the model can't repeat it
+      if (title.adult) {
+        leaveOut("not available");
+        return;
+      }
+      // a real id of another title would show a card that doesn't match the
+      // reason
+      const key = titleKey(item.title);
+      if (
+        key !== titleKey(title.title) &&
+        key !== titleKey(title.originalTitle)
+      ) {
+        leaveOut(`the id is "${title.title}", not "${item.title}"`);
+        return;
+      }
       if (!isReleased(title.releaseDate, asOf)) {
         leaveOut("not released yet");
         return;

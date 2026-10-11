@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { RecommendedTitle } from "./protocol";
 import { RecommendationCard } from "./RecommendationCard";
 
@@ -6,7 +7,9 @@ type RecommendationCardsProps = {
   signedIn: boolean;
 };
 
-export function RecommendationCards({
+// memo: every streamed delta re-renders the chat, and a cards part keeps its
+// items array, so the cards render once
+export const RecommendationCards = memo(function RecommendationCards({
   items,
   signedIn,
 }: RecommendationCardsProps) {
@@ -23,4 +26,4 @@ export function RecommendationCards({
       ))}
     </ul>
   );
-}
+});

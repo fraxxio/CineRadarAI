@@ -57,11 +57,11 @@ export function RecommendationCard({
       <div className="flex min-w-0 flex-col gap-1 p-3">
         {/* pr-10 and the min height keep the text below clear of the corner
             button, the rest of the card gets the full width */}
-        <h3 className="min-h-[2.5rem] break-words pr-10">
+        <h2 className="min-h-[2.5rem] break-words pr-10">
           <Link href={href} className="text-lg font-medium hover:underline">
             {title}
           </Link>
-        </h3>
+        </h2>
         <p className="text-sm text-secondary-text">
           {year ?? "Unknown year"} · {type === "movie" ? "Movie" : "TV show"}
         </p>

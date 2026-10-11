@@ -459,6 +459,8 @@ describe("POST /api/assistant", () => {
     const toolChoices = () =>
       create.mock.calls.map(([body]) => body.generation_config.tool_choice);
 
+    const FURY_DETAILS = rawDetails(228150, { title: "Fury" });
+    // the titles match FURY_DETAILS and rawDetails' default
     const showCall = (id: string, ...ids: number[]): Call => ({
       id,
       name: "show_recommendations",
@@ -466,6 +468,7 @@ describe("POST /api/assistant", () => {
         items: ids.map((titleId) => ({
           type: "movie",
           id: titleId,
+          title: titleId === 228150 ? "Fury" : `Movie ${titleId}`,
           reason: `Reason ${titleId}.`,
         })),
       },
@@ -826,7 +829,7 @@ describe("POST /api/assistant", () => {
       });
 
       test("show_recommendations in the last round runs, then tools are forbidden", async () => {
-        tmdb({ "/3/movie/228150": rawDetails(228150) });
+        tmdb({ "/3/movie/228150": FURY_DETAILS });
         alwaysTools({
           [LAST]: toolRound(`i${LAST}`, showCall("c-show", 228150)),
           [LAST + 1]: answerRound(`i${LAST + 1}`, "Enjoy."),
@@ -850,37 +853,109 @@ describe("POST /api/assistant", () => {
         ]);
       });
 
-      test("a lookup call in the last round ends with an error line", async () => {
+      const REFUSED = "No more tool calls in this answer: reply in text";
+
+      test("a lookup call in the last round isn't run; Gemini gets one more request, with none", async () => {
+        const spy = tmdb();
+        alwaysTools({ [LAST + 1]: answerRound(`i${LAST + 1}`, "Sorry.") });
+
+        const { events } = await readNdjson(await post({ content: "war" }));
+
+        expect(create).toHaveBeenCalledTimes(MAX_TOOL_ROUNDS + 2);
+        expect(toolChoices().slice(-2)).toEqual([
+          DISPLAY_ONLY_TOOL_CHOICE,
+          "none",
+        ]);
+        // the extra call isn't run
+        expect(tmdbUrls(spy, "/3/search/movie")).toHaveLength(MAX_TOOL_ROUNDS);
+        expect(results(LAST)).toEqual([
+          {
+            type: "function_result",
+            call_id: `c${LAST}`,
+            name: "search_titles",
+            result: REFUSED,
+            is_error: true,
+          },
+        ]);
+        expect(events.slice(-3)).toEqual([
+          ended(`c${LAST}`),
+          { type: "delta", text: "Sorry." },
+          { type: "done", interactionId: `i${LAST + 1}` },
+        ]);
+        expect(console.warn).toHaveBeenCalledWith(
+          `Gemini round ${MAX_TOOL_ROUNDS} ignored tool_choice ${JSON.stringify(DISPLAY_ONLY_TOOL_CHOICE)}: search_titles`,
+        );
+      });
+
+      test("show_recommendations with a lookup in the last round: neither runs, no cards", async () => {
+        const spy = tmdb({ "/3/movie/228150": FURY_DETAILS });
+        alwaysTools({
+          [LAST]: toolRound(
+            `i${LAST}`,
+            showCall("c-show", 228150),
+            searchCall("c-search"),
+          ),
+          [LAST + 1]: answerRound(`i${LAST + 1}`, "Sorry."),
+        });
+
+        const { events } = await readNdjson(await post({ content: "war" }));
+
+        expect(tmdbUrls(spy, "/3/movie/228150")).toHaveLength(0);
+        expect(tmdbUrls(spy, "/3/search/movie")).toHaveLength(MAX_TOOL_ROUNDS);
+        expect(results(LAST)).toEqual([
+          expect.objectContaining({ call_id: "c-show", is_error: true }),
+          expect.objectContaining({ call_id: "c-search", is_error: true }),
+        ]);
+        expect(events.some((e) => e.type === "cards")).toBe(false);
+        expect(events.at(-1)).toEqual({
+          type: "done",
+          interactionId: `i${LAST + 1}`,
+        });
+      });
+
+      test("ignoring the tool choice twice ends with an error line", async () => {
         const spy = tmdb();
         alwaysTools();
 
         const { events } = await readNdjson(await post({ content: "war" }));
 
-        expect(create).toHaveBeenCalledTimes(MAX_TOOL_ROUNDS + 1);
-        // the extra calls aren't run
+        expect(create).toHaveBeenCalledTimes(MAX_TOOL_ROUNDS + 2);
         expect(tmdbUrls(spy, "/3/search/movie")).toHaveLength(MAX_TOOL_ROUNDS);
         expect(events.at(-1)).toEqual({ type: "error" });
         expect(events.some((e) => e.type === "done")).toBe(false);
         expect(console.error).toHaveBeenCalledWith(
-          `Gemini still wants tools after ${MAX_TOOL_ROUNDS} rounds`,
+          `Gemini round ${MAX_TOOL_ROUNDS + 1} ignored tool_choice "none": search_titles`,
         );
       });
 
-      test("calls despite tool_choice none end with an error line", async () => {
-        const spy = tmdb({ "/3/movie/228150": rawDetails(228150) });
-        alwaysTools({
-          [LAST]: toolRound(`i${LAST}`, showCall("c-show", 228150)),
-          [LAST + 1]: toolRound(`i${LAST + 1}`, showCall("c-again", 228150)),
-        });
+      // seen with the real model: show_recommendations again after "none"
+      test("calls after the cards despite tool_choice none aren't run, the cards stay", async () => {
+        const spy = tmdb({ "/3/movie/228150": FURY_DETAILS });
+        rounds(
+          toolRound("i1", showCall("c-show", 228150)),
+          toolRound("i2", showCall("c-again", 228150), searchCall("c-search")),
+          answerRound("i3", "Enjoy."),
+        );
 
         const { events } = await readNdjson(await post({ content: "war" }));
 
-        expect(create).toHaveBeenCalledTimes(MAX_TOOL_ROUNDS + 2);
-        // the extra call isn't run
+        expect(toolChoices()).toEqual(["auto", "none", "none"]);
+        // only the first call looked the title up
         expect(tmdbUrls(spy, "/3/movie/228150")).toHaveLength(1);
-        expect(events.at(-1)).toEqual({ type: "error" });
-        expect(console.error).toHaveBeenCalledWith(
-          `Gemini still wants tools after ${MAX_TOOL_ROUNDS} rounds`,
+        expect(tmdbUrls(spy, "/3/search/movie")).toHaveLength(0);
+        expect(results(2)).toEqual([
+          expect.objectContaining({ call_id: "c-again", result: REFUSED }),
+          expect.objectContaining({ call_id: "c-search", result: REFUSED }),
+        ]);
+        expect(events.filter((e) => e.type === "cards")).toHaveLength(1);
+        expect(events.slice(-4)).toEqual([
+          ended("c-again"),
+          ended("c-search"),
+          { type: "delta", text: "Enjoy." },
+          { type: "done", interactionId: "i3" },
+        ]);
+        expect(console.warn).toHaveBeenCalledWith(
+          'Gemini round 1 ignored tool_choice "none": show_recommendations, search_titles',
         );
       });
     });

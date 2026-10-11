@@ -1,3 +1,4 @@
+import { memo } from "react";
 import Markdown, { Components } from "react-markdown";
 import Link from "next/link";
 import type { MessagePart } from "./protocol";
@@ -48,8 +49,13 @@ function MessagePartView({
   }
 }
 
-// text, tool lines and cards in the order they arrived
-export function MessageParts({ parts, signedIn }: MessagePartsProps) {
+// text, tool lines and cards in the order they arrived; memo: a finished
+// message keeps its parts, so streaming the next answer doesn't re-parse its
+// markdown
+export const MessageParts = memo(function MessageParts({
+  parts,
+  signedIn,
+}: MessagePartsProps) {
   return (
     <div className="flex flex-col gap-1">
       {parts.map((part, i) => (
@@ -58,4 +64,4 @@ export function MessageParts({ parts, signedIn }: MessagePartsProps) {
       ))}
     </div>
   );
-}
+});

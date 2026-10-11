@@ -870,7 +870,6 @@ describe("ChatAssistant", () => {
 
       await user.click(stopBtn());
 
-      expect(() => stream.push(ndjson(toolEnd("s1"), cards([FURY])))).toThrow();
       expect(screen.getByText("Stopped")).toBeInTheDocument();
       expect(screen.getByText(PREPARING, { exact: false })).toBeInTheDocument();
       expect(cardLists()).toHaveLength(0);

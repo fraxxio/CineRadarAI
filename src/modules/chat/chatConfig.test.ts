@@ -25,13 +25,19 @@ describe("buildSystemInstruction", () => {
 
   test("the example passes the real TMDB ids of Fury and Inglourious Basterds", () => {
     const example = buildSystemInstruction().split("# Example")[1];
-    const ids = [...example.matchAll(/show_recommendations\((.+)\)/g)].flatMap(
-      (m) =>
-        (JSON.parse(m[1]) as { items: { id: number }[] }).items.map(
-          (item) => item.id,
-        ),
+    const titles = [...example.matchAll(/([A-Z][\w ]*) \(movie (\d+)\)/g)].map(
+      (m) => [m[1], Number(m[2])],
     );
-    expect(ids).toEqual([228150, 16869]);
+    expect(titles).toEqual([
+      ["Fury", 228150],
+      ["Inglourious Basterds", 16869],
+    ]);
+  });
+
+  // a call written as code in the example gets copied into the answer text
+  test("the example describes the call instead of writing it as code", () => {
+    const example = buildSystemInstruction().split("# Example")[1];
+    expect(example).not.toMatch(/show_recommendations\(|"items"/);
   });
 });
 

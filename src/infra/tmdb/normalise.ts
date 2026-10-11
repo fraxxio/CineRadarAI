@@ -42,6 +42,8 @@ export type RawSummary = {
 };
 
 export type RawDetails = RawSummary & {
+  original_title?: string;
+  original_name?: string;
   status: string;
   overview: string;
   genres: { id: number; name: string }[];
@@ -153,6 +155,9 @@ export const toCrewCredit = (
 export function toDetails(type: MediaType, raw: RawDetails): TitleDetails {
   const base = {
     ...toSummary(type, raw),
+    originalTitle:
+      (type === "movie" ? raw.original_title : raw.original_name) ?? "",
+    adult: raw.adult ?? false,
     status: raw.status,
     overview: raw.overview,
     genres: raw.genres,

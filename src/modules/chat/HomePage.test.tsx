@@ -73,15 +73,18 @@ describe("Home page", () => {
     expect(inert).toContainElement(screen.getByPlaceholderText(PLACEHOLDER));
   });
 
+  // one case per ChatAssistant the page can render
   test.each([
-    [true, true],
-    [true, false],
-    [false, true],
-    [false, false],
+    [true, true, true],
+    [true, true, false],
+    [true, false, true],
+    [true, false, false],
+    [false, false, true],
+    [false, false, false],
   ])(
-    "chat enabled: %s, signed in: %s -> passes signedIn to the chat",
-    async (enabled, signedIn) => {
-      stubChat(enabled, false);
+    "chat enabled: %s, reCAPTCHA: %s, signed in: %s -> passes signedIn to the chat",
+    async (enabled, recaptcha, signedIn) => {
+      stubChat(enabled, recaptcha);
       if (signedIn) {
         vi.mocked(getSession).mockResolvedValueOnce(makeSession());
       }

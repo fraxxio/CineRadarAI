@@ -69,7 +69,7 @@ async function main(): Promise<number> {
     ["display only", DISPLAY_ONLY_TOOL_CHOICE],
   ];
   for (const [label, toolChoice] of checks) {
-    let status: string;
+    let outcome: string;
     try {
       const interaction = await ai.interactions.create({
         ...request,
@@ -88,7 +88,7 @@ async function main(): Promise<number> {
         );
         return 1;
       }
-      status = interaction.status;
+      outcome = interaction.status;
     } catch (error) {
       // Gemini's message names the rejected field; the key is redacted in
       // case a client error echoes the request
@@ -106,7 +106,7 @@ async function main(): Promise<number> {
       return 1;
     }
     // "completed": answered in text, "requires_action": called a tool
-    console.log(`Request with tool_choice ${label}: accepted (${status})`);
+    console.log(`Request with tool_choice ${label}: accepted (${outcome})`);
   }
 
   console.log(

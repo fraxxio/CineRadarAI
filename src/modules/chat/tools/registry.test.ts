@@ -503,6 +503,12 @@ describe("CHAT_TOOLS", () => {
                     "minLength": 1,
                     "type": "string",
                   },
+                  "title": {
+                    "description": "Title of that id, exactly as the tool returned it",
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string",
+                  },
                   "type": {
                     "description": "movie for films, tv for TV shows",
                     "enum": [
@@ -515,6 +521,7 @@ describe("CHAT_TOOLS", () => {
                 "required": [
                   "type",
                   "id",
+                  "title",
                   "reason",
                 ],
                 "type": "object",
@@ -690,7 +697,11 @@ describe("runToolCalls", () => {
         {
           id: "c1",
           name: "show_recommendations",
-          rawArgs: { items: [{ type: "movie", id: 1, reason: "Fits." }] },
+          rawArgs: {
+            items: [
+              { type: "movie", id: 1, title: "Movie 1", reason: "Fits." },
+            ],
+          },
         },
       ],
       live(),
@@ -936,6 +947,49 @@ describe("runToolCalls", () => {
           u.searchParams.get("query"),
         ),
       ).toEqual(Array.from({ length: 10 }, (_, i) => `Title ${i + 1}`));
+    });
+
+    test("only the first show_recommendations call of a round runs", async () => {
+      const spy = mockTmdb({
+        ...GENRES,
+        "/3/search/movie": page([]),
+        "/3/movie/1": rawDetails(1),
+        "/3/movie/2": rawDetails(2),
+      });
+      const show = (id: string, titleId: number): ToolCall => ({
+        id,
+        name: "show_recommendations",
+        rawArgs: {
+          items: [
+            {
+              type: "movie",
+              id: titleId,
+              title: `Movie ${titleId}`,
+              reason: "Fits.",
+            },
+          ],
+        },
+      });
+
+      const results = await runToolCalls(
+        [
+          search("c1", { query: "Fury", type: "movie" }),
+          show("c2", 1),
+          show("c3", 2),
+        ],
+        live(),
+      );
+
+      expect(results.map((r) => r.isError)).toEqual([false, false, true]);
+      expect(results[1].cards).toEqual([expect.objectContaining({ id: 1 })]);
+      expect(results[2]).toEqual(
+        errorResult(
+          "c3",
+          "show_recommendations",
+          "Call show_recommendations once per answer, with every title",
+        ),
+      );
+      expect(tmdbUrls(spy, "/3/movie/2")).toHaveLength(0);
     });
   });
 

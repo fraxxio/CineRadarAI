@@ -5,11 +5,13 @@ import { rawDetails } from "../testing/tmdbData";
 import { showRecommendations } from "./showRecommendations";
 import { CardsOutput } from "./types";
 
-type Item = { type: "movie" | "tv"; id: number; reason: string };
+type Item = { type: "movie" | "tv"; id: number; title: string; reason: string };
 
+// the title defaults to rawDetails' title of that type
 const item = (id: number, extra: Partial<Item> = {}): Item => ({
   type: "movie",
   id,
+  title: `${extra.type === "tv" ? "Show" : "Movie"} ${id}`,
   reason: `Reason ${id}.`,
   ...extra,
 });
@@ -52,8 +54,12 @@ describe("show_recommendations", () => {
     });
 
     const { cards, output } = await run([
-      item(1399, { type: "tv", reason: "Epic fantasy." }),
-      item(228150, { reason: "Tank-crew drama." }),
+      item(1399, {
+        type: "tv",
+        title: "Game of Thrones",
+        reason: "Epic fantasy.",
+      }),
+      item(228150, { title: "Fury", reason: "Tank-crew drama." }),
     ]);
 
     expect(cards).toEqual([
@@ -132,6 +138,74 @@ describe("show_recommendations", () => {
         { id: 3, type: "movie", reason: "not released yet" },
       ],
     });
+  });
+
+  test("an adult title goes to notShown without its name", async () => {
+    mockTmdb({
+      "/3/movie/1": rawDetails(1, { adult: false }),
+      "/3/movie/2": rawDetails(2, { adult: true }),
+    });
+
+    const { cards, output } = await run([item(1), item(2)]);
+
+    expect(cards.map((card) => card.id)).toEqual([1]);
+    expect(output).toEqual({
+      shown: [expect.objectContaining({ id: 1 })],
+      notShown: [{ id: 2, type: "movie", reason: "not available" }],
+    });
+  });
+
+  test("an id of another title goes to notShown, naming both titles", async () => {
+    mockTmdb({
+      "/3/movie/550": rawDetails(550, { title: "Fight Club" }),
+      "/3/movie/551": rawDetails(551, { title: "The Poseidon Adventure" }),
+    });
+
+    const { cards, output } = await run([
+      item(550, { title: "Fight Club" }),
+      item(551, { title: "Fight Club" }),
+    ]);
+
+    expect(cards.map((card) => card.id)).toEqual([550]);
+    expect(output).toMatchObject({
+      notShown: [
+        {
+          id: 551,
+          type: "movie",
+          reason: 'the id is "The Poseidon Adventure", not "Fight Club"',
+        },
+      ],
+    });
+  });
+
+  test("the title matches ignoring case, accents, spaces and punctuation, or by its original title", async () => {
+    mockTmdb({
+      "/3/movie/1": rawDetails(1, { title: "Ford v Ferrari" }),
+      "/3/movie/2": rawDetails(2, { title: "Amélie" }),
+      "/3/movie/3": rawDetails(3, {
+        title: "Spirited Away",
+        original_title: "千と千尋の神隠し",
+      }),
+      "/3/tv/4": rawDetails(4, {
+        name: "Money Heist",
+        original_name: "La casa de papel",
+      }),
+    });
+
+    const { cards, output } = await run([
+      item(1, { title: "ford v. ferrari" }),
+      item(2, { title: "Amelie" }),
+      item(3, { title: "千と千尋の神隠し" }),
+      item(4, { type: "tv", title: "La Casa de Papel" }),
+    ]);
+
+    expect(cards.map((card) => [card.id, card.title])).toEqual([
+      [1, "Ford v Ferrari"],
+      [2, "Amélie"],
+      [3, "Spirited Away"],
+      [4, "Money Heist"],
+    ]);
+    expect(output).toMatchObject({ notShown: [] });
   });
 
   test("a repeated type and id is looked up once and reported as listed twice", async () => {
@@ -227,7 +301,7 @@ describe("show_recommendations", () => {
     await expect(running).rejects.toBe(controller.signal.reason);
   });
 
-  test("args: 1 to 10 items, each with a positive integer id and a short reason", () => {
+  test("args: 1 to 10 items, each with a positive integer id, a title and a short reason", () => {
     const parse = (items: unknown) =>
       showRecommendations.args.safeParse({ items }).success;
     const items = (n: number) =>
@@ -239,6 +313,10 @@ describe("show_recommendations", () => {
     expect(parse(items(11))).toBe(false);
     expect(parse([item(0)])).toBe(false);
     expect(parse([item(1.5)])).toBe(false);
+    expect(parse([item(1, { title: "" })])).toBe(false);
+    expect(parse([{ type: "movie", id: 1, reason: "Fits." }])).toBe(false);
+    expect(parse([item(1, { title: "a".repeat(300) })])).toBe(true);
+    expect(parse([item(1, { title: "a".repeat(301) })])).toBe(false);
     expect(parse([item(1, { reason: "" })])).toBe(false);
     expect(parse([item(1, { reason: "a".repeat(200) })])).toBe(true);
     expect(parse([item(1, { reason: "a".repeat(201) })])).toBe(false);

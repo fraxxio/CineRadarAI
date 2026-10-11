@@ -9,6 +9,7 @@ import {
 import type { ChatStreamEvent, StoppedTurn } from "../protocol";
 import { CHAT_TOOLS, runToolCalls } from "../tools/registry";
 import { SHOW_RECOMMENDATIONS } from "../tools/showRecommendations";
+import type { ToolCall, ToolResult } from "../tools/types";
 import { toFunctionResults, toGeminiTools } from "./geminiTools";
 import { readRound, type RoundOutcome } from "./readRound";
 
@@ -66,6 +67,26 @@ export const DISPLAY_ONLY_TOOL_CHOICE: Interactions.ToolChoiceConfig = {
 
 type ToolChoice = Interactions.ToolChoiceConfig | Interactions.ToolChoiceType;
 
+const FIRST_TOOL_CHOICE: ToolChoice = "auto";
+
+// the tools a request sent with this choice may call, null for any
+function allowedTools(choice: ToolChoice): string[] | null {
+  if (choice === "none") {
+    return [];
+  }
+  return typeof choice === "string"
+    ? null
+    : choice.allowed_tools?.tools ?? null;
+}
+
+// the model's answer to a call it wasn't allowed to make
+const refused = (call: ToolCall): ToolResult => ({
+  callId: call.id,
+  name: call.name,
+  output: "No more tool calls in this answer: reply in text",
+  isError: true,
+});
+
 // the request carrying the results of round `round`'s calls; once the cards
 // are shown, the model only writes text
 function nextToolChoice(round: number, shownCards: boolean): ToolChoice {
@@ -114,7 +135,7 @@ export async function streamChatReply({
   const first = await openRound({
     input: buildChatInput(prompt, stoppedTurns),
     previousInteractionId,
-    toolChoice: "auto",
+    toolChoice: FIRST_TOOL_CHOICE,
   });
   return runTurn(first, openRound, signal);
 }
@@ -126,6 +147,9 @@ async function* runTurn(
   signal: AbortSignal,
 ): AsyncGenerator<ChatStreamEvent> {
   let stream = first;
+  // the choice the request of the current round was sent with
+  let toolChoice = FIRST_TOOL_CHOICE;
+  let ignoredChoice = false;
 
   // round 0 answers the prompt, round n the results of tool round n
   for (let round = 0; ; round++) {
@@ -144,24 +168,33 @@ async function* runTurn(
       yield { type: "error" };
       return;
     }
-    // round MAX_TOOL_ROUNDS was sent DISPLAY_ONLY_TOOL_CHOICE, later rounds
-    // "none": the choice was ignored
-    if (
-      round > MAX_TOOL_ROUNDS ||
-      (round === MAX_TOOL_ROUNDS &&
-        outcome.calls.some((call) => call.name !== SHOW_RECOMMENDATIONS))
-    ) {
-      console.error(`Gemini still wants tools after ${MAX_TOOL_ROUNDS} rounds`);
-      yield { type: "error" };
-      return;
+    const names = outcome.calls.map((call) => call.name).join(", ");
+    // Gemini can ignore the tool choice (e.g. call show_recommendations again
+    // after "none"): the round's calls don't run, and it gets one more
+    // request, with "none", to answer in text; the cards shown stay
+    const allowed = allowedTools(toolChoice);
+    const ignored =
+      allowed !== null &&
+      outcome.calls.some((call) => !allowed.includes(call.name));
+    if (ignored) {
+      const message = `Gemini round ${round} ignored tool_choice ${JSON.stringify(toolChoice)}: ${names}`;
+      if (ignoredChoice) {
+        console.error(message);
+        yield { type: "error" };
+        return;
+      }
+      console.warn(message);
+      ignoredChoice = true;
     }
 
     // throws on abort: the turn ends without another request
     const started = Date.now();
-    const results = await runToolCalls(outcome.calls, signal);
+    const results = ignored
+      ? outcome.calls.map(refused)
+      : await runToolCalls(outcome.calls, signal);
     const errors = results.filter((result) => result.isError).length;
     console.info(
-      `Tool round ${round + 1}: ${outcome.calls.map((call) => call.name).join(", ")} (${Date.now() - started} ms, ${errors} errors)`,
+      `Tool round ${round + 1}: ${names} (${Date.now() - started} ms, ${errors} errors)`,
     );
     // every started call ends, also the rejected ones: the round settles
     // together, so all its lines stop at once
@@ -177,10 +210,11 @@ async function* runTurn(
       }
     }
 
+    toolChoice = ignored ? "none" : nextToolChoice(round, shownCards);
     stream = await openRound({
       input: toFunctionResults(results),
       previousInteractionId: outcome.interactionId,
-      toolChoice: nextToolChoice(round, shownCards),
+      toolChoice,
     });
   }
 }
