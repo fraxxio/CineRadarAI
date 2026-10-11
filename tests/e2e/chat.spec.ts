@@ -1,23 +1,44 @@
 import type { Locator, Page } from "@playwright/test";
 import { deferred } from "../helpers/deferred";
 import { expect, test } from "./fixtures";
-import { answer, openAssistantStream, stubAssistant } from "./helpers/chat";
+import {
+  answer,
+  cardsAnswer,
+  openAssistantStream,
+  showCards,
+  stubAssistant,
+  title,
+} from "./helpers/chat";
+import { getMovies } from "./helpers/db";
 
-const FURY = "Here you go:\n1. [Fury](/search/movie/228150) (2014) — tanks.";
+const FURY = title(228150, {
+  title: "Fury",
+  year: 2014,
+  rating: 7.5,
+  genres: ["War", "Drama", "Action"],
+  reason: "A tense WWII tank-crew drama.",
+});
 // the TMDB mock has a fixture for movie 550
-const FIGHT_CLUB =
-  "Here you go:\n1. [Fight Club](/search/movie/550) (1999) — soap.";
-// a title the tools couldn't check
-const FALLBACK =
-  "Here you go:\n1. [Fury](/search?query=Fury&btn=movie&year=2014) (2014) — tanks.";
+const FIGHT_CLUB = title(550, {
+  title: "Fight Club",
+  year: 1999,
+  rating: 8.4,
+  genres: ["Drama"],
+});
+const INTRO = "Here are some war films.";
+const WAR = cardsAnswer("i1", INTRO, [FURY]);
+const PREPARING = "Preparing recommendations...";
 const SEARCHING = "Searching TMDB database...";
 const BROWSING = "Browsing TMDB database...";
 const DETAILS = "Checking title details...";
 
 const promptInput = (page: Page) => page.getByPlaceholder(/Suggest me movies/);
 
-// scoped: the navbar is a list too
-const answerItem = (page: Page) => page.getByRole("main").getByRole("listitem");
+const cards = (page: Page) =>
+  page.getByRole("list", { name: "Recommendations" }).getByRole("listitem");
+
+const card = (page: Page, name: string) =>
+  cards(page).filter({ has: page.getByRole("link", { name, exact: true }) });
 
 async function send(page: Page, text: string) {
   await promptInput(page).fill(text);
@@ -48,26 +69,57 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
-test("a full turn renders the markdown answer", async ({ page }) => {
+test("a full turn shows the recommendations as cards with TMDB data", async ({
+  page,
+}) => {
   const calls = await stubAssistant(page, () => ({
-    events: answer("i1", FURY),
+    events: cardsAnswer("i1", INTRO, [FURY, FIGHT_CLUB]),
   }));
 
   await send(page, "war movies with Brad Pitt");
 
-  await expect(answerItem(page)).toContainText("Fury");
+  await expect(cards(page).getByRole("heading")).toHaveText([
+    "Fury",
+    "Fight Club",
+  ]);
+  const fury = card(page, "Fury");
+  await expect(fury.getByAltText("Fury")).toHaveAttribute(
+    "src",
+    "https://image.tmdb.org/t/p/w342/poster-228150.jpg",
+  );
+  await expect(fury).toContainText("2014 · Movie");
+  await expect(fury).toContainText("7.5 / 10");
+  await expect(fury).toContainText("War · Drama · Action");
+  await expect(fury).toContainText("A tense WWII tank-crew drama.");
+  await expect(card(page, "Fight Club")).toContainText("8.4 / 10");
+  // intro, the tool line, then the cards
+  await expectAbove(page.getByText(INTRO), toolLine(page, PREPARING));
+  await expectAbove(toolLine(page, PREPARING), cards(page).first());
   await expect(page.getByText("war movies with Brad Pitt")).toBeVisible();
   expect(calls).toEqual([{ content: "war movies with Brad Pitt" }]);
+});
+
+test("a card's title opens the title page", async ({ page }) => {
+  await stubAssistant(page, () => ({
+    events: cardsAnswer("i1", INTRO, [FIGHT_CLUB]),
+  }));
+  await send(page, "movies about fight clubs");
+
+  await card(page, "Fight Club")
+    .getByRole("link", { name: "Fight Club" })
+    .click();
+
+  await expect(page).toHaveURL(/\/search\/movie\/550$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Fight Club" }),
+  ).toBeVisible();
 });
 
 test("shows the loader and disables the input while waiting", async ({
   page,
 }) => {
   const hold = deferred<void>();
-  await stubAssistant(page, () => ({
-    events: answer("i1", FURY),
-    hold: hold.promise,
-  }));
+  await stubAssistant(page, () => ({ events: WAR, hold: hold.promise }));
 
   await send(page, "war movies");
 
@@ -77,32 +129,9 @@ test("shows the loader and disables the input while waiting", async ({
 
   hold.resolve();
 
-  await expect(answerItem(page)).toContainText("Fury");
+  await expect(card(page, "Fury")).toBeVisible();
   await expect(page.getByRole("status")).toHaveCount(0);
   await expect(promptInput(page)).toBeEnabled();
-});
-
-test("a recommendation link opens the title page", async ({ page }) => {
-  await stubAssistant(page, () => ({ events: answer("i1", FIGHT_CLUB) }));
-  await send(page, "movies about fight clubs");
-
-  await page.getByRole("link", { name: "Fight Club" }).click();
-
-  await expect(page).toHaveURL(/\/search\/movie\/550$/);
-  await expect(
-    page.getByRole("heading", { level: 1, name: "Fight Club" }),
-  ).toBeVisible();
-});
-
-test("a fallback link opens the prefilled search", async ({ page }) => {
-  await stubAssistant(page, () => ({ events: answer("i1", FALLBACK) }));
-  await send(page, "war movies");
-
-  await page.getByRole("link", { name: "Fury" }).click();
-
-  await expect(page).toHaveURL(/\/search\?query=Fury&btn=movie&year=2014/);
-  await expect(page.getByPlaceholder("Type keywords...")).toHaveValue("Fury");
-  await expect(page.locator('select[name="year"]')).toHaveValue("2014");
 });
 
 test("a tool line shows a spinner and a timer, and stays in the answer after it ends", async ({
@@ -144,19 +173,19 @@ test("a tool line shows a spinner and a timer, and stays in the answer after it 
   await page.clock.runFor(5000);
   await expect(line).toHaveText(`${SEARCHING} - 2.4s`);
 
-  await stream.send(
-    { type: "delta", text: FIGHT_CLUB },
-    { type: "done", interactionId: "i1" },
-  );
+  await stream.send(...showCards([FIGHT_CLUB]), {
+    type: "done",
+    interactionId: "i1",
+  });
   await stream.close();
 
-  await expect(answerItem(page)).toContainText("Fight Club");
+  await expect(card(page, "Fight Club")).toBeVisible();
   await expect(status).toHaveCount(0);
   await expect(promptInput(page)).toBeEnabled();
-  // text before the tool, the tool line, then the answer
+  // text before the tool, the tool line, then the cards
   await expect(line).toHaveText(`${SEARCHING} - 2.4s`);
   await expectAbove(before, line);
-  await expectAbove(line, answerItem(page));
+  await expectAbove(line, card(page, "Fight Club"));
 });
 
 test("repeated calls of one tool share a line with a counter; a different tool gets a new line", async ({
@@ -189,27 +218,27 @@ test("repeated calls of one tool share a line with a counter; a different tool g
 
   await page.clock.runFor(14_000);
   await stream.send(toolEnd("c1"), toolEnd("c2"), toolEnd("c3"));
-  await stream.send(
-    { type: "delta", text: FIGHT_CLUB },
-    { type: "done", interactionId: "i1" },
-  );
+  await stream.send(...showCards([FIGHT_CLUB]), {
+    type: "done",
+    interactionId: "i1",
+  });
   await stream.close();
 
-  await expect(answerItem(page)).toContainText("Fight Club");
+  await expect(card(page, "Fight Club")).toBeVisible();
   await expect(page.getByRole("status")).toHaveCount(0);
   await expect(toolLine(page, BROWSING)).toHaveText(`${BROWSING} - 2.1s`);
   await expect(details).toHaveText(`${DETAILS} (3x) - 14s`);
   await expectAbove(toolLine(page, BROWSING), details);
-  await expectAbove(details, answerItem(page));
+  await expectAbove(details, card(page, "Fight Club"));
 });
 
 test("a follow-up sends the previous interaction id", async ({ page }) => {
   const calls = await stubAssistant(page, (_body, n) => ({
-    events: answer(`i${n}`, n === 1 ? FURY : "Also try **Platoon**."),
+    events: n === 1 ? WAR : answer(`i${n}`, "Also try **Platoon**."),
   }));
 
   await send(page, "war movies");
-  await expect(answerItem(page)).toContainText("Fury");
+  await expect(card(page, "Fury")).toBeVisible();
   await send(page, "something older");
   await expect(page.getByText("Platoon")).toBeVisible();
 
@@ -236,7 +265,7 @@ test("Stop keeps the turn and shares it with the model", async ({ page }) => {
   const hold = deferred<void>();
   const calls = await stubAssistant(page, (_body, n) =>
     n === 1
-      ? { events: answer("i1", FURY), hold: hold.promise }
+      ? { events: WAR, hold: hold.promise }
       : { events: answer("i2", "Also try **Platoon**.") },
   );
 
@@ -264,7 +293,7 @@ test("two stops in a row are both shared with the model", async ({ page }) => {
   const holds = [deferred<void>(), deferred<void>()];
   const calls = await stubAssistant(page, (_body, n) =>
     n <= 2
-      ? { events: answer(`i${n}`, FURY), hold: holds[n - 1].promise }
+      ? { events: WAR, hold: holds[n - 1].promise }
       : { events: answer(`i${n}`, "Also try **Platoon**.") },
   );
 
@@ -287,18 +316,136 @@ test("two stops in a row are both shared with the model", async ({ page }) => {
   });
 });
 
+test("Stop after the cards keeps them and shares them with the model", async ({
+  page,
+}) => {
+  const stream = await openAssistantStream(page);
+  await page.goto("/");
+  await send(page, "war movies");
+  await stream.send(
+    { type: "start", interactionId: "i1" },
+    { type: "delta", text: INTRO },
+    ...showCards([FURY, FIGHT_CLUB]),
+  );
+  await expect(cards(page)).toHaveCount(2);
+  // the model is still writing its closing line
+  await expect(page.getByRole("status")).toBeVisible();
+
+  await page.getByRole("button", { name: "Stop" }).click();
+
+  await expect(page.getByText("Stopped")).toBeVisible();
+  await expect(cards(page).getByRole("heading")).toHaveText([
+    "Fury",
+    "Fight Club",
+  ]);
+  await send(page, "more like the first one");
+  await expect.poll(() => stream.calls()).toHaveLength(2);
+  expect((await stream.calls())[1]).toEqual({
+    content: "more like the first one",
+    stoppedTurns: [
+      {
+        prompt: "war movies",
+        partialText: `${INTRO}\n\n[Shown as cards: 1. Fury (movie 228150, 2014); 2. Fight Club (movie 550, 1999)]`,
+      },
+    ],
+  });
+});
+
+test("Add to list on a card saves the title to the list", async ({
+  page,
+  loginAs,
+  db,
+}) => {
+  const user = await loginAs();
+  await page.goto("/");
+  await stubAssistant(page, () => ({ events: WAR }));
+  await send(page, "war movies");
+
+  await card(page, "Fury").getByRole("button", { name: "Add to list" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Status:").selectOption("Planning to watch");
+  await dialog.getByRole("button", { name: "Add to list" }).click();
+
+  await expect(page.getByText("Fury was added to the list.")).toBeVisible();
+  expect(await getMovies(db, user.id)).toEqual([
+    expect.objectContaining({
+      movieId: 228150,
+      name: "Fury",
+      image: "/backdrop-228150.jpg",
+      status: "Planning to watch",
+      type: "movie",
+    }),
+  ]);
+});
+
+test("Add to list on a card asks a signed-out user to log in", async ({
+  page,
+}) => {
+  await stubAssistant(page, () => ({ events: WAR }));
+  await send(page, "war movies");
+
+  await card(page, "Fury").getByRole("button", { name: "Add to list" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Status:").selectOption("Planning to watch");
+  await dialog.getByRole("button", { name: "Add to list" }).click();
+
+  await expect(page.getByText("You need to be logged in!")).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+});
+
+for (const width of [375, 320]) {
+  test.describe(`at ${width} px`, () => {
+    test.use({ viewport: { width, height: 800 } });
+
+    test("cards fit the screen", async ({ page }) => {
+      const long = title(1, {
+        title: "An Extraordinarily Long Title That Has To Wrap Somewhere",
+        reason: `Unbreakable: ${"x".repeat(120)}`,
+      });
+      await stubAssistant(page, () => ({
+        events: cardsAnswer("i1", INTRO, [FURY, long]),
+      }));
+      await send(page, "war movies");
+
+      await expect(cards(page)).toHaveCount(2);
+      for (const item of await cards(page).all()) {
+        const add = item.getByRole("button", { name: "Add to list" });
+        await add.scrollIntoViewIfNeeded();
+        await expect(add).toBeInViewport({ ratio: 1 });
+        // the title wraps left of the corner button
+        const titleBox = (await item.getByRole("heading").boundingBox())!;
+        const linkBox = (await item.getByRole("link").boundingBox())!;
+        const addBox = (await add.boundingBox())!;
+        expect(linkBox.x + linkBox.width).toBeLessThanOrEqual(addBox.x);
+        expect(titleBox.y + titleBox.height).toBeGreaterThanOrEqual(
+          addBox.y + addBox.height,
+        );
+      }
+      // each message scrolls on its own, so check those too
+      const overflowing = await page
+        .locator("html, main .overflow-auto, main .overflow-y-auto")
+        .evaluateAll((elements) =>
+          elements
+            .filter((e) => e.scrollWidth > e.clientWidth)
+            .map((e) => e.className),
+        );
+      expect(overflowing).toEqual([]);
+    });
+  });
+}
+
 test("New chat clears the conversation", async ({ page }) => {
   const calls = await stubAssistant(page, (_body, n) => ({
-    events: answer(`i${n}`, n === 1 ? FURY : "Also try **Platoon**."),
+    events: n === 1 ? WAR : answer(`i${n}`, "Also try **Platoon**."),
   }));
   const newChat = page.getByRole("button", { name: "New chat" });
   await expect(newChat).toBeDisabled();
 
   await send(page, "war movies");
-  await expect(answerItem(page)).toContainText("Fury");
+  await expect(card(page, "Fury")).toBeVisible();
   await newChat.click();
 
-  await expect(answerItem(page)).toHaveCount(0);
+  await expect(cards(page)).toHaveCount(0);
   await expect(page.getByText("war movies")).toHaveCount(0);
   await expect(newChat).toBeDisabled();
 

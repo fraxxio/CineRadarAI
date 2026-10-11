@@ -787,3 +787,61 @@ Template:
   `npm run check:chat-tools` green with the real key: both requests accepted
   (`auto` → completed, display only → completed). The first commit was
   checked on its own (tsc, typecheck:tests, lint, chat module tests green).
+
+### Phase 4: E2E, mobile and manual checks
+
+- **Status:** done with gaps (the real-model manual checks couldn't run, see
+  below)
+- **Commits:** test(e2e): cover recommendation cards on desktop and mobile
+  (this commit)
+- **Deviations from the plan:**
+  - **Card layout fix** (`RecommendationCard.tsx`). The new mobile test found
+    two bugs. At 320 and 375 px a long title ran under the corner button (only
+    the reason had `break-words`). Also, `pr-14` on the whole text column left
+    the details about 75 px wide at 320 px. The button clearance is now on the
+    `h3` only (`pr-10`, plus `min-h-[2.5rem]` so a one-line title still pushes
+    the year line below the 42 px button), and the `h3` has `break-words`.
+    Both new assertions were checked to fail against the old card.
+  - The mobile test checks every `overflow-auto` / `overflow-y-auto` in
+    `main` and `html`, not only the messages container. `AssistantMessage`
+    wraps the parts in an `overflow-auto` div, so a card that is too wide
+    scrolls inside it and the outer container still passes.
+  - The mobile test doesn't require a whole card to be in the viewport. At
+    320 px a card with a long reason is taller than the chat's visible area.
+    It checks that each "Add to list" button is fully visible and that the
+    title link ends left of it.
+  - `openAssistantStream` now records request bodies (`calls()`).
+    `page.route` can't see requests that the init script answers, and the
+    stop-after-cards test needs the next request's body.
+  - The poster is found by alt text: it's inside the `aria-hidden` link, so
+    `getByRole("img")` doesn't find it.
+  - The `AssistantMessage` markdown-link tests now use
+    `/search/movie/228150` instead of the removed `/search?query=` fallback.
+    The link handling in `MessageParts` stays, as decided.
+- **Manual checks:**
+  - `npm run check:chat-tools`: passed (auto → completed, display only →
+    completed).
+  - "war movies with Brad Pitt": **didn't run as intended.** TMDB answers
+    401 to the `TMDB_ACCESS_TOKEN` in the local `.env`. The whole app is
+    affected (`/search/movie/550` logs 401s too), not just the chat. What the
+    run did show is the TMDB-down path: `search_person` failed, and the model
+    answered "I can't look titles up right now. Please try again later." with
+    no titles and no cards, as the prompt asks.
+  - "more like the second one", "only TV shows" / "from the 90s", stop after
+    the cards + "more like the first one", "something fun", off-topic:
+    **not run** (same reason).
+  - Phone widths: tested with stubbed data, not real posters. The e2e covers
+    320 and 375 px, and I checked screenshots at 320 and 414 px. The dialog
+    save is covered at desktop width only. Not run with a real model on a
+    phone width.
+  - The prompt wasn't tuned: there were no real-model answers to tune it
+    against.
+- **For the next phase:** to close the gaps, renew the TMDB token in `.env`
+  and run the manual checks above. Phase 4 didn't change the tool args, the
+  tool choice or the prompt, so `check:chat-tools` doesn't need to run again.
+- **Checks:** `npm run lint`, `npx tsc --noEmit`, `npm run typecheck:tests`
+  and `npm run test:run` (70 files, 910 tests) green. `npx playwright test`
+  green (62 tests, of which chat.spec.ts 15). `npm run test:e2e:variants`
+  green (chat-disabled 2, recaptcha 2). The cleanup searches
+  (`lastPartIsFinishedTool`, `/search?query=`, `Markdown list|numbered`)
+  find only the prompt test that pins the absence of `/search?query=`.

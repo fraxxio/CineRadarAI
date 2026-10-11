@@ -52,7 +52,7 @@ describe("AssistantMessage", () => {
 
   test("renders markdown lists, bold text and links", () => {
     const { container } = assistant(
-      "1. **Fury** — [Fury](/search?query=Fury&btn=movie&year=2014)\n2. Two",
+      "1. **Fury** — [Fury](/search/movie/228150)\n2. Two",
     );
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
     expect(container.querySelector("strong")).toHaveTextContent("Fury");
@@ -60,12 +60,9 @@ describe("AssistantMessage", () => {
   });
 
   test("internal links open in the same tab", () => {
-    assistant("[Fury](/search?query=Fury&btn=movie&year=2014)");
+    assistant("[Fury](/search/movie/228150)");
     const link = screen.getByRole("link", { name: "Fury" });
-    expect(link).toHaveAttribute(
-      "href",
-      "/search?query=Fury&btn=movie&year=2014",
-    );
+    expect(link).toHaveAttribute("href", "/search/movie/228150");
     expect(link).not.toHaveAttribute("target");
   });
 

@@ -52,10 +52,12 @@ export function RecommendationCard({
           />
         )}
       </Link>
-      {/* pr-14 keeps the text clear of the corner button; min-w-0 and
-          break-words keep long words from widening the chat on mobile */}
-      <div className="flex min-w-0 flex-col gap-1 p-3 pr-14">
-        <h3>
+      {/* min-w-0 and break-words keep long words from widening the chat on
+          mobile */}
+      <div className="flex min-w-0 flex-col gap-1 p-3">
+        {/* pr-10 and the min height keep the text below clear of the corner
+            button, the rest of the card gets the full width */}
+        <h3 className="min-h-[2.5rem] break-words pr-10">
           <Link href={href} className="text-lg font-medium hover:underline">
             {title}
           </Link>
