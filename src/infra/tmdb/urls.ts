@@ -2,7 +2,7 @@ import type { MediaType, TitleId } from "./types";
 
 export const TMDB_SITE_URL = "https://www.themoviedb.org";
 
-export type ImageSize = "w342" | "w500" | "w780" | "w1280";
+export type ImageSize = "w92" | "w342" | "w500" | "w780" | "w1280";
 
 // null when TMDB has no image, so callers can show a placeholder
 export function tmdbImageUrl(

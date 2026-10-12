@@ -6,6 +6,7 @@ export { ListLengthSkeleton } from "./skeletons/ListLengthSkeleton";
 export { ListRowsSkeleton } from "./skeletons/ListRowsSkeleton";
 export {
   LIST_STATUSES,
+  isListStatus,
   type EntryKey,
   type ListEntry,
   type ListStatus,

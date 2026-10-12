@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
+import { useRouter } from "next/navigation";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
@@ -10,7 +11,14 @@ import {
   MAX_STOPPED_TURNS,
 } from "./chatLimits";
 import { loadChat, saveChat, type ChatSnapshot } from "./chatStorage";
-import type { ChatMessage, RecommendedTitle, StoppedTurn } from "./protocol";
+import type {
+  ChatMessage,
+  ListSavedPart,
+  PendingSave,
+  RecommendedTitle,
+  StoppedTurn,
+} from "./protocol";
+import { listSavedPart, pendingSave, previousEntry } from "./testing/listParts";
 import { controlledStream, ndjson, streamResponse } from "./testing/stream";
 
 const GREETING = "Hi! What would you like to watch?";
@@ -61,14 +69,26 @@ const DUNKIRK = card(374720, { title: "Dunkirk", year: 2017 });
 const answer = (id: string, text: string) =>
   streamResponse([ndjson(start(id), delta(text), done(id))]);
 
-// queues replies per URL and records every request body
+// queues replies per URL and records every request
 function routeFetch(routes: Record<string, Response[]>) {
-  const calls: { url: string; body: Record<string, unknown> }[] = [];
+  const calls: {
+    url: string;
+    method?: string;
+    headers: Headers;
+    body: Record<string, unknown>;
+  }[] = [];
   const spy = vi
     .spyOn(globalThis, "fetch")
     .mockImplementation(async (input, init) => {
       const url = String(input);
-      calls.push({ url, body: JSON.parse(String(init?.body)) });
+      calls.push({
+        url,
+        method: init?.method,
+        headers: new Headers(init?.headers),
+        // a DELETE has no body
+        body:
+          init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+      });
       const reply = routes[url]?.shift();
       if (!reply) throw new Error(`unexpected fetch: ${url}`);
       return reply;
@@ -945,6 +965,385 @@ describe("ChatAssistant", () => {
         ]),
       );
       expect(toast.warning).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("list saves", () => {
+    const SAVING = "Saving to your list...";
+    const saveStart = (id: string) => ({
+      type: "tool_start",
+      id,
+      name: "save_to_list",
+      text: SAVING,
+    });
+    const saved = ({ entry, previous }: ListSavedPart) => ({
+      type: "list_saved",
+      entry,
+      previous,
+    });
+    const signInRequired = (save: PendingSave) => ({
+      type: "sign_in_required",
+      save,
+    });
+    // a save_to_list round and the model's line after it
+    const saveTurn = (id: string, ...events: object[]) =>
+      streamResponse([
+        ndjson(
+          start(id),
+          saveStart("t1"),
+          toolEnd("t1"),
+          ...events,
+          delta("Added to your list."),
+          done(id),
+        ),
+      ]);
+    const success = () => Response.json({ addToListResult: "success" });
+    const undoBtn = (title = "Fury") =>
+      screen.queryByRole("button", { name: `Undo ${title}` });
+    const FURY_KEY = { movieId: 228150, type: "movie" };
+
+    test("a save shows live, with Undo once the answer is finished", async () => {
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat({ signedIn: true });
+      await send("add Fury to my watchlist");
+
+      stream.push(
+        ndjson(
+          start("i1"),
+          saveStart("t1"),
+          toolEnd("t1"),
+          saved(listSavedPart()),
+        ),
+      );
+
+      const line = await screen.findByText(
+        "Added to your list · Planning to watch",
+      );
+      expect(line.closest("[aria-live]")).toHaveAttribute(
+        "aria-live",
+        "polite",
+      );
+      expect(undoBtn()).toBeNull();
+      // the model writes its line next
+      expect(screen.getByText("Generating response")).toBeInTheDocument();
+
+      stream.push(ndjson(delta("Added."), done("i1")));
+      stream.close();
+      await settled();
+      expect(undoBtn()).toBeEnabled();
+      expect(
+        screen
+          .getByText("Added to your list · Planning to watch")
+          .closest("[aria-live]"),
+      ).toBeNull();
+    });
+
+    test("Undo of a new title removes it and tells the model next turn", async () => {
+      const { calls, bodies } = routeFetch({
+        "/api/assistant": [
+          saveTurn("i1", saved(listSavedPart())),
+          answer("i2", "It isn't."),
+          answer("i3", "a3"),
+        ],
+        "/api/remove-from-list": [success()],
+      });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+      await settled();
+      vi.mocked(useRouter().refresh).mockClear();
+
+      await user.click(undoBtn()!);
+
+      expect(await screen.findByText("Undone")).toBeInTheDocument();
+      const [removal] = calls.filter((c) => c.url === "/api/remove-from-list");
+      expect(removal.method).toBe("DELETE");
+      expect(removal.headers.get("movieId")).toBe("228150");
+      expect(removal.headers.get("type")).toBe("movie");
+      expect(useRouter().refresh).toHaveBeenCalledOnce();
+
+      await send("is Fury in my list?");
+      await settled();
+      await send("p3");
+      await settled();
+      const [, second, third] = bodies("/api/assistant");
+      expect(second).toEqual({
+        content: "is Fury in my list?",
+        previousInteractionId: "i1",
+        listChanges: [FURY_KEY],
+      });
+      // the model has seen it
+      expect(third).not.toHaveProperty("listChanges");
+    });
+
+    it.each([
+      [8, 8],
+      [0, ""],
+    ])(
+      "Undo of a status change puts the row back (rating %j -> %j)",
+      async (rating, sent) => {
+        const part = listSavedPart(
+          { status: "Completed" },
+          previousEntry({ rating }),
+        );
+        const { calls, bodies } = routeFetch({
+          "/api/assistant": [saveTurn("i1", saved(part))],
+          "/api/add-to-list": [success()],
+        });
+        renderChat({ signedIn: true });
+        await send("mark Fury as completed");
+        await settled();
+        expect(
+          screen.getByText("Moved to Completed (was Watching)"),
+        ).toBeInTheDocument();
+
+        await user.click(undoBtn()!);
+
+        expect(await screen.findByText("Undone")).toBeInTheDocument();
+        expect(calls.find((c) => c.url === "/api/add-to-list")?.method).toBe(
+          "PUT",
+        );
+        expect(bodies("/api/add-to-list")).toEqual([
+          {
+            movieId: 228150,
+            title: "Fury",
+            image: "/old.jpg",
+            status: "Watching",
+            rating: sent,
+            type: "movie",
+          },
+        ]);
+      },
+    );
+
+    it.each([
+      [
+        "a legacy status (400)",
+        () => Response.json({ addToListResult: "fail" }, { status: 400 }),
+      ],
+      [
+        "a DB error (200 fail)",
+        () => Response.json({ addToListResult: "fail" }),
+      ],
+    ])("a failed Undo: %s -> toast, the save stays", async (_, reply) => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const part = listSavedPart({}, previousEntry({ status: "Dropped" }));
+      const { bodies } = routeFetch({
+        "/api/assistant": [saveTurn("i1", saved(part)), answer("i2", "a2")],
+        "/api/add-to-list": [reply()],
+      });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+      await settled();
+      vi.mocked(useRouter().refresh).mockClear();
+
+      await user.click(undoBtn()!);
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(
+          "Something went wrong while undoing.",
+          expect.anything(),
+        ),
+      );
+      expect(undoBtn()).toBeEnabled();
+      expect(screen.queryByText("Undone")).toBeNull();
+      expect(useRouter().refresh).not.toHaveBeenCalled();
+
+      await send("p2");
+      await settled();
+      expect(bodies("/api/assistant")[1]).not.toHaveProperty("listChanges");
+    });
+
+    test("list changes are kept after a failed turn", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const { bodies } = routeFetch({
+        "/api/assistant": [
+          saveTurn("i1", saved(listSavedPart())),
+          new Response("", { status: 500 }),
+          answer("i3", "a3"),
+        ],
+        "/api/remove-from-list": [success()],
+      });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+      await settled();
+      await user.click(undoBtn()!);
+      await screen.findByText("Undone");
+
+      await send("p2");
+      await screen.findByText(ERROR_TEXT);
+      await send("p3");
+      await settled();
+
+      const [, failed, retry] = bodies("/api/assistant");
+      expect(failed.listChanges).toEqual([FURY_KEY]);
+      expect(retry.listChanges).toEqual([FURY_KEY]);
+    });
+
+    test("an Undo while the next answer streams is sent with the one after", async () => {
+      const second = controlledStream();
+      const { bodies } = routeFetch({
+        "/api/assistant": [
+          saveTurn("i1", saved(listSavedPart())),
+          second.response,
+          answer("i3", "a3"),
+        ],
+        "/api/remove-from-list": [success()],
+      });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+      await settled();
+
+      await send("p2");
+      await user.click(undoBtn()!);
+      await screen.findByText("Undone");
+      second.push(ndjson(start("i2"), delta("a2"), done("i2")));
+      second.close();
+      await settled();
+      await send("p3");
+      await settled();
+
+      const [, during, after] = bodies("/api/assistant");
+      expect(during).not.toHaveProperty("listChanges");
+      expect(after.listChanges).toEqual([FURY_KEY]);
+    });
+
+    test("cards show the list status from the chat's saves and Undo", async () => {
+      routeFetch({
+        "/api/assistant": [
+          streamResponse([
+            ndjson(
+              start("i1"),
+              showStart("s1"),
+              toolEnd("s1"),
+              cards([FURY, DUNKIRK]),
+              done("i1"),
+            ),
+          ]),
+          saveTurn("i2", saved(listSavedPart({ status: "Completed" }))),
+        ],
+        "/api/remove-from-list": [success()],
+      });
+      renderChat({ signedIn: true });
+      await send("war films");
+      await settled();
+      const badge = (title: string) =>
+        within(
+          screen.getByRole("heading", { name: title }).closest("li")!,
+        ).queryByText(/^In your list/);
+      expect(badge("Fury")).toBeNull();
+
+      await send("mark the first one as completed");
+      await settled();
+      expect(badge("Fury")).toHaveTextContent("In your list · Completed");
+      expect(badge("Dunkirk")).toBeNull();
+
+      await user.click(undoBtn()!);
+      await screen.findByText("Undone");
+      expect(badge("Fury")).toBeNull();
+    });
+
+    test("refreshes /my-list once per turn with saves", async () => {
+      routeFetch({
+        "/api/assistant": [
+          saveTurn(
+            "i1",
+            saved(listSavedPart()),
+            saved(listSavedPart({ id: 374720, title: "Dunkirk" })),
+          ),
+          answer("i2", "a2"),
+        ],
+      });
+      renderChat({ signedIn: true });
+
+      await send("add both");
+      await settled();
+      expect(screen.getAllByText(/^Added to your list ·/)).toHaveLength(2);
+      expect(useRouter().refresh).toHaveBeenCalledOnce();
+
+      await send("thanks");
+      await settled();
+      expect(useRouter().refresh).toHaveBeenCalledOnce();
+    });
+
+    test("a stop after a save refreshes too", async () => {
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+      stream.push(ndjson(start("i1"), saved(listSavedPart())));
+      await screen.findByText(/^Added to your list/);
+      expect(useRouter().refresh).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: "Stop" }));
+
+      expect(useRouter().refresh).toHaveBeenCalledOnce();
+    });
+
+    test("signed out: one sign-in card for the answer's titles", async () => {
+      routeFetch({
+        "/api/assistant": [
+          saveTurn(
+            "i1",
+            signInRequired(pendingSave()),
+            signInRequired(pendingSave({ id: 374720, title: "Dunkirk" })),
+          ),
+        ],
+      });
+      renderChat();
+      await send("add Fury and Dunkirk");
+      await settled();
+
+      expect(
+        screen.getByText("Sign in to add 2 titles to your list"),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+        "href",
+        "/signin?callbackUrl=/",
+      );
+      expect(useRouter().refresh).not.toHaveBeenCalled();
+    });
+
+    test("the undone save and the list changes survive a remount", async () => {
+      routeFetch({
+        "/api/assistant": [saveTurn("i1", saved(listSavedPart()))],
+        "/api/remove-from-list": [success()],
+      });
+      const { unmount } = renderChat({ signedIn: true });
+      await send("add Fury");
+      await settled();
+      await user.click(undoBtn()!);
+      await screen.findByText("Undone");
+      unmount();
+      expect(loadChat()?.listChanges).toEqual([FURY_KEY]);
+
+      const { bodies } = routeFetch({ "/api/assistant": [answer("i2", "a2")] });
+      renderChat({ signedIn: true });
+      expect(await screen.findByText("Undone")).toBeInTheDocument();
+      expect(undoBtn()).toBeNull();
+
+      await send("p2");
+      await settled();
+      expect(bodies("/api/assistant")[0].listChanges).toEqual([FURY_KEY]);
+    });
+
+    test("New chat drops the list changes", async () => {
+      routeFetch({
+        "/api/assistant": [saveTurn("i1", saved(listSavedPart()))],
+        "/api/remove-from-list": [success()],
+      });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+      await settled();
+      await user.click(undoBtn()!);
+      await screen.findByText("Undone");
+
+      await user.click(newChatBtn());
+
+      const { bodies } = routeFetch({ "/api/assistant": [answer("i2", "a2")] });
+      await send("p2");
+      await settled();
+      expect(bodies("/api/assistant")[0]).toEqual({ content: "p2" });
     });
   });
 

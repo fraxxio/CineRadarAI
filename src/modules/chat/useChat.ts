@@ -1,9 +1,22 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { MAX_STOPPED_TEXT_LENGTH, MAX_STOPPED_TURNS } from "./chatLimits";
-import { clearSavedChat, loadChat, saveChat } from "./chatStorage";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { EntryKey } from "@/modules/my-list";
+import {
+  MAX_LIST_CHANGES,
+  MAX_STOPPED_TEXT_LENGTH,
+  MAX_STOPPED_TURNS,
+} from "./chatLimits";
+import {
+  clearSavedChat,
+  loadChat,
+  saveChat,
+  type ChatSnapshot,
+} from "./chatStorage";
 import {
   addCards,
+  addListSaved,
+  addSignIn,
   appendText,
   endTool,
   partsToText,
@@ -15,6 +28,7 @@ import type {
   ChatMessage,
   ChatRequest,
   ChatStreamEvent,
+  ListSavedPart,
   MessagePart,
   StoppedTurn,
 } from "./protocol";
@@ -32,6 +46,13 @@ type UseChatOptions = {
   beforeSend?: (signal: AbortSignal) => Promise<boolean>;
 };
 
+// reverses the list_saved part at partIndex of a finished message; false
+// when it failed
+export type UndoSave = (
+  messageId: string,
+  partIndex: number,
+) => Promise<boolean>;
+
 // the request in flight
 type Turn = {
   controller: AbortController;
@@ -40,6 +61,8 @@ type Turn = {
   parts: MessagePart[];
   // beforeSend passed and the prompt is shown in the chat
   accepted: boolean;
+  // a save_to_list call saved a title, /my-list needs a refresh
+  listSaved: boolean;
 };
 
 const MAX_MESSAGES = 10;
@@ -64,6 +87,43 @@ async function isExpiredResponse(response: Response): Promise<boolean> {
 // the number in an "m12" id, 0 for any other id
 const idNumber = (id: string) => Number(/^m(\d+)$/.exec(id)?.[1] ?? 0);
 
+// a key changed again moves to the end as a new object: a completed turn
+// clears only the very objects it sent, so a change made while it ran stays
+function addListChange(changes: EntryKey[], key: EntryKey): EntryKey[] {
+  return [
+    ...changes.filter((c) => c.movieId !== key.movieId || c.type !== key.type),
+    { ...key },
+  ].slice(-MAX_LIST_CHANGES);
+}
+
+// puts the row back as it was before the save, through the list's own routes
+async function undoRequest({ entry, previous }: ListSavedPart) {
+  const response =
+    previous === null
+      ? await fetch("/api/remove-from-list", {
+          method: "DELETE",
+          headers: { movieId: String(entry.id), type: entry.type },
+        })
+      : await fetch("/api/add-to-list", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            movieId: entry.id,
+            title: previous.name,
+            image: previous.image,
+            status: previous.status,
+            // 0 is "not rated", which the route takes as ""
+            rating: previous.rating || "",
+            type: entry.type,
+          }),
+        });
+  // a DB error is a 200 with "fail"
+  const data = await response.json().catch(() => null);
+  if (!response.ok || data?.addToListResult !== "success") {
+    throw new Error(`Undo failed. (Status: ${response.status})`);
+  }
+}
+
 export function useChat({ beforeSend }: UseChatOptions = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // the answer in flight: text, tool lines and cards in order
@@ -74,6 +134,9 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
   const interactionIdRef = useRef<string>();
   // stopped since the last completed turn, the model hasn't seen them yet
   const stoppedTurnsRef = useRef<StoppedTurn[]>([]);
+  // entries changed outside the model (Undo) since the last completed turn;
+  // the server tells the model their state
+  const listChangesRef = useRef<EntryKey[]>([]);
   const messageCount = useRef(0);
   // the saved chat has been read; state, not a ref, so the effects of the
   // first render (run twice in strict mode) can't save over it
@@ -82,8 +145,17 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
   const restoredMessagesRef = useRef<ChatMessage[]>();
   // the latest messages, for saving when the page goes away
   const messagesRef = useRef<ChatMessage[]>([]);
+  const router = useRouter();
 
   const nextId = () => `m${++messageCount.current}`;
+
+  // what's saved besides the messages, read from the refs
+  const snapshot = (messages: ChatMessage[]): ChatSnapshot => ({
+    messages,
+    interactionId: interactionIdRef.current,
+    stoppedTurns: stoppedTurnsRef.current,
+    listChanges: listChangesRef.current,
+  });
 
   // after mount, not during render: the server has no saved chat to render
   useEffect(() => {
@@ -91,6 +163,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
     if (saved) {
       interactionIdRef.current = saved.interactionId;
       stoppedTurnsRef.current = saved.stoppedTurns;
+      listChangesRef.current = saved.listChanges ?? [];
       // new ids continue after the restored ones, so keys don't collide
       messageCount.current = Math.max(
         0,
@@ -114,11 +187,9 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
       clearSavedChat();
       return;
     }
-    saveChat({
-      messages,
-      interactionId: interactionIdRef.current,
-      stoppedTurns: stoppedTurnsRef.current,
-    });
+    saveChat(snapshot(messages));
+    // snapshot only reads refs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, status, restored]);
 
   // leaving mid-answer counts as Stop; there's no later render to save it in,
@@ -147,6 +218,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
       prompt,
       parts: [],
       accepted: false,
+      listSaved: false,
     };
     const { signal } = turn.controller;
     // false once the turn was stopped or the chat was reset
@@ -183,6 +255,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
   async function streamReply(turn: Turn, isCurrent: () => boolean) {
     const { signal } = turn.controller;
     let newInteractionId = "";
+    const sentListChanges = listChangesRef.current;
 
     try {
       const request: ChatRequest = {
@@ -191,6 +264,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
         stoppedTurns: stoppedTurnsRef.current.length
           ? stoppedTurnsRef.current
           : undefined,
+        listChanges: sentListChanges.length ? sentListChanges : undefined,
       };
       // post new message to server and stream Gemini response
       const response = await fetch("/api/assistant", {
@@ -241,6 +315,15 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
             turn.parts = addCards(turn.parts, serverEvent.items);
             setStreamingParts(turn.parts);
             break;
+          case "list_saved":
+            turn.parts = addListSaved(turn.parts, serverEvent);
+            turn.listSaved = true;
+            setStreamingParts(turn.parts);
+            break;
+          case "sign_in_required":
+            turn.parts = addSignIn(turn.parts, serverEvent.save);
+            setStreamingParts(turn.parts);
+            break;
           case "done":
             newInteractionId = serverEvent.interactionId;
             completed = true;
@@ -285,8 +368,12 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
       }
 
       interactionIdRef.current = newInteractionId;
-      // the model has now seen the stopped turns as part of this interaction
+      // the model has now seen the stopped turns and the list changes as part
+      // of this interaction
       stoppedTurnsRef.current = [];
+      listChangesRef.current = listChangesRef.current.filter(
+        (change) => !sentListChanges.includes(change),
+      );
       // every call has ended by now; stopTools only guards against a line
       // that would spin forever in the history
       const parts = stopTools(turn.parts, Date.now());
@@ -316,6 +403,15 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
 
     turnRef.current = null;
     setStreamingParts([]);
+    refreshIfSaved(turn);
+  }
+
+  // once per turn, at its end: router.refresh() clears the client router
+  // cache, so /my-list shows the saves
+  function refreshIfSaved(turn: Turn) {
+    if (turn.listSaved) {
+      router.refresh();
+    }
   }
 
   // keeps the partial answer; the next send shares it with the model
@@ -353,28 +449,77 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
       };
       setMessages((prev) => capped([...prev, message]));
       if (saveNow) {
-        saveChat({
-          messages: capped([...messagesRef.current, message]),
-          interactionId: interactionIdRef.current,
-          stoppedTurns: stoppedTurnsRef.current,
-        });
+        saveChat(snapshot(capped([...messagesRef.current, message])));
       }
     }
     setStreamingParts([]);
     setStatus("idle");
+    // the page is going away, the next one loads fresh data
+    if (!saveNow) {
+      refreshIfSaved(turn);
+    }
   }
+
+  // reverses a save shown in a finished message; resolves false when it
+  // failed, and the part stays as it is
+  const undoSave = useCallback<UndoSave>(
+    async (messageId, partIndex) => {
+      const part = messagesRef.current.find((m) => m.id === messageId)?.parts[
+        partIndex
+      ];
+      if (part?.type !== "list_saved") {
+        return false;
+      }
+      if (part.undone) {
+        return true;
+      }
+      try {
+        await undoRequest(part);
+      } catch (error) {
+        console.error("Couldn't undo the list save:", error);
+        return false;
+      }
+      // before setMessages, so the save effect stores it
+      listChangesRef.current = addListChange(listChangesRef.current, {
+        movieId: part.entry.id,
+        type: part.entry.type,
+      });
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? {
+                ...m,
+                parts: m.parts.map((p, i) =>
+                  i === partIndex && p.type === "list_saved"
+                    ? { ...p, undone: true }
+                    : p,
+                ),
+              }
+            : m,
+        ),
+      );
+      router.refresh();
+      return true;
+    },
+    [router],
+  );
 
   // starts a fresh conversation
   function reset() {
-    turnRef.current?.controller.abort();
+    const turn = turnRef.current;
+    turn?.controller.abort();
     turnRef.current = null;
     interactionIdRef.current = undefined;
     stoppedTurnsRef.current = [];
+    listChangesRef.current = [];
     clearSavedChat();
     setMessages([]);
     setStreamingParts([]);
     setStatus("idle");
+    if (turn) {
+      refreshIfSaved(turn);
+    }
   }
 
-  return { messages, streamingParts, status, send, stop, reset };
+  return { messages, streamingParts, status, send, stop, reset, undoSave };
 }

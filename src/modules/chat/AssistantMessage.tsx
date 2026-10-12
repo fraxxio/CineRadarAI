@@ -1,6 +1,10 @@
 import Image from "next/image";
+import type { ListStatuses } from "./messageParts";
 import { MessageParts } from "./MessageParts";
 import type { ChatMessage } from "./protocol";
+import type { UndoSave } from "./useChat";
+
+const NO_LIST_STATUS: ListStatuses = new Map();
 
 type AssistantMessageProps = {
   message: {
@@ -12,6 +16,10 @@ type AssistantMessageProps = {
   // for "Add to list" on the cards; required, so no message can forget it and
   // tell signed-in users to log in
   signedIn: boolean;
+  // the cards' list badges; the greeting and notices have no cards
+  listStatus?: ListStatuses;
+  // Undo on the saves of a finished message, which has an id
+  onUndo?: UndoSave;
   // after the parts, e.g. the loader
   children?: React.ReactNode;
 };
@@ -19,6 +27,8 @@ type AssistantMessageProps = {
 export function AssistantMessage({
   message,
   signedIn,
+  listStatus = NO_LIST_STATUS,
+  onUndo,
   children,
 }: AssistantMessageProps) {
   function displayRole(roleName: string) {
@@ -47,7 +57,13 @@ export function AssistantMessage({
         {displayRole(message.role)}
       </div>
       <div className="chatLink overflow-auto text-left">
-        <MessageParts parts={message.parts} signedIn={signedIn} />
+        <MessageParts
+          parts={message.parts}
+          signedIn={signedIn}
+          listStatus={listStatus}
+          messageId={message.id}
+          onUndo={onUndo}
+        />
         {children}
       </div>
       {message.stopped && (

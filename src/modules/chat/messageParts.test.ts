@@ -1,15 +1,24 @@
 import { describe, expect, it, test } from "vitest";
 import {
   addCards,
+  addListSaved,
+  addSignIn,
   appendText,
   endTool,
   formatElapsed,
   isWaitingForModel,
+  listStatuses,
   partsToText,
   startTool,
   stopTools,
 } from "./messageParts";
 import type { MessagePart, RecommendedTitle, ToolPart } from "./protocol";
+import {
+  listSavedPart,
+  pendingSave,
+  previousEntry,
+  savedEntry,
+} from "./testing/listParts";
 
 const SEARCH = { name: "search_titles", text: "Searching TMDB database..." };
 const DETAILS = { name: "get_title_details", text: "Checking title details..." };
@@ -81,6 +90,70 @@ describe("addCards", () => {
     const parts = [text("a")];
     addCards(parts, [FURY]);
     expect(parts).toEqual([text("a")]);
+  });
+});
+
+describe("addListSaved", () => {
+  test("appends a part per save", () => {
+    const first = { entry: savedEntry(), previous: null };
+    const second = {
+      entry: savedEntry({ id: 1, title: "Dune", status: "Completed" }),
+      previous: previousEntry({ name: "Dune" }),
+    };
+    const parts = addListSaved(addListSaved([text("a")], first), second);
+    expect(parts).toEqual([
+      text("a"),
+      { type: "list_saved", ...first },
+      { type: "list_saved", ...second },
+    ]);
+  });
+
+  test("doesn't change its input", () => {
+    const parts = [text("a")];
+    addListSaved(parts, { entry: savedEntry(), previous: null });
+    expect(parts).toEqual([text("a")]);
+  });
+});
+
+describe("addSignIn", () => {
+  const FURY_SAVE = pendingSave();
+  const DUNE_SAVE = pendingSave({ id: 438631, title: "Dune", status: null });
+
+  test("the first save makes a sign-in part", () => {
+    expect(addSignIn([text("a")], FURY_SAVE)).toEqual([
+      text("a"),
+      { type: "sign_in", saves: [FURY_SAVE] },
+    ]);
+  });
+
+  test("later saves join it, where it is", () => {
+    let parts = addSignIn([], FURY_SAVE);
+    parts = appendText(parts, "Please sign in.");
+    parts = addSignIn(parts, DUNE_SAVE);
+    expect(parts).toEqual([
+      { type: "sign_in", saves: [FURY_SAVE, DUNE_SAVE] },
+      text("Please sign in."),
+    ]);
+  });
+
+  test("a title already on it isn't added again", () => {
+    const parts = addSignIn(addSignIn([], FURY_SAVE), {
+      ...FURY_SAVE,
+      status: "Completed",
+    });
+    expect(parts).toEqual([{ type: "sign_in", saves: [FURY_SAVE] }]);
+  });
+
+  test("a TV show with the same id is another title", () => {
+    const show = pendingSave({ type: "tv", title: "Fury Show" });
+    const parts = addSignIn(addSignIn([], FURY_SAVE), show);
+    expect(parts).toEqual([{ type: "sign_in", saves: [FURY_SAVE, show] }]);
+  });
+
+  test("doesn't change its input", () => {
+    const parts = addSignIn([], FURY_SAVE);
+    addSignIn(parts, DUNE_SAVE);
+    expect(parts).toEqual([{ type: "sign_in", saves: [FURY_SAVE] }]);
   });
 });
 
@@ -278,6 +351,31 @@ describe("partsToText", () => {
     );
   });
 
+  test("a save becomes a bracketed note, marked when undone", () => {
+    let parts = addListSaved([], {
+      entry: savedEntry({ id: 693134, title: "Dune: Part Two" }),
+      previous: null,
+    });
+    parts = appendText(parts, "Added to your list.");
+    parts = [
+      ...parts,
+      listSavedPart({ type: "tv", id: 1399, status: "Completed" }, null, true),
+    ];
+    expect(partsToText(parts)).toBe(
+      "[Saved to list: Dune: Part Two (movie 693134) as Planning to watch]" +
+        "\n\nAdded to your list." +
+        "\n\n[Saved to list: Fury (tv 1399) as Completed] (undone)",
+    );
+  });
+
+  test("a sign-in card lists its titles", () => {
+    let parts = addSignIn([], pendingSave());
+    parts = addSignIn(parts, pendingSave({ id: 438631, title: "Dune" }));
+    expect(partsToText(parts)).toBe(
+      "[Asked to sign in to save: Fury (movie 228150); Dune (movie 438631)]",
+    );
+  });
+
   test("no text: empty", () => {
     expect(partsToText(startTool([], call("c1"), 0))).toBe("");
     expect(partsToText([])).toBe("");
@@ -295,8 +393,68 @@ describe("isWaitingForModel", () => {
     ["cards", addCards(finished, [FURY]), true],
     ["text", appendText(finished, "x"), false],
     ["text after cards", appendText(addCards(finished, [FURY]), "x"), false],
+    ["a save", [...finished, listSavedPart()], true],
+    ["a sign-in card", addSignIn(finished, pendingSave()), true],
+    ["text after a save", appendText([listSavedPart()], "x"), false],
   ])("%s -> %s", (_, parts, expected) => {
     expect(isWaitingForModel(parts)).toBe(expected);
+  });
+});
+
+describe("listStatuses", () => {
+  const DUNE = { id: 438631, title: "Dune" };
+
+  test("a status per saved title, by type and id", () => {
+    const statuses = listStatuses([
+      [listSavedPart(), addCards([], [FURY])[0]],
+      [text("x"), listSavedPart({ ...DUNE, type: "tv", status: "Completed" })],
+    ]);
+    expect(Object.fromEntries(statuses)).toEqual({
+      "movie-228150": "Planning to watch",
+      "tv-438631": "Completed",
+    });
+  });
+
+  test("the newest save of a title wins", () => {
+    const statuses = listStatuses([
+      [listSavedPart({ status: "Watching" })],
+      [listSavedPart({ status: "Completed" }, previousEntry())],
+    ]);
+    expect(Object.fromEntries(statuses)).toEqual({
+      "movie-228150": "Completed",
+    });
+  });
+
+  test("an undone add: not in the list", () => {
+    const statuses = listStatuses([[listSavedPart({}, null, true)]]);
+    expect(Object.fromEntries(statuses)).toEqual({ "movie-228150": null });
+  });
+
+  test("an undone change: the status before it", () => {
+    const statuses = listStatuses([
+      [listSavedPart({ status: "Completed" }, previousEntry(), true)],
+    ]);
+    expect(Object.fromEntries(statuses)).toEqual({
+      "movie-228150": "Watching",
+    });
+  });
+
+  test("an undone change from a legacy status: unknown", () => {
+    const statuses = listStatuses([
+      [listSavedPart({ status: "Watching" })],
+      [
+        listSavedPart(
+          { status: "Completed" },
+          previousEntry({ status: "Dropped" }),
+          true,
+        ),
+      ],
+    ]);
+    expect(statuses.size).toBe(0);
+  });
+
+  test("no saves: empty", () => {
+    expect(listStatuses([[text("x")], []]).size).toBe(0);
   });
 });
 

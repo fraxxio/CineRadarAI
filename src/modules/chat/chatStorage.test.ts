@@ -7,6 +7,7 @@ import {
   type ChatSnapshot,
 } from "./chatStorage";
 import type { RecommendedTitle } from "./protocol";
+import { listSavedPart, pendingSave, previousEntry } from "./testing/listParts";
 
 const KEY = "cineradar.chat.v1";
 
@@ -81,6 +82,36 @@ describe("chatStorage", () => {
     });
   });
 
+  test("round trip with list saves, a sign-in card and list changes", () => {
+    const chat: ChatSnapshot = {
+      ...CHAT,
+      messages: [
+        ...CHAT.messages,
+        {
+          id: "m5",
+          role: "assistant",
+          parts: [
+            listSavedPart(),
+            // a legacy status before the save
+            listSavedPart(
+              { id: 1, status: "Completed" },
+              previousEntry({ status: "Dropped" }),
+              true,
+            ),
+            { type: "sign_in", saves: [pendingSave({ status: null })] },
+          ],
+        },
+      ],
+      listChanges: [{ movieId: 1, type: "movie" }],
+    };
+    saveChat(chat);
+    expect(loadChat()).toEqual({
+      ...chat,
+      version: 1,
+      savedAt: expect.any(Number),
+    });
+  });
+
   test("without an interaction id", () => {
     saveChat({ ...CHAT, interactionId: undefined });
     expect(loadChat()).not.toHaveProperty("interactionId");
@@ -119,6 +150,12 @@ describe("chatStorage", () => {
       withMessage((message) => message.parts.push(part));
     const withCard = (change: Record<string, unknown>) =>
       withPart({ type: "cards", items: [{ ...FURY, ...change }] });
+    const withSaved = (change: Record<string, unknown>) =>
+      withPart({ ...listSavedPart(), ...change });
+    const withSavedEntry = (change: Record<string, unknown>) =>
+      withSaved({ entry: { ...listSavedPart().entry, ...change } });
+    const withPending = (change: Record<string, unknown>) =>
+      withPart({ type: "sign_in", saves: [{ ...pendingSave(), ...change }] });
 
     test("too old", () => {
       vi.useFakeTimers();
@@ -167,6 +204,33 @@ describe("chatStorage", () => {
       ["a card without genres", () => withCard({ genres: undefined })],
       ["a card with a string id", () => withCard({ id: "228150" })],
       ["a card of an unknown type", () => withCard({ type: "person" })],
+      ["a save without an entry", () => withSaved({ entry: undefined })],
+      [
+        "a save of an unknown status",
+        () => withSavedEntry({ status: "Dropped" }),
+      ],
+      ["a save without an image", () => withSavedEntry({ image: null })],
+      ["a save without previous", () => withSaved({ previous: undefined })],
+      [
+        "a save with a bad previous",
+        () => withSaved({ previous: { ...previousEntry(), rating: "8" } }),
+      ],
+      ["a save with a string undone", () => withSaved({ undone: "yes" })],
+      ["a sign-in card without saves", () => withPart({ type: "sign_in" })],
+      [
+        "a pending save of an unknown status",
+        () => withPending({ status: "Dropped" }),
+      ],
+      ["a pending save with a string id", () => withPending({ id: "1" })],
+      ["list changes not an array", () => savedWith({ listChanges: {} })],
+      [
+        "a list change of an unknown type",
+        () => savedWith({ listChanges: [{ movieId: 1, type: "person" }] }),
+      ],
+      [
+        "a list change with a string id",
+        () => savedWith({ listChanges: [{ movieId: "1", type: "movie" }] }),
+      ],
     ])("%s", (_, chat) => {
       store(chat());
       expect(loadChat()).toBeNull();

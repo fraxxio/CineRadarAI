@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { SquarePen } from "lucide-react";
 import { AssistantMessage } from "./AssistantMessage";
 import { ThinkingLoader } from "./ThinkingLoader";
@@ -8,7 +8,11 @@ import { useChat } from "./useChat";
 import { useRecaptchaCheck } from "@/infra/recaptcha/useRecaptchaCheck";
 import { MAX_PROMPT_LENGTH } from "./chatLimits";
 import { LOADER_WORDS } from "./loaderWords";
-import { isWaitingForModel } from "./messageParts";
+import {
+  isWaitingForModel,
+  listStatuses,
+  type ListStatuses,
+} from "./messageParts";
 import type { ChatMessage } from "./protocol";
 import { shuffle } from "@/shared/lib/shuffle";
 
@@ -24,9 +28,8 @@ export default function ChatAssistant({
   signedIn,
 }: ChatAssistantProps) {
   const recaptcha = useRecaptchaCheck(recaptchaEnabled);
-  const { messages, streamingParts, status, send, stop, reset } = useChat({
-    beforeSend: recaptcha.verify,
-  });
+  const { messages, streamingParts, status, send, stop, reset, undoSave } =
+    useChat({ beforeSend: recaptcha.verify });
   const [prompt, setPrompt] = useState("");
   // safe to shuffle during render: the loader never renders on the server
   const [loaderWords] = useState(() => shuffle(LOADER_WORDS));
@@ -37,6 +40,15 @@ export default function ChatAssistant({
   // nothing has arrived yet, or the model is working on its next round after
   // the tools or the cards; a running tool line has its own spinner
   const showLoader = isWaitingForModel(streamingParts);
+  // the cards' list badges; a new map only when a save or Undo changes it,
+  // not on every streamed delta, so the memoized messages don't re-render
+  const listStatusKey = JSON.stringify(
+    Array.from(listStatuses([...messages.map((m) => m.parts), streamingParts])),
+  );
+  const listStatus = useMemo<ListStatuses>(
+    () => new Map(JSON.parse(listStatusKey)),
+    [listStatusKey],
+  );
 
   const assistantText = (text: string): Omit<ChatMessage, "id"> => ({
     role: "assistant",
@@ -79,12 +91,19 @@ export default function ChatAssistant({
             signedIn={signedIn}
           />
           {messages.map((m) => (
-            <AssistantMessage key={m.id} message={m} signedIn={signedIn} />
+            <AssistantMessage
+              key={m.id}
+              message={m}
+              signedIn={signedIn}
+              listStatus={listStatus}
+              onUndo={undoSave}
+            />
           ))}
           {isBusy && (
             <AssistantMessage
               message={{ role: "assistant", parts: streamingParts }}
               signedIn={signedIn}
+              listStatus={listStatus}
             >
               {showLoader && (
                 <ThinkingLoader

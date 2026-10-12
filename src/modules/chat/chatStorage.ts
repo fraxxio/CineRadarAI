@@ -2,10 +2,14 @@
 // navigation and the OAuth round trip, and goes when the tab closes; every
 // call fails soft (storage can be disabled, full or blocked), the chat then
 // just isn't kept
+import { isListStatus, type EntryKey } from "@/modules/my-list";
 import type {
   ChatMessage,
   MessagePart,
+  PendingSave,
+  PreviousEntry,
   RecommendedTitle,
+  SavedEntry,
   StoppedTurn,
 } from "./protocol";
 
@@ -23,6 +27,8 @@ export type SavedChat = {
   // last completed turn
   interactionId?: string;
   stoppedTurns: StoppedTurn[];
+  // list entries changed outside the model since the last completed turn
+  listChanges?: EntryKey[];
 };
 
 export type ChatSnapshot = Omit<SavedChat, "version" | "savedAt">;
@@ -81,7 +87,9 @@ function isSavedChat(value: unknown): value is SavedChat {
     isArrayOf(value.messages, isMessage) &&
     (value.interactionId === undefined ||
       typeof value.interactionId === "string") &&
-    isArrayOf(value.stoppedTurns, isStoppedTurn)
+    isArrayOf(value.stoppedTurns, isStoppedTurn) &&
+    (value.listChanges === undefined ||
+      isArrayOf(value.listChanges, isEntryKey))
   );
 }
 
@@ -116,6 +124,14 @@ function isPart(value: unknown): value is MessagePart {
       );
     case "cards":
       return isArrayOf(part.items, isCard);
+    case "list_saved":
+      return (
+        isSavedEntry(part.entry) &&
+        (part.previous === null || isPreviousEntry(part.previous)) &&
+        (part.undone === undefined || typeof part.undone === "boolean")
+      );
+    case "sign_in":
+      return isArrayOf(part.saves, isPendingSave);
     case undefined:
       return false;
     default:
@@ -128,7 +144,7 @@ function isPart(value: unknown): value is MessagePart {
 function isCard(value: unknown): value is RecommendedTitle {
   return (
     isObject(value) &&
-    (value.type === "movie" || value.type === "tv") &&
+    isMediaType(value.type) &&
     typeof value.id === "number" &&
     typeof value.title === "string" &&
     isNumberOrNull(value.year) &&
@@ -137,6 +153,50 @@ function isCard(value: unknown): value is RecommendedTitle {
     isStringOrNull(value.posterPath) &&
     isStringOrNull(value.backdropPath) &&
     typeof value.reason === "string"
+  );
+}
+
+function isSavedEntry(value: unknown): value is SavedEntry {
+  return (
+    isObject(value) &&
+    isMediaType(value.type) &&
+    typeof value.id === "number" &&
+    typeof value.title === "string" &&
+    isStringOrNull(value.posterPath) &&
+    typeof value.image === "string" &&
+    isString(value.status) &&
+    isListStatus(value.status)
+  );
+}
+
+// the status can be a legacy one, see StoredEntry
+function isPreviousEntry(value: unknown): value is PreviousEntry {
+  return (
+    isObject(value) &&
+    typeof value.name === "string" &&
+    typeof value.image === "string" &&
+    typeof value.status === "string" &&
+    typeof value.rating === "number"
+  );
+}
+
+function isPendingSave(value: unknown): value is PendingSave {
+  return (
+    isObject(value) &&
+    isMediaType(value.type) &&
+    typeof value.id === "number" &&
+    typeof value.title === "string" &&
+    isStringOrNull(value.posterPath) &&
+    (value.status === null ||
+      (isString(value.status) && isListStatus(value.status)))
+  );
+}
+
+function isEntryKey(value: unknown): value is EntryKey {
+  return (
+    isObject(value) &&
+    typeof value.movieId === "number" &&
+    isMediaType(value.type)
   );
 }
 
@@ -157,6 +217,8 @@ const isArrayOf = <T>(
 ): value is T[] => Array.isArray(value) && value.every(isItem);
 
 const isString = (value: unknown): value is string => typeof value === "string";
+
+const isMediaType = (value: unknown) => value === "movie" || value === "tv";
 
 const isStringOrNull = (value: unknown) => value === null || isString(value);
 

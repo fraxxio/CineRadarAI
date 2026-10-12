@@ -93,7 +93,23 @@ export type ToolPart = {
 
 export type CardsPart = { type: "cards"; items: RecommendedTitle[] };
 
-export type MessagePart = TextPart | ToolPart | CardsPart;
+export type ListSavedPart = {
+  type: "list_saved";
+  entry: SavedEntry;
+  previous: PreviousEntry | null;
+  // the user undid it from the chat
+  undone?: boolean;
+};
+
+// one per message: every sign_in_required of the answer goes in it
+export type SignInPart = { type: "sign_in"; saves: PendingSave[] };
+
+export type MessagePart =
+  | TextPart
+  | ToolPart
+  | CardsPart
+  | ListSavedPart
+  | SignInPart;
 
 export type ChatMessage = {
   id: string;

@@ -1185,3 +1185,52 @@ Template:
       again** and re-added Fury. After them, 5 of 5 runs said it isn't in
       the list (one earlier wording got 1 of 2 wrong). Scenarios 1–3 ran
       before the last tweak of the note bullet, not after.
+
+### Phase 5: Chat UI for list changes
+
+- **Status:** done
+- **Commits:** see `feat(chat): show list changes with undo in the chat` (this entry is in it)
+- **Deviations from the plan:**
+  - `useChat.undoSave` makes the request and resolves `false` on failure;
+    `ListSavedRow` shows the error toast. A 200 `{ addToListResult: "fail" }`
+    (the list routes' DB error) counts as a failure too.
+  - Undo is hidden only in the streaming answer. Finished rows keep it while
+    the next answer streams. So a completed turn clears only the
+    `listChanges` objects it sent (`addListChange` re-adds a key as a new
+    object), and a change made during the turn goes with the next one.
+    The client keeps the newest `MAX_LIST_CHANGES`.
+  - `router.refresh()` runs once at the end of a turn that had a
+    `list_saved`: completed, failed, stopped or New chat. Not on
+    `pagehide`/unmount: the next page loads fresh data anyway.
+  - Card statuses: `listStatuses()` in `messageParts.ts`. `ChatAssistant`
+    memoizes the map on its JSON, so it only changes with a save or Undo.
+    It's passed down like `signedIn`, and each card gets only its own
+    status. An undone change from a legacy status gives no badge (unknown).
+  - `ListSavedRow` gets `onUndo` only on finished messages; no `onUndo` also
+    means "streaming", which is when the row has `aria-live`.
+  - Added TMDB's `w92` to `ImageSize` for the thumbnails (images are
+    unoptimized, so `w342` would load 7x the pixels), and `isListStatus` to
+    the my-list index (the storage check and `listStatuses` need it).
+  - At 320 px the Undo button wraps below the row's text.
+- **For the next phase:**
+  - A resumed save renders with the same part: `addListSaved(parts,
+    { entry, previous })`. Push the key with `addListChange` (in
+    `useChat.ts`) before the `setMessages`, so the save effect stores it.
+    New saved fields go in `snapshot()` in `useChat`, plus `SavedChat` and
+    `isSavedChat`.
+  - The sign-in card still shows in a restored chat after signing in, with
+    a `/signin` link. Phase 6 replaces the link anyway.
+  - `routeFetch` in `ChatAssistant.test.tsx` now records `method` and
+    `headers`, and allows a request without a body.
+  - Fixtures for list parts are in `chat/testing/listParts.ts`.
+- **Checks:**
+  - `npm run lint`, `npx tsc --noEmit`, `npm run typecheck:tests` and
+    `npm run test:run` (1134 tests) are green. `chat.spec.ts` (15) is green.
+  - The manual check was scripted: a throwaway Playwright spec (deleted
+    afterwards) on the e2e server, with stubbed `list_saved` /
+    `sign_in_required` events, at 1280 and 320 px. Screenshots were
+    checked by eye: the rows (added, moved, already in the list, a long
+    title), the badges, Undo → "Undone" and the badge gone, and one and
+    three titles on the sign-in card. Nothing overflows at 320 px.
+    Signed in with a seeded entry, Undo removed it from the real DB, and
+    the next request carried `listChanges`. No real-key run in this phase.
