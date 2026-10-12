@@ -1014,3 +1014,45 @@ Template:
     leaves it empty; a reload during a held stream shows a stopped message,
     and the next request carries it in `stoppedTurns`. It wasn't checked by
     hand in `npm run dev`.
+
+### Phase 2: Expired conversations
+
+- **Status:** done
+- **Commits:** see `feat(chat): tell the user when a saved conversation expired` (this entry is in it)
+- **Deviations from the plan:** none in the design (option 1, `interactions.get`).
+  - The notice has no button of its own; the header's New chat button is the
+    "existing" one the plan mentions.
+  - A 409 without `{ error: "conversation_expired" }` (or without JSON) is a
+    plain error on the client.
+  - The expired path logs `console.info`, not `console.error`, on both
+    sides: it's expected after a day.
+- **For the next phase:**
+  - Live behaviour (real key, `gemini` via the app's `CHAT_MODEL`, SDK
+    2.24.0), checked by deleting a real interaction with
+    `interactions.delete` and continuing from it:
+    - `create` with that `previous_interaction_id` and `get(id)` both throw
+      `NotFoundError`, `status: 404`, body
+      `{"error":{"message":"Requested entity was not found.","code":"not_found"}}`.
+      A well-formed id that never existed behaves the same.
+    - A malformed id (`v1_doesnotexist`) is a **400** "Invalid interaction
+      name" from `get` and "Invalid JSON payload" from `create`, so it stays
+      a 502. Only ids Gemini issued can expire, so that's fine.
+    - An invalid key is a 400 `BadRequestError` from both.
+    - The app's `isInteractionGone` against the live API: an existing id gives
+      false, a deleted one true, a malformed one false.
+  - The route calls `get` after **any** failed start that had a previous id.
+    It costs one extra request on those failures only. It re-checks the abort
+    after the lookup, so a client that left during it still gets the quiet
+    499.
+  - The route test's `@google/genai` mock now has `interactions.get` (`get`
+    in the hoisted mocks). It's reset in `beforeEach` and returns
+    `undefined` by default, i.e. "the interaction exists".
+  - `ChatErrorResponse` is in `protocol.ts`. It isn't exported from the chat
+    index because nothing outside the module uses it.
+- **Checks:**
+  - `npm run lint`, `npx tsc --noEmit`, `npm run typecheck:tests` and
+    `npm run test:run` (982 tests) are green.
+  - `npx playwright test tests/e2e/chat.spec.ts` (15) is green.
+  - The live result above ran with the real key. A chat that actually
+    expired after a day wasn't waited for. Deleting the interaction gives the
+    same 404.

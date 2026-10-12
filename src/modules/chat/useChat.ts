@@ -11,6 +11,7 @@ import {
   stopTools,
 } from "./messageParts";
 import type {
+  ChatErrorResponse,
   ChatMessage,
   ChatRequest,
   ChatStreamEvent,
@@ -18,7 +19,13 @@ import type {
   StoppedTurn,
 } from "./protocol";
 
-export type ChatStatus = "idle" | "loading" | "streaming" | "error";
+// expired: Gemini no longer has the conversation, the next send starts fresh
+export type ChatStatus =
+  | "idle"
+  | "loading"
+  | "streaming"
+  | "error"
+  | "expired";
 
 type UseChatOptions = {
   // runs before each send (e.g. reCAPTCHA); resolve false to cancel the send
@@ -38,6 +45,21 @@ type Turn = {
 const MAX_MESSAGES = 10;
 
 const capped = (messages: ChatMessage[]) => messages.slice(-MAX_MESSAGES);
+
+class ConversationExpiredError extends Error {}
+
+// the server's 409 for a previous interaction Gemini no longer has
+async function isExpiredResponse(response: Response): Promise<boolean> {
+  if (response.status !== 409) {
+    return false;
+  }
+  try {
+    const body: ChatErrorResponse = await response.json();
+    return body.error === "conversation_expired";
+  } catch {
+    return false;
+  }
+}
 
 // the number in an "m12" id, 0 for any other id
 const idNumber = (id: string) => Number(/^m(\d+)$/.exec(id)?.[1] ?? 0);
@@ -180,6 +202,9 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
         signal,
       });
 
+      if (await isExpiredResponse(response)) {
+        throw new ConversationExpiredError();
+      }
       if (!response.ok) {
         throw new Error(
           `Network response was not ok. (Status: ${response.status})`,
@@ -274,8 +299,13 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
       if (!isCurrent()) {
         return;
       }
-      console.error("AI chat error:", error);
-      setStatus("error");
+      const expired = error instanceof ConversationExpiredError;
+      if (expired) {
+        console.info("AI chat conversation expired, starting a new one");
+      } else {
+        console.error("AI chat error:", error);
+      }
+      setStatus(expired ? "expired" : "error");
       // turn was never created (e.g. expired interaction or rejected stopped
       // turns), start a new conversation next time
       if (!newInteractionId) {

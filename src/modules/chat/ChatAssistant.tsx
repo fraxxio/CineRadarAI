@@ -102,6 +102,14 @@ export default function ChatAssistant({
               signedIn={signedIn}
             />
           )}
+          {status === "expired" && (
+            <AssistantMessage
+              message={assistantText(
+                "This conversation is too old to continue. Send your message again to start fresh — the assistant won't remember the messages above.",
+              )}
+              signedIn={signedIn}
+            />
+          )}
         </div>
       </div>
       <form onSubmit={handleSubmit} className="mt-auto flex px-4 py-2">

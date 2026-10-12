@@ -6,7 +6,7 @@ import {
   MAX_STOPPED_TURNS,
   type ChatStreamEvent,
 } from "@/modules/chat";
-import { streamChatReply } from "@/modules/chat/server";
+import { isInteractionGone, streamChatReply } from "@/modules/chat/server";
 
 export const runtime = "edge";
 
@@ -67,7 +67,21 @@ export async function POST(request: NextRequest) {
     if (abort.signal.aborted) {
       return new Response(null, { status: 499 });
     }
-    // e.g. expired/unknown previous_interaction_id, invalid key, quota
+    // a saved chat can outlive its interaction: the client starts fresh
+    if (
+      previousInteractionId &&
+      (await isInteractionGone(previousInteractionId, abort.signal))
+    ) {
+      console.info("Previous interaction is gone, the conversation expired");
+      return NextResponse.json(
+        { error: "conversation_expired" },
+        { status: 409 },
+      );
+    }
+    if (abort.signal.aborted) {
+      return new Response(null, { status: 499 });
+    }
+    // e.g. a malformed previous_interaction_id, invalid key, quota
     console.error("Gemini interaction error:", error);
     return NextResponse.json({ error: "Failed to start chat" }, { status: 502 });
   }

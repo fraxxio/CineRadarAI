@@ -16,6 +16,9 @@ import { controlledStream, ndjson, streamResponse } from "./testing/stream";
 const GREETING = "Hi! What would you like to watch?";
 const ERROR_TEXT = "Unfortunately an error occurred. Try again later.";
 const CAPTCHA_FAILED = "Recaptcha failed to verify!";
+const EXPIRED_TEXT = /This conversation is too old to continue/;
+const expiredResponse = () =>
+  Response.json({ error: "conversation_expired" }, { status: 409 });
 
 const start = (interactionId: string) => ({ type: "start", interactionId });
 const delta = (text: string) => ({ type: "delta", text });
@@ -573,7 +576,9 @@ describe("ChatAssistant", () => {
         ndjson(start("i1"), toolStart("c1"), toolStart("c2", DETAILS)),
       );
 
-      await waitFor(() => expect(screen.getAllByRole("status")).toHaveLength(2));
+      await waitFor(() =>
+        expect(screen.getAllByRole("status")).toHaveLength(2),
+      );
       expect(isBefore(toolLine(SEARCHING), toolLine(DETAILS))).toBe(true);
       expect(toolLine(SEARCHING)).not.toHaveTextContent(/\(\d+x\)/);
     });
@@ -1242,6 +1247,103 @@ describe("ChatAssistant", () => {
       expect(saved).not.toHaveProperty("interactionId");
       expect(saved.stoppedTurns).toEqual([]);
       expect(saved.messages.at(-1)).toMatchObject({ role: "user" });
+    });
+
+    describe("expired", () => {
+      beforeEach(() => {
+        vi.spyOn(console, "info").mockImplementation(() => {});
+      });
+
+      test("a 409 keeps the messages and shows the notice, not the error", async () => {
+        saveChat(SAVED);
+        routeFetch({ "/api/assistant": [expiredResponse()] });
+        renderChat();
+        await screen.findByText("Watch Fury.");
+
+        await send("p2");
+
+        expect(await screen.findByText(EXPIRED_TEXT)).toBeInTheDocument();
+        expect(screen.queryByText(ERROR_TEXT)).toBeNull();
+        expect(screen.getByText("Watch Fury.")).toBeInTheDocument();
+        expect(screen.getByText("p2")).toBeInTheDocument();
+        await settled();
+        expect(newChatBtn()).toBeEnabled();
+      });
+
+      test("the next send starts a new conversation and clears the notice", async () => {
+        saveChat(SAVED);
+        const { bodies } = routeFetch({
+          "/api/assistant": [expiredResponse(), answer("i2", "a2")],
+        });
+        renderChat();
+        await screen.findByText("Watch Fury.");
+
+        await send("p2");
+        await screen.findByText(EXPIRED_TEXT);
+        await settled();
+        await send("p2");
+        await settled();
+
+        expect(bodies("/api/assistant")).toEqual([
+          {
+            content: "p2",
+            previousInteractionId: "i1",
+            stoppedTurns: [{ prompt: "older ones", partialText: "Try" }],
+          },
+          { content: "p2" },
+        ]);
+        expect(screen.getByText("a2")).toBeInTheDocument();
+        expect(screen.queryByText(EXPIRED_TEXT)).toBeNull();
+      });
+
+      test("the saved chat keeps the messages without the dead interaction", async () => {
+        saveChat(SAVED);
+        routeFetch({ "/api/assistant": [expiredResponse()] });
+        renderChat();
+        await screen.findByText("Watch Fury.");
+
+        await send("p2");
+        await screen.findByText(EXPIRED_TEXT);
+
+        const saved = loadChat()!;
+        expect(saved).not.toHaveProperty("interactionId");
+        expect(saved.stoppedTurns).toEqual([]);
+        expect(saved.messages.map((m) => m.id)).toEqual([
+          "m1",
+          "m2",
+          "m3",
+          "m4",
+          "m5",
+        ]);
+      });
+
+      it.each([
+        [
+          "another 409 error",
+          () => Response.json({ error: "x" }, { status: 409 }),
+        ],
+        ["a 409 without JSON", () => new Response("", { status: 409 })],
+      ])("%s is a plain error", async (_, reply) => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        routeFetch({ "/api/assistant": [reply()] });
+        renderChat();
+
+        await send("hi");
+
+        expect(await screen.findByText(ERROR_TEXT)).toBeInTheDocument();
+        expect(screen.queryByText(EXPIRED_TEXT)).toBeNull();
+      });
+
+      test("New chat clears the notice", async () => {
+        routeFetch({ "/api/assistant": [expiredResponse()] });
+        renderChat();
+        await send("hi");
+        await screen.findByText(EXPIRED_TEXT);
+
+        await user.click(newChatBtn());
+
+        expect(screen.queryByText(EXPIRED_TEXT)).toBeNull();
+      });
     });
 
     test("New chat clears it", async () => {

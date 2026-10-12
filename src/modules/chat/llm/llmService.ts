@@ -104,6 +104,24 @@ type RoundRequest = {
   toolChoice: ToolChoice;
 };
 
+const geminiClient = () =>
+  new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// true only when Gemini says the interaction doesn't exist (anymore), e.g. a
+// saved chat that outlived it; any other failure (invalid key, quota, a
+// malformed id) is a 4xx too, so the status of the failed create can't tell
+export async function isInteractionGone(
+  id: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  try {
+    await geminiClient().interactions.get(id, null, { signal });
+    return false;
+  } catch (error) {
+    return (error as { status?: unknown } | null)?.status === 404;
+  }
+}
+
 // throws if Gemini refuses to start (e.g. expired/unknown previous
 // interaction id, invalid key, quota); later failures, including tool rounds,
 // are thrown by the returned iterable or sent as an error event
@@ -113,7 +131,7 @@ export async function streamChatReply({
   previousInteractionId,
   signal,
 }: ChatReplyParams): Promise<AsyncIterable<ChatStreamEvent>> {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = geminiClient();
   const base = baseRequest();
 
   // every round is a new interaction continuing the previous one

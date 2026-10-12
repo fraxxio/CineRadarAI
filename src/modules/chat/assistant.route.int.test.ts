@@ -45,18 +45,23 @@ import {
   rawShow,
 } from "./testing/tmdbData";
 
-const { create, ctor } = vi.hoisted(() => ({ create: vi.fn(), ctor: vi.fn() }));
+const { create, get, ctor } = vi.hoisted(() => ({
+  create: vi.fn(),
+  get: vi.fn(),
+  ctor: vi.fn(),
+}));
 vi.mock("@google/genai", () => ({
   // `function`, not arrow: the route calls `new GoogleGenAI(...)` (Vitest 4)
   GoogleGenAI: vi.fn(function (opts: unknown) {
     ctor(opts);
-    return { interactions: { create } };
+    return { interactions: { create, get } };
   }),
 }));
 
 beforeEach(() => {
   vi.stubEnv("AI_CHAT_ENABLED", "true");
   create.mockReset();
+  get.mockReset();
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -242,6 +247,78 @@ describe("POST /api/assistant", () => {
     create.mockRejectedValue(new Error("quota"));
     const res = await post({ content: "hi" });
     expect(res.status).toBe(502);
+  });
+
+  describe("an expired conversation", () => {
+    // what the SDK throws, live: NotFoundError for a deleted or unknown
+    // interaction, BadRequestError for an invalid key
+    const apiError = (status: number, message: string) =>
+      Object.assign(new Error(`${status} ${message}`), { status });
+    const notFound = () => apiError(404, "Requested entity was not found.");
+
+    beforeEach(() => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.spyOn(console, "info").mockImplementation(() => {});
+    });
+
+    test("returns 409 when the previous interaction is gone", async () => {
+      create.mockRejectedValue(notFound());
+      get.mockRejectedValue(notFound());
+
+      const res = await post({
+        content: "hi",
+        previousInteractionId: "v1_old",
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "conversation_expired" });
+      expect(get).toHaveBeenCalledWith(
+        "v1_old",
+        null,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(console.error).not.toHaveBeenCalled();
+    });
+
+    test("without a previous interaction the same error is a 502", async () => {
+      create.mockRejectedValue(notFound());
+
+      const res = await post({ content: "hi" });
+
+      expect(res.status).toBe(502);
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["an invalid key", apiError(400, "API error occurred")],
+      ["a quota error", apiError(429, "Resource exhausted")],
+      ["a network failure", new TypeError("fetch failed")],
+    ])("returns 502 when the lookup fails with %s", async (_, error) => {
+      create.mockRejectedValue(error);
+      get.mockRejectedValue(error);
+
+      const res = await post({
+        content: "hi",
+        previousInteractionId: "v1_old",
+      });
+
+      expect(res.status).toBe(502);
+      expect(console.error).toHaveBeenCalled();
+    });
+
+    test("returns 502 when the previous interaction still exists", async () => {
+      create.mockRejectedValue(
+        apiError(400, "Request contains an invalid argument."),
+      );
+      get.mockResolvedValue({ id: "v1_old", status: "completed" });
+
+      const res = await post({
+        content: "hi",
+        previousInteractionId: "v1_old",
+      });
+
+      expect(res.status).toBe(502);
+    });
   });
 
   test("responds with Content-Type application/x-ndjson", async () => {

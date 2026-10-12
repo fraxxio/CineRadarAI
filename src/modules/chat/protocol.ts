@@ -43,6 +43,10 @@ export type ChatRequest = {
   stoppedTurns?: StoppedTurn[];
 };
 
+// JSON body of a POST /api/assistant that failed before streaming; 409
+// "conversation_expired": Gemini no longer has previousInteractionId
+export type ChatErrorResponse = { error: string };
+
 export type TextPart = { type: "text"; text: string };
 
 // one line per tool; calls of the same tool in one tool block share it
