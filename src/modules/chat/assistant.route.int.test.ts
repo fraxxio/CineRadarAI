@@ -9,12 +9,13 @@ import {
   buildSystemInstruction,
 } from "./chatConfig";
 import {
+  MAX_LIST_CHANGES,
   MAX_PROMPT_LENGTH,
   MAX_STOPPED_TEXT_LENGTH,
   MAX_STOPPED_TURNS,
 } from "./chatLimits";
 import { toGeminiTools } from "./llm/geminiTools";
-import { DISPLAY_ONLY_TOOL_CHOICE } from "./llm/llmService";
+import { FINAL_ROUND_TOOL_CHOICE } from "./llm/llmService";
 import { CHAT_TOOLS } from "./tools/registry";
 import { asUser } from "@test/helpers/auth";
 import { getMovies, seedList, seedUser } from "@test/helpers/db";
@@ -251,6 +252,127 @@ describe("POST /api/assistant", () => {
       }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
+  });
+
+  describe("sign-in state", () => {
+    const instruction = () =>
+      create.mock.lastCall?.[0].system_instruction as string;
+
+    test("signed in: the prompt says so", async () => {
+      asUser(await seedUser());
+      create.mockResolvedValue(geminiEvents([]));
+      await post({ content: "hi" });
+      expect(instruction()).toContain("The user is signed in.");
+    });
+
+    test("signed out: the prompt says so", async () => {
+      create.mockResolvedValue(geminiEvents([]));
+      await post({ content: "hi" });
+      expect(instruction()).toContain("The user is signed out.");
+    });
+
+    test("an unreadable session counts as signed out", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.mocked(auth as unknown as () => Promise<unknown>).mockRejectedValue(
+        new Error("db down"),
+      );
+      create.mockResolvedValue(geminiEvents([]));
+      await post({ content: "hi" });
+      expect(instruction()).toContain("The user is signed out.");
+    });
+  });
+
+  describe("list changes", () => {
+    const text = (t: string) => [{ type: "text", text: t }];
+    const key = (movieId: unknown = 228150, type: unknown = "movie") => ({
+      movieId,
+      type,
+    });
+    const input = () => create.mock.lastCall?.[0].input;
+
+    it.each([
+      ["not an array", key()],
+      ["more than MAX_LIST_CHANGES", Array(MAX_LIST_CHANGES + 1).fill(key())],
+      ["a movieId that isn't a number", [key("228150")]],
+      ["a movieId that isn't positive", [key(0)]],
+      ["a movieId that isn't an integer", [key(1.5)]],
+      ["an unknown type", [key(1, "person")]],
+      ["a missing type", [{ movieId: 1 }]],
+    ])("returns 400 for %s", async (_, listChanges) => {
+      const res = await post({ content: "hi", listChanges });
+      expect(res.status).toBe(400);
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    test("signed in: a note with the entries' state from the DB, after the stopped turns", async () => {
+      const user = await seedUser();
+      await seedList(user.id, [
+        makeMovie({
+          movieId: 693134,
+          name: "Dune: Part Two",
+          status: "Completed",
+        }),
+        makeMovie({
+          movieId: 1396,
+          type: "tv",
+          name: "Breaking Bad",
+          status: "Watching",
+        }),
+      ]);
+      asUser(user);
+      create.mockResolvedValue(geminiEvents([]));
+
+      const res = await post({
+        content: "is Fury in my list?",
+        stoppedTurns: [{ prompt: "p1", partialText: "A" }],
+        listChanges: [key(693134), key(228150), key(1396, "tv")],
+      });
+
+      expect(res.status).toBe(200);
+      expect(input()).toEqual([
+        { type: "user_input", content: text("p1") },
+        { type: "model_output", content: text("A") },
+        {
+          type: "user_input",
+          content: text(
+            "[List update: Dune: Part Two (movie 693134) is Completed; movie 228150 is not in the list; Breaking Bad (tv 1396) is Watching]",
+          ),
+        },
+        { type: "user_input", content: text("is Fury in my list?") },
+      ]);
+    });
+
+    test("another user's entries aren't in the note", async () => {
+      const user = await seedUser();
+      const other = await seedUser();
+      await seedList(other.id, [makeMovie({ movieId: 228150 })]);
+      asUser(user);
+      create.mockResolvedValue(geminiEvents([]));
+
+      await post({ content: "hi", listChanges: [key()] });
+
+      expect(input()).toEqual([
+        {
+          type: "user_input",
+          content: text("[List update: movie 228150 is not in the list]"),
+        },
+        { type: "user_input", content: text("hi") },
+      ]);
+    });
+
+    test("signed out: no note", async () => {
+      create.mockResolvedValue(geminiEvents([]));
+      const res = await post({ content: "hi", listChanges: [key()] });
+      expect(res.status).toBe(200);
+      expect(input()).toBe("hi");
+    });
+
+    test("an empty list: no note", async () => {
+      asUser(await seedUser());
+      create.mockResolvedValue(geminiEvents([]));
+      await post({ content: "hi", listChanges: [] });
+      expect(input()).toBe("hi");
+    });
   });
 
   test("returns 502 when interactions.create throws", async () => {
@@ -892,7 +1014,7 @@ describe("POST /api/assistant", () => {
       // the response to the request after the last lookup round
       const LAST = MAX_TOOL_ROUNDS + 1;
 
-      test(`after ${MAX_TOOL_ROUNDS} tool rounds the last request allows only show_recommendations`, async () => {
+      test(`after ${MAX_TOOL_ROUNDS} tool rounds the last request allows only show_recommendations and save_to_list`, async () => {
         const spy = tmdb();
         alwaysTools({ [LAST]: answerRound(`i${LAST}`, "Here you go.") });
 
@@ -904,10 +1026,13 @@ describe("POST /api/assistant", () => {
           "auto",
           "auto",
           "auto",
-          DISPLAY_ONLY_TOOL_CHOICE,
+          FINAL_ROUND_TOOL_CHOICE,
         ]);
-        expect(DISPLAY_ONLY_TOOL_CHOICE).toEqual({
-          allowed_tools: { mode: "validated", tools: ["show_recommendations"] },
+        expect(FINAL_ROUND_TOOL_CHOICE).toEqual({
+          allowed_tools: {
+            mode: "validated",
+            tools: ["show_recommendations", "save_to_list"],
+          },
         });
         expect(
           create.mock.calls.map(([body]) => body.previous_interaction_id),
@@ -926,7 +1051,7 @@ describe("POST /api/assistant", () => {
         const { events } = await readNdjson(await post({ content: "war" }));
 
         expect(toolChoices().slice(-2)).toEqual([
-          DISPLAY_ONLY_TOOL_CHOICE,
+          FINAL_ROUND_TOOL_CHOICE,
           "none",
         ]);
         expect(events.slice(-5)).toEqual([
@@ -941,6 +1066,39 @@ describe("POST /api/assistant", () => {
         ]);
       });
 
+      test("save_to_list in the last round runs, then the model may still save", async () => {
+        const user = await seedUser();
+        asUser(user);
+        tmdb({ "/3/movie/228150": FURY_DETAILS });
+        alwaysTools({
+          [LAST]: toolRound(`i${LAST}`, {
+            id: "c-save",
+            name: "save_to_list",
+            args: { type: "movie", id: 228150, title: "Fury" },
+          }),
+          [LAST + 1]: answerRound(`i${LAST + 1}`, "Added."),
+        });
+
+        const { events } = await readNdjson(await post({ content: "war" }));
+
+        // a save isn't the cards, but the rounds are used up
+        expect(toolChoices().slice(-2)).toEqual([
+          FINAL_ROUND_TOOL_CHOICE,
+          "none",
+        ]);
+        expect(events).toContainEqual(
+          expect.objectContaining({ type: "list_saved" }),
+        );
+        expect(await getMovies(user.id)).toEqual([
+          makeMovie({
+            movieId: 228150,
+            name: "Fury",
+            image: "/b.jpg",
+            status: "Planning to watch",
+          }),
+        ]);
+      });
+
       const REFUSED = "No more tool calls in this answer: reply in text";
 
       test("a lookup call in the last round isn't run; Gemini gets one more request, with none", async () => {
@@ -951,7 +1109,7 @@ describe("POST /api/assistant", () => {
 
         expect(create).toHaveBeenCalledTimes(MAX_TOOL_ROUNDS + 2);
         expect(toolChoices().slice(-2)).toEqual([
-          DISPLAY_ONLY_TOOL_CHOICE,
+          FINAL_ROUND_TOOL_CHOICE,
           "none",
         ]);
         // the extra call isn't run
@@ -971,7 +1129,7 @@ describe("POST /api/assistant", () => {
           { type: "done", interactionId: `i${LAST + 1}` },
         ]);
         expect(console.warn).toHaveBeenCalledWith(
-          `Gemini round ${MAX_TOOL_ROUNDS} ignored tool_choice ${JSON.stringify(DISPLAY_ONLY_TOOL_CHOICE)}: search_titles`,
+          `Gemini round ${MAX_TOOL_ROUNDS} ignored tool_choice ${JSON.stringify(FINAL_ROUND_TOOL_CHOICE)}: search_titles`,
         );
       });
 

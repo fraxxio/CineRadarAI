@@ -1121,3 +1121,67 @@ Template:
     route. One real signed-out request against it gave the stream above. A
     signed-in save wasn't tried live; the route integration tests cover it
     with the real DB.
+
+### Phase 4: Prompt, sign-in state, tool choice and list-change notes
+
+- **Status:** done
+- **Commits:** see `feat(chat): prompt the model to manage the list` (this entry is in it)
+- **Deviations from the plan:**
+  - The note is built in `llm/listChangeNote.ts`, called from
+    `streamChatReply` (new `listChanges` param), not in the route. It loads
+    `@/modules/my-list/server` lazily, like `save_to_list`, so the check
+    script still loads `llmService`. One `getEntries` query, not one per key.
+  - A key that isn't in the list has no row, so no name: the note says
+    `movie 228150 is not in the list`, not `Fury (movie 228150) …` as in the
+    plan's example. The model links the id from its history (live: right 5
+    of 5 times).
+  - Stored names come from the add-to-list route, i.e. any text, so the note
+    turns runs of brackets and whitespace into one space and caps names at
+    300 characters. Repeated keys are listed once.
+  - `buildSystemInstruction(date, { signedIn })` defaults to signed out;
+    `baseRequest({ signedIn })` requires it. The check script uses signed
+    out.
+  - Prompt additions beyond the plan, all from the live runs below: a
+    question about the list isn't a save; the note replaces what earlier
+    messages say and is never a reason to save; "always write one short line
+    (e.g. "Added to your list.")" after a save; an error result → "couldn't
+    be saved". The "don't ask clarifying questions" rule is now scoped to
+    recommendations instead of naming an exception.
+  - `MAX_LIST_CHANGES = 10` is in `chatLimits.ts` and exported from the chat
+    index, for phase 5's client.
+- **For the next phase:**
+  - Send `listChanges` as `{ movieId, type }[]`, at most `MAX_LIST_CHANGES`;
+    more, or a non-integer id, is a 400.
+  - The note only says what the DB has now. It doesn't say *why* (Undo vs a
+    save after sign-in); the prompt's example is Undo.
+  - Live, a direct "add Fury (2014) to my list" sometimes calls a made-up
+    `save_title_to_list` first. The registry rejects it as an unknown tool
+    and the model retries with `save_to_list` in the next round. That costs
+    one extra round, and the chat streams a `tool_start` for the unknown
+    name. Phase 7 could check how that line looks.
+- **Checks:**
+  - `npm run lint`, `npx tsc --noEmit`, `npm run typecheck:tests` and
+    `npm run test:run` (1072 tests) are green. `chat.spec.ts` (15) is green.
+  - `npm run check:chat-tools` with the real key passed (both choices
+    accepted, 10 tools).
+  - Manual check with the real key: a throwaway script (deleted afterwards)
+    called `streamChatReply` under Node, not the edge route, with a temp
+    SQLite DB, real Gemini (`gemini-3.5-flash-lite`, minimal thinking) and
+    real TMDB. The edge route can't be tried signed in locally: auth uses DB
+    sessions, and the edge libsql client can't open a `file:` DB.
+    - "add the second one to my watchlist" after Brad Pitt war cards →
+      Inglourious Basterds (card 2) saved as Planning to watch, "Added to
+      your list." **Passed.**
+    - "mark Dune as completed" → searched, then asked "the 2021 film, the
+      1984 film, or Dune: Part Two?"; "mark Dune (2021) as completed" →
+      Completed, rating 9 kept. **Passed.**
+    - signed out, "add Fury to my watchlist" → `sign_in_required` with
+      status "Planning to watch" (the phase 3 gap is fixed), "Please sign
+      in to add titles to your list." **Passed.**
+    - unrelated question → the "recommendations and your list" line.
+      **Passed.**
+    - save, remove it as Undo would, then "is Fury in my list?" with
+      `listChanges`: before the prompt fixes it **called `save_to_list`
+      again** and re-added Fury. After them, 5 of 5 runs said it isn't in
+      the list (one earlier wording got 1 of 2 wrong). Scenarios 1–3 ran
+      before the last tweak of the note bullet, not after.

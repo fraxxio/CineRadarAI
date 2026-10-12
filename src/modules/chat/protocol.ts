@@ -1,5 +1,10 @@
 import type { MediaType } from "@/infra/tmdb";
-import type { ListStatus, PreviousEntry, SavedEntry } from "@/modules/my-list";
+import type {
+  EntryKey,
+  ListStatus,
+  PreviousEntry,
+  SavedEntry,
+} from "@/modules/my-list";
 
 export type { PreviousEntry, SavedEntry };
 
@@ -60,6 +65,9 @@ export type ChatRequest = {
   previousInteractionId?: string;
   // oldest first
   stoppedTurns?: StoppedTurn[];
+  // entries changed outside the model since the last turn; the server tells
+  // the model their state from the DB
+  listChanges?: EntryKey[];
 };
 
 // JSON body of a POST /api/assistant that failed before streaming; 409

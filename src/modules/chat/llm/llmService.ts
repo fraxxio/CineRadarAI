@@ -6,11 +6,14 @@ import {
   MAX_TOOL_ROUNDS,
   buildSystemInstruction,
 } from "../chatConfig";
+import type { EntryKey } from "@/modules/my-list";
 import type { ChatStreamEvent, StoppedTurn } from "../protocol";
 import { CHAT_TOOLS, runToolCalls } from "../tools/registry";
+import { SAVE_TO_LIST } from "../tools/saveToList";
 import { SHOW_RECOMMENDATIONS } from "../tools/showRecommendations";
 import type { ChatUser, ToolCall, ToolResult } from "../tools/types";
 import { toFunctionResults, toGeminiTools } from "./geminiTools";
+import { listChangeNote } from "./listChangeNote";
 import { readRound, type RoundOutcome } from "./readRound";
 
 type ChatReplyParams = {
@@ -22,18 +25,22 @@ type ChatReplyParams = {
   signal: AbortSignal;
   // from the session; the tools act for this user only
   user: ChatUser;
+  // entries changed outside the model, from the client; only their keys
+  listChanges: EntryKey[];
 };
 
 const text = (value: string): Interactions.Content[] => [
   { type: "text", text: value },
 ];
 
-// stopped turns go before the prompt so the model sees what the user saw
+// stopped turns go before the prompt so the model sees what the user saw,
+// then the list-change note, which is newer than them
 export function buildChatInput(
   prompt: string,
   stoppedTurns: StoppedTurn[],
+  note?: string,
 ): string | Interactions.Step[] {
-  if (stoppedTurns.length === 0) {
+  if (stoppedTurns.length === 0 && !note) {
     return prompt;
   }
 
@@ -45,26 +52,32 @@ export function buildChatInput(
       steps.push({ type: "model_output", content: text(partialText) });
     }
   }
+  if (note) {
+    steps.push({ type: "user_input", content: text(note) });
+  }
   steps.push({ type: "user_input", content: text(prompt) });
   return steps;
 }
 
 // the fields every round sends; scripts/check-chat-tools.ts sends them too,
 // so the live check can't drift from the app's request
-export function baseRequest() {
+export function baseRequest({ signedIn }: { signedIn: boolean }) {
   return {
     model: CHAT_MODEL,
     // interaction-scoped: must be resent every round
     tools: toGeminiTools(CHAT_TOOLS),
-    system_instruction: buildSystemInstruction(),
+    system_instruction: buildSystemInstruction(new Date(), { signedIn }),
     generation_config: { thinking_level: CHAT_THINKING_LEVEL },
   };
 }
 
-// the last tool round may only show the cards; "validated" still lets the
-// model answer with text (Gemini rejects "auto" in allowed_tools)
-export const DISPLAY_ONLY_TOOL_CHOICE: Interactions.ToolChoiceConfig = {
-  allowed_tools: { mode: "validated", tools: [SHOW_RECOMMENDATIONS] },
+// the last tool round may only show the cards or save; "validated" still
+// lets the model answer with text (Gemini rejects "auto" in allowed_tools)
+export const FINAL_ROUND_TOOL_CHOICE: Interactions.ToolChoiceConfig = {
+  allowed_tools: {
+    mode: "validated",
+    tools: [SHOW_RECOMMENDATIONS, SAVE_TO_LIST],
+  },
 };
 
 type ToolChoice = Interactions.ToolChoiceConfig | Interactions.ToolChoiceType;
@@ -90,12 +103,13 @@ const refused = (call: ToolCall): ToolResult => ({
 });
 
 // the request carrying the results of round `round`'s calls; once the cards
-// are shown, the model only writes text
+// are shown, the model only writes text, so "recommend X and add the first
+// one" saves nothing until the user asks again (accepted)
 function nextToolChoice(round: number, shownCards: boolean): ToolChoice {
   if (shownCards || round >= MAX_TOOL_ROUNDS) {
     return "none";
   }
-  return round + 1 >= MAX_TOOL_ROUNDS ? DISPLAY_ONLY_TOOL_CHOICE : "auto";
+  return round + 1 >= MAX_TOOL_ROUNDS ? FINAL_ROUND_TOOL_CHOICE : "auto";
 }
 
 type GeminiStream = AsyncIterable<Interactions.InteractionSSEEvent>;
@@ -133,9 +147,11 @@ export async function streamChatReply({
   previousInteractionId,
   signal,
   user,
+  listChanges,
 }: ChatReplyParams): Promise<AsyncIterable<ChatStreamEvent>> {
   const ai = geminiClient();
-  const base = baseRequest();
+  // unavailable counts as signed out; the tools answer it with their own error
+  const base = baseRequest({ signedIn: user.status === "signed_in" });
 
   // every round is a new interaction continuing the previous one
   const openRound = (request: RoundRequest): Promise<GeminiStream> =>
@@ -153,8 +169,9 @@ export async function streamChatReply({
       { signal },
     );
 
+  const note = await listChangeNote(user, listChanges);
   const first = await openRound({
-    input: buildChatInput(prompt, stoppedTurns),
+    input: buildChatInput(prompt, stoppedTurns, note),
     previousInteractionId,
     toolChoice: FIRST_TOOL_CHOICE,
   });

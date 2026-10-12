@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/infra/auth/auth";
 import {
+  MAX_LIST_CHANGES,
   MAX_PROMPT_LENGTH,
   MAX_STOPPED_TEXT_LENGTH,
   MAX_STOPPED_TURNS,
@@ -33,6 +34,16 @@ const chatRequestSchema = z.object({
     )
     .max(MAX_STOPPED_TURNS)
     .optional(),
+  // keys only: the note the model gets is read from the DB
+  listChanges: z
+    .array(
+      z.object({
+        movieId: z.number().int().positive(),
+        type: z.enum(["movie", "tv"]),
+      }),
+    )
+    .max(MAX_LIST_CHANGES)
+    .optional(),
 });
 
 // the only source of the user the tools act for; the chat works without it
@@ -63,7 +74,12 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
-  const { content, previousInteractionId, stoppedTurns = [] } = parsed.data;
+  const {
+    content,
+    previousInteractionId,
+    stoppedTurns = [],
+    listChanges = [],
+  } = parsed.data;
   const user = await chatUser();
 
   // stops the Gemini request when the client leaves: cancel() below is the
@@ -79,6 +95,7 @@ export async function POST(request: NextRequest) {
       previousInteractionId: previousInteractionId ?? undefined,
       signal: abort.signal,
       user,
+      listChanges,
     });
   } catch (error) {
     // the client is already gone, nobody reads this response
@@ -101,7 +118,10 @@ export async function POST(request: NextRequest) {
     }
     // e.g. a malformed previous_interaction_id, invalid key, quota
     console.error("Gemini interaction error:", error);
-    return NextResponse.json({ error: "Failed to start chat" }, { status: 502 });
+    return NextResponse.json(
+      { error: "Failed to start chat" },
+      { status: 502 },
+    );
   }
 
   // encode events as NDJSON
