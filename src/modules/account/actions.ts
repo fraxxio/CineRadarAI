@@ -1,10 +1,25 @@
 "use server";
 
-import { auth, signOut } from "@/infra/auth/auth";
+import { auth, signIn, signOut } from "@/infra/auth/auth";
 import { db } from "@/infra/db";
 import { users } from "@/infra/db/schema/users";
+import { safeRedirect } from "@/shared/lib/safeRedirect";
 import { eq } from "drizzle-orm/sqlite-core/expressions";
 import { redirect } from "next/navigation";
+
+const PROVIDERS = ["google", "github"];
+
+// the sign-in page's and the chat's sign-in card's provider buttons; signIn
+// redirects by throwing NEXT_REDIRECT, so it isn't caught
+export async function signInWithProvider(formData: FormData) {
+  const provider = formData.get("provider");
+  if (typeof provider !== "string" || !PROVIDERS.includes(provider)) {
+    throw new Error("Unknown sign-in provider");
+  }
+  await signIn(provider, {
+    redirectTo: safeRedirect(formData.get("callbackUrl")),
+  });
+}
 
 export async function SignOut() {
   await signOut({ redirectTo: "/" });

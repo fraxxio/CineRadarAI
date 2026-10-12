@@ -16,6 +16,20 @@ export const entryKeyInput = z.object({
   type: z.enum(MEDIA_TYPES),
 });
 
+// the chat's save after sign-in -> a TitleToSave; null keeps saveTitle's
+// default (Planning to watch for a new title, unchanged otherwise)
+export const titleToSaveInput = z
+  .object({
+    type: z.enum(MEDIA_TYPES),
+    id: z.number().int().positive(),
+    title: z.string().min(1).max(300),
+    status: z.enum(statusValues).nullable(),
+  })
+  .transform(({ status, ...title }) => ({
+    ...title,
+    status: status ?? undefined,
+  }));
+
 // the add/edit dialog payload -> a ListEntry
 export const entryInput = entryKeyInput
   .extend({

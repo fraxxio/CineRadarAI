@@ -28,8 +28,16 @@ export default function ChatAssistant({
   signedIn,
 }: ChatAssistantProps) {
   const recaptcha = useRecaptchaCheck(recaptchaEnabled);
-  const { messages, streamingParts, status, send, stop, reset, undoSave } =
-    useChat({ beforeSend: recaptcha.verify });
+  const {
+    messages,
+    streamingParts,
+    status,
+    send,
+    stop,
+    reset,
+    undoSave,
+    startSignIn,
+  } = useChat({ beforeSend: recaptcha.verify, signedIn });
   const [prompt, setPrompt] = useState("");
   // safe to shuffle during render: the loader never renders on the server
   const [loaderWords] = useState(() => shuffle(LOADER_WORDS));
@@ -97,6 +105,7 @@ export default function ChatAssistant({
               signedIn={signedIn}
               listStatus={listStatus}
               onUndo={undoSave}
+              onSignIn={startSignIn}
             />
           ))}
           {isBusy && (
@@ -104,6 +113,7 @@ export default function ChatAssistant({
               message={{ role: "assistant", parts: streamingParts }}
               signedIn={signedIn}
               listStatus={listStatus}
+              onSignIn={startSignIn}
             >
               {showLoader && (
                 <ThinkingLoader

@@ -1,16 +1,23 @@
 import Link from "next/link";
+import { signInWithProvider } from "@/modules/account/actions";
+import { SignInButtons } from "@/shared/ui/SignInButtons";
 import type { PendingSave } from "./protocol";
 import { SmallPoster } from "./SmallPoster";
+import type { StartSignIn } from "./useChat";
 
 type SignInCardProps = {
   saves: PendingSave[];
+  onSignIn: StartSignIn;
 };
 
-// the titles a signed-out user asked to save; the chat is kept for the
-// session, so it's still there after signing in
-export function SignInCard({ saves }: SignInCardProps) {
+const SIGN_IN_PATH = "/signin?callbackUrl=/";
+
+// the titles a signed-out user asked to save; a click keeps them with the
+// chat, which is restored after signing in, and they're saved then
+export function SignInCard({ saves, onSignIn }: SignInCardProps) {
   const [first] = saves;
   const single = saves.length === 1;
+  const startSignIn = () => onSignIn(saves);
 
   return (
     <div className="flex items-center gap-3 rounded-sm border border-border-clr bg-dark-bg p-3">
@@ -32,11 +39,18 @@ export function SignInCard({ saves }: SignInCardProps) {
             </ul>
           </>
         )}
+        <SignInButtons
+          action={signInWithProvider}
+          callbackUrl="/"
+          compact
+          onClick={startSignIn}
+        />
         <Link
-          href="/signin?callbackUrl=/"
-          className="self-start rounded-md border border-border-clr bg-primary-bg px-3 py-1 text-sm font-medium duration-200 hover:bg-primary-text hover:text-dark-bg"
+          href={SIGN_IN_PATH}
+          onClick={startSignIn}
+          className="self-start text-sm text-secondary-text underline duration-200 hover:text-primary-text"
         >
-          Sign in
+          Other sign-in options
         </Link>
       </div>
     </div>

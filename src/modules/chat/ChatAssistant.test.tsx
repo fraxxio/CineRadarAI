@@ -1,16 +1,31 @@
+import { StrictMode } from "react";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { useRouter } from "next/navigation";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { toast } from "sonner";
-import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  test,
+  vi,
+} from "vitest";
 import ChatAssistant from "./ChatAssistant";
 import {
   MAX_PROMPT_LENGTH,
   MAX_STOPPED_TEXT_LENGTH,
   MAX_STOPPED_TURNS,
 } from "./chatLimits";
-import { loadChat, saveChat, type ChatSnapshot } from "./chatStorage";
+import {
+  PENDING_SAVE_MAX_AGE_MS,
+  loadChat,
+  saveChat,
+  type ChatSnapshot,
+} from "./chatStorage";
 import type {
   ChatMessage,
   ListSavedPart,
@@ -18,7 +33,12 @@ import type {
   RecommendedTitle,
   StoppedTurn,
 } from "./protocol";
-import { listSavedPart, pendingSave, previousEntry } from "./testing/listParts";
+import {
+  listSavedPart,
+  pendingSave,
+  previousEntry,
+  savedEntry,
+} from "./testing/listParts";
 import { controlledStream, ndjson, streamResponse } from "./testing/stream";
 
 const GREETING = "Hi! What would you like to watch?";
@@ -1280,7 +1300,12 @@ describe("ChatAssistant", () => {
       expect(useRouter().refresh).toHaveBeenCalledOnce();
     });
 
-    test("signed out: one sign-in card for the answer's titles", async () => {
+    test("signed out: one sign-in card for the answer's titles; a provider keeps them", async () => {
+      const preventSubmit = (e: Event) => e.preventDefault();
+      document.addEventListener("submit", preventSubmit);
+      onTestFinished(() =>
+        document.removeEventListener("submit", preventSubmit),
+      );
       routeFetch({
         "/api/assistant": [
           saveTurn(
@@ -1297,11 +1322,22 @@ describe("ChatAssistant", () => {
       expect(
         screen.getByText("Sign in to add 2 titles to your list"),
       ).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
-        "href",
-        "/signin?callbackUrl=/",
-      );
       expect(useRouter().refresh).not.toHaveBeenCalled();
+      expect(loadChat()?.pendingSaves).toBeUndefined();
+
+      const now = Date.now();
+      await user.click(
+        screen.getByRole("button", { name: "Sign in with GitHub" }),
+      );
+
+      const pending = loadChat()?.pendingSaves;
+      expect(pending?.saves).toEqual([
+        pendingSave(),
+        pendingSave({ id: 374720, title: "Dunkirk" }),
+      ]);
+      expect(pending?.since).toBeGreaterThanOrEqual(now);
+      // the chat itself is still there
+      expect(loadChat()?.messages).toHaveLength(2);
     });
 
     test("the undone save and the list changes survive a remount", async () => {
@@ -1344,6 +1380,206 @@ describe("ChatAssistant", () => {
       await send("p2");
       await settled();
       expect(bodies("/api/assistant")[0]).toEqual({ content: "p2" });
+    });
+
+    describe("after sign-in", () => {
+      const DUNKIRK_SAVE = pendingSave({
+        id: 374720,
+        title: "Dunkirk",
+        status: null,
+      });
+      // the chat as the sign-in card's click left it
+      const withPending = (since = Date.now()) =>
+        saveChat({
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              parts: [{ type: "text", text: "add Fury and Dunkirk" }],
+            },
+            {
+              id: "m2",
+              role: "assistant",
+              parts: [
+                { type: "sign_in", saves: [pendingSave(), DUNKIRK_SAVE] },
+                { type: "text", text: "Please sign in." },
+              ],
+            },
+          ],
+          interactionId: "i1",
+          stoppedTurns: [],
+          pendingSaves: { saves: [pendingSave(), DUNKIRK_SAVE], since },
+        });
+      const savedReply = (extra: Parameters<typeof savedEntry>[0] = {}) =>
+        Response.json({ entry: savedEntry(extra), previous: null });
+      const DUNKIRK_KEY = { movieId: 374720, type: "movie" };
+      const ADDED = "Added to your list · Planning to watch";
+
+      test("saves each pending title once, shows the rows and tells the model", async () => {
+        withPending();
+        const { spy, calls, bodies } = routeFetch({
+          "/api/save-title": [
+            savedReply(),
+            savedReply({ id: 374720, title: "Dunkirk" }),
+          ],
+          "/api/assistant": [answer("i2", "a2")],
+        });
+        // what storage holds when each save is sent
+        const pendingAtRequest: unknown[] = [];
+        const route = spy.getMockImplementation()!;
+        spy.mockImplementation(async (input, init) => {
+          pendingAtRequest.push(loadChat()?.pendingSaves);
+          return route(input, init);
+        });
+        renderChat({ signedIn: true });
+
+        expect(await screen.findAllByText(ADDED)).toHaveLength(2);
+        expect(screen.getByText("Please sign in.")).toBeInTheDocument();
+        const saves = calls.filter((c) => c.url === "/api/save-title");
+        expect(saves.map((c) => c.method)).toEqual(["PUT", "PUT"]);
+        expect(bodies("/api/save-title")).toEqual([
+          {
+            type: "movie",
+            id: 228150,
+            title: "Fury",
+            status: "Planning to watch",
+          },
+          { type: "movie", id: 374720, title: "Dunkirk", status: null },
+        ]);
+        expect(pendingAtRequest).toEqual([undefined, undefined]);
+        expect(useRouter().refresh).toHaveBeenCalledOnce();
+        expect(undoBtn("Dunkirk")).toBeEnabled();
+
+        await send("p2");
+        await settled();
+        expect(bodies("/api/assistant")[0]).toMatchObject({
+          previousInteractionId: "i1",
+          listChanges: [FURY_KEY, DUNKIRK_KEY],
+        });
+      });
+
+      test("the rows are kept with the chat", async () => {
+        withPending();
+        routeFetch({
+          "/api/save-title": [
+            savedReply(),
+            savedReply({ id: 374720, title: "Dunkirk" }),
+          ],
+        });
+        const { unmount } = renderChat({ signedIn: true });
+        await screen.findAllByText(ADDED);
+        unmount();
+
+        const saved = loadChat();
+        expect(saved?.pendingSaves).toBeUndefined();
+        expect(saved?.listChanges).toEqual([FURY_KEY, DUNKIRK_KEY]);
+        expect(saved?.messages.at(-1)?.parts).toEqual([
+          listSavedPart(),
+          listSavedPart({ id: 374720, title: "Dunkirk" }),
+        ]);
+
+        // a later load doesn't save again
+        const { calls } = routeFetch({});
+        renderChat({ signedIn: true });
+        expect(await screen.findAllByText(ADDED)).toHaveLength(2);
+        expect(calls).toEqual([]);
+      });
+
+      test("strict mode: still one request per title", async () => {
+        withPending();
+        const { calls } = routeFetch({
+          "/api/save-title": [
+            savedReply(),
+            savedReply({ id: 374720, title: "Dunkirk" }),
+          ],
+        });
+        render(
+          <StrictMode>
+            <ChatAssistant
+              greeting={GREETING}
+              recaptchaEnabled={false}
+              signedIn
+            />
+          </StrictMode>,
+        );
+
+        expect(await screen.findAllByText(ADDED)).toHaveLength(2);
+        expect(calls.filter((c) => c.url === "/api/save-title")).toHaveLength(
+          2,
+        );
+      });
+
+      test("a failed save says so; the others are still saved", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        withPending();
+        routeFetch({
+          "/api/save-title": [
+            savedReply(),
+            Response.json({ error: "title_mismatch" }, { status: 422 }),
+          ],
+        });
+        renderChat({ signedIn: true });
+
+        expect(
+          await screen.findByText(
+            "Couldn't save Dunkirk to your list. Ask me to add it again.",
+          ),
+        ).toBeInTheDocument();
+        expect(screen.getAllByText(ADDED)).toHaveLength(1);
+        expect(useRouter().refresh).toHaveBeenCalledOnce();
+        await waitFor(() =>
+          expect(loadChat()?.listChanges).toEqual([FURY_KEY]),
+        );
+      });
+
+      test("every save failed: no refresh", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        withPending();
+        routeFetch({
+          "/api/save-title": [
+            Response.json({ error: "save_failed" }, { status: 502 }),
+            Response.json({ error: "save_failed" }, { status: 502 }),
+          ],
+        });
+        renderChat({ signedIn: true });
+
+        expect(
+          await screen.findByText(
+            "Couldn't save Fury, Dunkirk to your list. Ask me to add them again.",
+          ),
+        ).toBeInTheDocument();
+        expect(useRouter().refresh).not.toHaveBeenCalled();
+      });
+
+      test("still signed out (e.g. a cancelled sign-in): they stay pending", async () => {
+        withPending();
+        const { spy } = routeFetch({});
+        renderChat({ signedIn: false });
+
+        expect(await screen.findByText("Please sign in.")).toBeInTheDocument();
+        expect(spy).not.toHaveBeenCalled();
+        expect(loadChat()?.pendingSaves?.saves).toHaveLength(2);
+      });
+
+      test("too old: nothing is saved", async () => {
+        withPending(Date.now() - PENDING_SAVE_MAX_AGE_MS - 1000);
+        const { spy } = routeFetch({});
+        renderChat({ signedIn: true });
+
+        expect(await screen.findByText("Please sign in.")).toBeInTheDocument();
+        expect(spy).not.toHaveBeenCalled();
+        expect(screen.queryByText(ADDED)).toBeNull();
+      });
+
+      test("New chat drops them", async () => {
+        withPending();
+        renderChat({ signedIn: false });
+        await screen.findByText("Please sign in.");
+
+        await user.click(newChatBtn());
+
+        expect(loadChat()).toBeNull();
+      });
     });
   });
 

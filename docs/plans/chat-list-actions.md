@@ -1234,3 +1234,74 @@ Template:
     three titles on the sign-in card. Nothing overflows at 320 px.
     Signed in with a seeded entry, Undo removed it from the real DB, and
     the next request carried `listChanges`. No real-key run in this phase.
+
+### Phase 6: Sign-in round trip
+
+- **Status:** done
+- **Commits:** see `feat(chat): save the pending titles after sign-in` (this entry is in it)
+- **Deviations from the plan:**
+  - The card doesn't write `pendingSaves` to storage itself. It calls
+    `startSignIn(saves)` from `useChat`, passed down like `onUndo`. That
+    sets `pendingSavesRef` and saves the blob synchronously. `useChat`
+    rewrites the whole blob from its refs on every save, so a direct write
+    would be lost: e.g. a click mid-answer, then `pagehide` saves the
+    stopped turn. `pendingSaves` is in `snapshot()`; `reset()` drops it.
+  - `loadChat` leaves out pending saves older than
+    `PENDING_SAVE_MAX_AGE_MS`. It doesn't rewrite storage; the next save
+    drops them.
+  - The provider buttons are one component, `shared/ui/SignInButtons`, used
+    by the sign-in page and the card (`compact`). It takes the action as a
+    prop: chat may only import account's index or `/actions`, and the index
+    would be an import cycle (account → chat index → … → account), and
+    `shared/` can't import modules. The card's buttons read "Google" /
+    "GitHub", with `aria-label` "Sign in with …". The page now says
+    "GitHub", not "Github"; `auth.spec.ts` matches names case-insensitively
+    and needed no change. The icons are `aria-hidden` (the GitHub SVG's
+    `<title>` was leaking into the button's name).
+  - The "Other sign-in options" link also stores the pending saves, so
+    signing in from `/signin` saves them too.
+  - `signInWithProvider` throws `Unknown sign-in provider` for anything but
+    `google` / `github`.
+  - Route bodies: 401 `{ error: "signed_out" }`, 400 `invalid_request`, 422
+    `{ error: <rejection reason> }`, 502 for a TMDB failure, **500** for
+    anything else (e.g. the DB). It calls `revalidatePath("/my-list")` like
+    the other list routes. The body schema is `titleToSaveInput` in
+    `my-list/entryInput.ts`. It isn't strict: an extra `userId` is ignored.
+  - The failure text is "Couldn't save Dune to your list. Ask me to add it
+    again." The card's buttons would only sign in again, so "try again from
+    the card" was misleading.
+  - `SignInPage.test.tsx` now checks the props the page passes to
+    `SignInButtons`. The redirect cases moved to `safeRedirect.test.ts`.
+    The `signInWithProvider` tests are in `actions.int.test.ts`, because
+    `actions.ts` imports the DB.
+- **For the next phase:**
+  - After the round trip, the old sign-in card still shows its provider
+    buttons to the signed-in user. Clicking one runs OAuth again and resumes
+    the same saves, which is harmless (a save without a status changes
+    nothing). Phase 7 could hide the buttons when `signedIn`.
+  - A New chat while the resumed saves are in flight still appends their
+    rows, to the new chat. Not guarded.
+  - E2E tip: `page.route("https://github.com/**", r => r.abort())` makes
+    the navigation itself fail and races a following `page.goto("/")`.
+    Fulfill it with a stub HTML page and `waitForURL(/github\.com/)`
+    instead. The server action redirects to GitHub's authorize URL with
+    `redirect_uri=http://localhost:3100/api/auth/callback/github`.
+  - `tests/setup/components.tsx` mocks `signInWithProvider` too.
+- **Checks:**
+  - `npm run lint`, `npx tsc --noEmit`, `npm run typecheck:tests` and
+    `npm run test:run` (1181 tests) are green.
+  - `npx playwright test tests/e2e/chat.spec.ts tests/e2e/auth.spec.ts`
+    (20) is green. `test:e2e:variants` wasn't run (not in this phase's
+    checks).
+  - Real OAuth wasn't tried: it needs a person to log in to Google or
+    GitHub. Instead a throwaway Playwright spec (deleted afterwards) ran on
+    the e2e server and passed twice in a row. Signed out, a stubbed
+    `sign_in_required` showed the card. Clicking GitHub ran the real server
+    action up to GitHub's authorize URL (stubbed). Then `loginAs` and
+    `page.goto("/")` restored the chat, "Added to your list · Planning to
+    watch" showed (real `/api/save-title`, mocked TMDB), the DB had the row
+    with rating 0, a reload sent no second `PUT`, and `/my-list` listed the
+    title. "Other sign-in options" kept the pending saves. Screenshots of
+    the one- and three-title cards at 320 and 1280 px, the resumed row and
+    `/signin` were checked by eye: nothing overflows, and the buttons wrap
+    at 320 px.

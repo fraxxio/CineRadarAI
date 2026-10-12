@@ -12,6 +12,7 @@ import {
   loadChat,
   saveChat,
   type ChatSnapshot,
+  type PendingSaves,
 } from "./chatStorage";
 import {
   addCards,
@@ -30,6 +31,7 @@ import type {
   ChatStreamEvent,
   ListSavedPart,
   MessagePart,
+  PendingSave,
   StoppedTurn,
 } from "./protocol";
 
@@ -44,6 +46,8 @@ export type ChatStatus =
 type UseChatOptions = {
   // runs before each send (e.g. reCAPTCHA); resolve false to cancel the send
   beforeSend?: (signal: AbortSignal) => Promise<boolean>;
+  // the pending saves of a sign-in run once this is true
+  signedIn?: boolean;
 };
 
 // reverses the list_saved part at partIndex of a finished message; false
@@ -52,6 +56,9 @@ export type UndoSave = (
   messageId: string,
   partIndex: number,
 ) => Promise<boolean>;
+
+// the titles of a sign-in card, saved once the user is back signed in
+export type StartSignIn = (saves: PendingSave[]) => void;
 
 // the request in flight
 type Turn = {
@@ -66,6 +73,8 @@ type Turn = {
 };
 
 const MAX_MESSAGES = 10;
+// saves resumed after one sign-in
+const MAX_PENDING_SAVES = 10;
 
 const capped = (messages: ChatMessage[]) => messages.slice(-MAX_MESSAGES);
 
@@ -82,6 +91,26 @@ async function isExpiredResponse(response: Response): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+type SaveResult = Pick<ListSavedPart, "entry" | "previous">;
+
+// saves a title the user asked for while signed out
+async function saveTitleRequest({
+  type,
+  id,
+  title,
+  status,
+}: PendingSave): Promise<SaveResult> {
+  const response = await fetch("/api/save-title", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, id, title, status }),
+  });
+  if (!response.ok) {
+    throw new Error(`Save failed. (Status: ${response.status})`);
+  }
+  return response.json();
 }
 
 // the number in an "m12" id, 0 for any other id
@@ -124,7 +153,7 @@ async function undoRequest({ entry, previous }: ListSavedPart) {
   }
 }
 
-export function useChat({ beforeSend }: UseChatOptions = {}) {
+export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // the answer in flight: text, tool lines and cards in order
   const [streamingParts, setStreamingParts] = useState<MessagePart[]>([]);
@@ -137,6 +166,10 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
   // entries changed outside the model (Undo) since the last completed turn;
   // the server tells the model their state
   const listChangesRef = useRef<EntryKey[]>([]);
+  // the titles to save once the user is back from signing in
+  const pendingSavesRef = useRef<PendingSaves>();
+  // the pending saves have been sent; strict mode runs effects twice
+  const resumedRef = useRef(false);
   const messageCount = useRef(0);
   // the saved chat has been read; state, not a ref, so the effects of the
   // first render (run twice in strict mode) can't save over it
@@ -155,6 +188,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
     interactionId: interactionIdRef.current,
     stoppedTurns: stoppedTurnsRef.current,
     listChanges: listChangesRef.current,
+    pendingSaves: pendingSavesRef.current,
   });
 
   // after mount, not during render: the server has no saved chat to render
@@ -164,6 +198,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
       interactionIdRef.current = saved.interactionId;
       stoppedTurnsRef.current = saved.stoppedTurns;
       listChangesRef.current = saved.listChanges ?? [];
+      pendingSavesRef.current = saved.pendingSaves;
       // new ids continue after the restored ones, so keys don't collide
       messageCount.current = Math.max(
         0,
@@ -203,6 +238,67 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
       leave();
     };
     // stopTurn only uses refs and state setters, the first one is enough
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // back from signing in with saves pending: run them once. Signed out, they
+  // stay until they're too old (loadChat drops them): the user may have
+  // cancelled the sign-in and try again
+  useEffect(() => {
+    const pending = pendingSavesRef.current;
+    if (!restored || !signedIn || !pending || resumedRef.current) {
+      return;
+    }
+    resumedRef.current = true;
+    // gone from storage before any request, so a refresh can't save twice;
+    // the save effect above has set messagesRef
+    pendingSavesRef.current = undefined;
+    saveChat(snapshot(messagesRef.current));
+    void resumeSaves(pending.saves);
+    // snapshot and resumeSaves only use refs and state setters
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restored, signedIn]);
+
+  async function resumeSaves(saves: PendingSave[]) {
+    const results = await Promise.allSettled(saves.map(saveTitleRequest));
+    let parts: MessagePart[] = [];
+    const failed: string[] = [];
+    results.forEach((result, i) => {
+      if (result.status === "fulfilled") {
+        parts = addListSaved(parts, result.value);
+        // before setMessages, so the save effect stores it
+        listChangesRef.current = addListChange(listChangesRef.current, {
+          movieId: result.value.entry.id,
+          type: result.value.entry.type,
+        });
+      } else {
+        console.error("Couldn't save a title after sign-in:", result.reason);
+        failed.push(saves[i].title);
+      }
+    });
+    if (failed.length) {
+      parts = appendText(
+        parts,
+        `Couldn't save ${failed.join(", ")} to your list. Ask me to add ${failed.length === 1 ? "it" : "them"} again.`,
+      );
+    }
+    setMessages((prev) =>
+      capped([...prev, { id: nextId(), role: "assistant", parts }]),
+    );
+    if (failed.length < saves.length) {
+      router.refresh();
+    }
+  }
+
+  // a sign-in button was clicked: the page is about to leave for the
+  // provider, so it's saved right away
+  const startSignIn = useCallback<StartSignIn>((saves) => {
+    pendingSavesRef.current = {
+      saves: saves.slice(0, MAX_PENDING_SAVES),
+      since: Date.now(),
+    };
+    saveChat(snapshot(messagesRef.current));
+    // snapshot only reads refs
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -512,6 +608,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
     interactionIdRef.current = undefined;
     stoppedTurnsRef.current = [];
     listChangesRef.current = [];
+    pendingSavesRef.current = undefined;
     clearSavedChat();
     setMessages([]);
     setStreamingParts([]);
@@ -521,5 +618,14 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
     }
   }
 
-  return { messages, streamingParts, status, send, stop, reset, undoSave };
+  return {
+    messages,
+    streamingParts,
+    status,
+    send,
+    stop,
+    reset,
+    undoSave,
+    startSignIn,
+  };
 }

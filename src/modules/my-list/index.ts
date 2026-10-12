@@ -15,5 +15,5 @@ export {
   type SavedEntry,
   type StoredEntry,
 } from "./entry";
-export { entryInput, entryKeyInput } from "./entryInput";
+export { entryInput, entryKeyInput, titleToSaveInput } from "./entryInput";
 export type { ListView } from "./view";

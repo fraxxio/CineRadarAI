@@ -2,9 +2,11 @@ import Image from "next/image";
 import type { ListStatuses } from "./messageParts";
 import { MessageParts } from "./MessageParts";
 import type { ChatMessage } from "./protocol";
-import type { UndoSave } from "./useChat";
+import type { StartSignIn, UndoSave } from "./useChat";
 
 const NO_LIST_STATUS: ListStatuses = new Map();
+// the greeting and notices have no sign-in cards
+const NO_SIGN_IN: StartSignIn = () => {};
 
 type AssistantMessageProps = {
   message: {
@@ -20,6 +22,8 @@ type AssistantMessageProps = {
   listStatus?: ListStatuses;
   // Undo on the saves of a finished message, which has an id
   onUndo?: UndoSave;
+  // the sign-in cards' buttons keep their titles for after the sign-in
+  onSignIn?: StartSignIn;
   // after the parts, e.g. the loader
   children?: React.ReactNode;
 };
@@ -29,6 +33,7 @@ export function AssistantMessage({
   signedIn,
   listStatus = NO_LIST_STATUS,
   onUndo,
+  onSignIn = NO_SIGN_IN,
   children,
 }: AssistantMessageProps) {
   function displayRole(roleName: string) {
@@ -63,6 +68,7 @@ export function AssistantMessage({
           listStatus={listStatus}
           messageId={message.id}
           onUndo={onUndo}
+          onSignIn={onSignIn}
         />
         {children}
       </div>

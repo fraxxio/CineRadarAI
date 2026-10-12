@@ -18,6 +18,16 @@ const VERSION = 1;
 // Gemini keeps interactions for 1 day on the free tier, so a saved chat
 // expires before its interaction does
 export const MAX_SAVED_CHAT_AGE_MS = 20 * 60 * 60 * 1000;
+// older saves aren't what the user just signed in for
+export const PENDING_SAVE_MAX_AGE_MS = 15 * 60 * 1000;
+
+// titles a signed-out user asked to save, kept from their click on a sign-in
+// button until they're back signed in
+export type PendingSaves = {
+  saves: PendingSave[];
+  // when the sign-in started
+  since: number;
+};
 
 // new optional fields don't need a version bump, changing one does
 export type SavedChat = {
@@ -29,11 +39,13 @@ export type SavedChat = {
   stoppedTurns: StoppedTurn[];
   // list entries changed outside the model since the last completed turn
   listChanges?: EntryKey[];
+  pendingSaves?: PendingSaves;
 };
 
 export type ChatSnapshot = Omit<SavedChat, "version" | "savedAt">;
 
-// null when nothing usable is saved; a broken, old or outdated blob is removed
+// null when nothing usable is saved; a broken, old or outdated blob is
+// removed, and pending saves that are too old are left out
 export function loadChat(): SavedChat | null {
   let raw: string | null;
   try {
@@ -55,6 +67,12 @@ export function loadChat(): SavedChat | null {
   if (!isSavedChat(chat) || Date.now() - chat.savedAt > MAX_SAVED_CHAT_AGE_MS) {
     clearSavedChat();
     return null;
+  }
+  if (
+    chat.pendingSaves &&
+    Date.now() - chat.pendingSaves.since > PENDING_SAVE_MAX_AGE_MS
+  ) {
+    return { ...chat, pendingSaves: undefined };
   }
   return chat;
 }
@@ -89,7 +107,8 @@ function isSavedChat(value: unknown): value is SavedChat {
       typeof value.interactionId === "string") &&
     isArrayOf(value.stoppedTurns, isStoppedTurn) &&
     (value.listChanges === undefined ||
-      isArrayOf(value.listChanges, isEntryKey))
+      isArrayOf(value.listChanges, isEntryKey)) &&
+    (value.pendingSaves === undefined || isPendingSaves(value.pendingSaves))
   );
 }
 
@@ -189,6 +208,14 @@ function isPendingSave(value: unknown): value is PendingSave {
     isStringOrNull(value.posterPath) &&
     (value.status === null ||
       (isString(value.status) && isListStatus(value.status)))
+  );
+}
+
+function isPendingSaves(value: unknown): value is PendingSaves {
+  return (
+    isObject(value) &&
+    isArrayOf(value.saves, isPendingSave) &&
+    typeof value.since === "number"
   );
 }
 

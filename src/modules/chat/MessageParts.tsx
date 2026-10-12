@@ -7,7 +7,7 @@ import type { MessagePart } from "./protocol";
 import { RecommendationCards } from "./RecommendationCards";
 import { SignInCard } from "./SignInCard";
 import { ToolCallLine } from "./ToolCallLine";
-import type { UndoSave } from "./useChat";
+import type { StartSignIn, UndoSave } from "./useChat";
 
 type MessagePartsProps = {
   parts: MessagePart[];
@@ -17,6 +17,7 @@ type MessagePartsProps = {
   // both set on finished messages only: the streaming answer has no Undo
   messageId?: string;
   onUndo?: UndoSave;
+  onSignIn: StartSignIn;
 };
 
 // has a scheme (https:, mailto:) or is protocol-relative (//host)
@@ -39,11 +40,13 @@ function MessagePartView({
   signedIn,
   listStatus,
   onUndo,
+  onSignIn,
 }: {
   part: MessagePart;
   signedIn: boolean;
   listStatus: ListStatuses;
   onUndo?: () => Promise<boolean>;
+  onSignIn: StartSignIn;
 }) {
   switch (part.type) {
     case "text":
@@ -65,7 +68,7 @@ function MessagePartView({
     case "list_saved":
       return <ListSavedRow part={part} onUndo={onUndo} />;
     case "sign_in":
-      return <SignInCard saves={part.saves} />;
+      return <SignInCard saves={part.saves} onSignIn={onSignIn} />;
     default:
       part satisfies never;
       return null;
@@ -81,6 +84,7 @@ export const MessageParts = memo(function MessageParts({
   listStatus,
   messageId,
   onUndo,
+  onSignIn,
 }: MessagePartsProps) {
   return (
     <div className="flex flex-col gap-1">
@@ -96,6 +100,7 @@ export const MessageParts = memo(function MessageParts({
               ? () => onUndo(messageId, i)
               : undefined
           }
+          onSignIn={onSignIn}
         />
       ))}
     </div>

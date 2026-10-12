@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import {
   MAX_SAVED_CHAT_AGE_MS,
+  PENDING_SAVE_MAX_AGE_MS,
   clearSavedChat,
   loadChat,
   saveChat,
@@ -109,6 +110,40 @@ describe("chatStorage", () => {
       ...chat,
       version: 1,
       savedAt: expect.any(Number),
+    });
+  });
+
+  describe("pending saves", () => {
+    const pendingSaves = (since: number) => ({
+      saves: [pendingSave(), pendingSave({ id: 1, status: null })],
+      since,
+    });
+
+    test("round trip", () => {
+      const chat = { ...CHAT, pendingSaves: pendingSaves(Date.now()) };
+      saveChat(chat);
+      expect(loadChat()).toEqual({
+        ...chat,
+        version: 1,
+        savedAt: expect.any(Number),
+      });
+    });
+
+    test(`kept up to ${PENDING_SAVE_MAX_AGE_MS / 60_000} minutes after the sign-in started`, () => {
+      vi.useFakeTimers();
+      saveChat({ ...CHAT, pendingSaves: pendingSaves(Date.now()) });
+      vi.advanceTimersByTime(PENDING_SAVE_MAX_AGE_MS);
+      expect(loadChat()?.pendingSaves).toBeDefined();
+    });
+
+    test("older ones are left out; the chat stays", () => {
+      vi.useFakeTimers();
+      saveChat({ ...CHAT, pendingSaves: pendingSaves(Date.now()) });
+      vi.advanceTimersByTime(PENDING_SAVE_MAX_AGE_MS + 1);
+
+      const chat = loadChat();
+      expect(chat?.pendingSaves).toBeUndefined();
+      expect(chat?.messages).toEqual(CHAT.messages);
     });
   });
 
@@ -230,6 +265,17 @@ describe("chatStorage", () => {
       [
         "a list change with a string id",
         () => savedWith({ listChanges: [{ movieId: "1", type: "movie" }] }),
+      ],
+      [
+        "pending saves without since",
+        () => savedWith({ pendingSaves: { saves: [pendingSave()] } }),
+      ],
+      [
+        "a bad pending save",
+        () =>
+          savedWith({
+            pendingSaves: { saves: [{ id: 1 }], since: Date.now() },
+          }),
       ],
     ])("%s", (_, chat) => {
       store(chat());
