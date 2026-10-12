@@ -27,3 +27,18 @@ export type ListEntry = EntryKey & {
 // what a stored row holds: rows saved before the payload was validated can
 // have other statuses
 export type StoredEntry = Omit<ListEntry, "status"> & { status: string };
+
+// what a save from the chat wrote, or found when nothing changed
+export type SavedEntry = {
+  type: MediaType;
+  id: number;
+  // TMDB's
+  title: string;
+  posterPath: string | null;
+  // what the list row shows, like the cards' "Add to list"
+  image: string;
+  status: ListStatus;
+};
+
+// the row before a save, for Undo
+export type PreviousEntry = Omit<StoredEntry, keyof EntryKey>;

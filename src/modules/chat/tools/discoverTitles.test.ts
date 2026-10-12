@@ -8,6 +8,7 @@ import {
   rawMovie,
   rawShow,
 } from "../testing/tmdbData";
+import { toolContext } from "../testing/toolContext";
 
 // fresh modules per test: the genre list is cached at module level
 let discoverTitles: typeof import("./discoverTitles").discoverTitles;
@@ -31,9 +32,10 @@ const mockDiscover = (movies: object[] = [], shows: object[] = []) =>
 
 // args as the registry passes them: parsed, defaults applied
 const run = async (args: object, signal = new AbortController().signal) =>
-  (await discoverTitles.run(discoverTitles.args.parse(args), {
-    signal,
-  })) as Items;
+  (await discoverTitles.run(
+    discoverTitles.args.parse(args),
+    toolContext(signal),
+  )) as Items;
 
 const discoverUrl = (spy: ReturnType<typeof mockTmdb>, type = "movie") =>
   tmdbUrls(spy, `/3/discover/${type}`)[0];

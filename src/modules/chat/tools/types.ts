@@ -1,10 +1,19 @@
 // tools the model can call during a chat turn; our own types, no Gemini types
 import type { ZodType } from "zod/v4";
-import type { RecommendedTitle } from "../protocol";
+import type { ChatStreamEvent } from "../protocol";
+
+// who the chat is for, read from the session by the route; never from the
+// model's args
+export type ChatUser =
+  | { status: "signed_in"; id: string }
+  | { status: "signed_out" }
+  // the session couldn't be read (e.g. DB down)
+  | { status: "unavailable" };
 
 export type ToolContext = {
   // aborted when the turn is stopped or the call times out
   signal: AbortSignal;
+  user: ChatUser;
 };
 
 export type ChatTool<Args = unknown> = {
@@ -16,7 +25,7 @@ export type ChatTool<Args = unknown> = {
   status: string;
   // validated before the handler runs
   args: ZodType<Args>;
-  // short JSON for the model, or a CardsOutput
+  // short JSON for the model, or a DisplayOutput
   run(args: Args, ctx: ToolContext): Promise<object>;
 };
 
@@ -36,9 +45,15 @@ export type ToolResult = {
   // the handler's JSON, or a short message when isError
   output: object | string;
   isError: boolean;
-  // only for a successful CardsOutput
-  cards?: RecommendedTitle[];
+  // only for a successful DisplayOutput
+  events?: ToolEvent[];
 };
+
+// what a tool shows in the chat, streamed after the round's tool_ends
+export type ToolEvent = Extract<
+  ChatStreamEvent,
+  { type: "cards" | "list_saved" | "sign_in_required" }
+>;
 
 // thrown by a handler: the message goes to the model as is
 export class ToolError extends Error {
@@ -48,10 +63,11 @@ export class ToolError extends Error {
   }
 }
 
-// returned by a display tool: the model gets `output`, the chat shows `cards`
-export class CardsOutput {
+// returned by a tool that shows something: the model gets `output`, the chat
+// gets `events`
+export class DisplayOutput {
   constructor(
     readonly output: object,
-    readonly cards: RecommendedTitle[],
+    readonly events: ToolEvent[],
   ) {}
 }

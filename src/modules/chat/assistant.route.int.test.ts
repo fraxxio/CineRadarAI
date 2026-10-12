@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import type { NextRequest } from "next/server";
 import { POST } from "@/app/api/assistant/route";
+import { auth } from "@/infra/auth/auth";
 import {
   CHAT_MODEL,
   CHAT_THINKING_LEVEL,
@@ -15,7 +16,10 @@ import {
 import { toGeminiTools } from "./llm/geminiTools";
 import { DISPLAY_ONLY_TOOL_CHOICE } from "./llm/llmService";
 import { CHAT_TOOLS } from "./tools/registry";
+import { asUser } from "@test/helpers/auth";
+import { getMovies, seedList, seedUser } from "@test/helpers/db";
 import { deferred } from "@test/helpers/deferred";
+import { makeMovie } from "@test/helpers/factories";
 import { jsonRequest } from "@test/helpers/requests";
 import {
   hangUntilAborted,
@@ -58,10 +62,17 @@ vi.mock("@google/genai", () => ({
   }),
 }));
 
+vi.mock("@/infra/auth/auth", () => ({
+  auth: vi.fn(),
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+}));
+
 beforeEach(() => {
   vi.stubEnv("AI_CHAT_ENABLED", "true");
   create.mockReset();
   get.mockReset();
+  asUser(null);
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -1034,6 +1045,278 @@ describe("POST /api/assistant", () => {
         expect(console.warn).toHaveBeenCalledWith(
           'Gemini round 1 ignored tool_choice "none": show_recommendations, search_titles',
         );
+      });
+    });
+
+    describe("save_to_list", () => {
+      const saving = (id: string) => ({
+        type: "tool_start",
+        id,
+        name: "save_to_list",
+        text: "Saving to your list...",
+      });
+      const saveCall = (id: string, args: object = {}): Call => ({
+        id,
+        name: "save_to_list",
+        args: { type: "movie", id: 228150, title: "Fury", ...args },
+      });
+      const FURY_SAVED = {
+        type: "movie",
+        id: 228150,
+        title: "Fury",
+        posterPath: "/p.jpg",
+        image: "/b.jpg",
+        status: "Planning to watch",
+      };
+      const furyRow = (extra: object = {}) =>
+        makeMovie({
+          movieId: 228150,
+          name: "Fury",
+          image: "/b.jpg",
+          status: "Planning to watch",
+          ...extra,
+        });
+
+      let user: Awaited<ReturnType<typeof seedUser>>;
+      beforeEach(async () => {
+        user = await seedUser();
+        tmdb({ "/3/movie/228150": FURY_DETAILS });
+      });
+
+      test("signed in: saves to the session user's list and streams list_saved after tool_end", async () => {
+        asUser(user);
+        rounds(toolRound("i1", saveCall("c1")), answerRound("i2", "Added."));
+
+        const { events } = await readNdjson(
+          await post({ content: "add Fury to my list" }),
+        );
+
+        expect(events).toEqual([
+          { type: "start", interactionId: "i1" },
+          saving("c1"),
+          ended("c1"),
+          { type: "list_saved", entry: FURY_SAVED, previous: null },
+          { type: "delta", text: "Added." },
+          { type: "done", interactionId: "i2" },
+        ]);
+        expect(results(1)).toEqual([
+          {
+            type: "function_result",
+            call_id: "c1",
+            name: "save_to_list",
+            result: {
+              saved: {
+                id: 228150,
+                type: "movie",
+                title: "Fury",
+                status: "Planning to watch",
+              },
+              previousStatus: null,
+            },
+          },
+        ]);
+        expect(await getMovies(user.id)).toEqual([furyRow({ rating: 0 })]);
+        // a save isn't the cards: the model may still call tools
+        expect(toolChoices()).toEqual(["auto", "auto"]);
+      });
+
+      test("already in the list: the status changes, the rating stays", async () => {
+        asUser(user);
+        await seedList(user.id, [furyRow({ status: "Watching", rating: 8 })]);
+        rounds(
+          toolRound("i1", saveCall("c1", { status: "Completed" })),
+          answerRound("i2", "Done."),
+        );
+
+        const { events } = await readNdjson(
+          await post({ content: "I finished Fury" }),
+        );
+
+        expect(events).toContainEqual({
+          type: "list_saved",
+          entry: { ...FURY_SAVED, status: "Completed" },
+          previous: {
+            name: "Fury",
+            image: "/b.jpg",
+            status: "Watching",
+            rating: 8,
+          },
+        });
+        expect(results(1)[0].result).toMatchObject({
+          previousStatus: "Watching",
+        });
+        expect(await getMovies(user.id)).toEqual([
+          furyRow({ status: "Completed", rating: 8 }),
+        ]);
+      });
+
+      test("signed out: sign_in_required with TMDB's title, a non-error result, nothing written", async () => {
+        rounds(
+          toolRound("i1", saveCall("c1", { title: "FURY" })),
+          answerRound("i2", "Sign in to save it."),
+        );
+
+        const { events } = await readNdjson(
+          await post({ content: "add Fury to my list" }),
+        );
+
+        expect(events).toContainEqual({
+          type: "sign_in_required",
+          save: {
+            type: "movie",
+            id: 228150,
+            title: "Fury",
+            posterPath: "/p.jpg",
+            status: null,
+          },
+        });
+        expect(results(1)[0]).not.toHaveProperty("is_error");
+        expect(results(1)[0].result).toMatchObject({ saved: false });
+        expect(await getMovies(user.id)).toEqual([]);
+      });
+
+      test("an id TMDB doesn't know: an error result, nothing written", async () => {
+        asUser(user);
+        rounds(
+          toolRound("i1", saveCall("c1", { id: 404 })),
+          answerRound("i2", "."),
+        );
+
+        const { events } = await readNdjson(await post({ content: "add it" }));
+
+        expect(results(1)).toEqual([
+          {
+            type: "function_result",
+            call_id: "c1",
+            name: "save_to_list",
+            result: "not found on TMDB",
+            is_error: true,
+          },
+        ]);
+        expect(events.some((e) => e.type === "list_saved")).toBe(false);
+        expect(await getMovies(user.id)).toEqual([]);
+      });
+
+      test("a status the list doesn't have is rejected before the handler runs", async () => {
+        asUser(user);
+        rounds(
+          toolRound("i1", saveCall("c1", { status: "Dropped" })),
+          answerRound("i2", "."),
+        );
+
+        await readNdjson(await post({ content: "drop Fury" }));
+
+        expect(results(1)[0]).toMatchObject({
+          is_error: true,
+          result: expect.stringMatching(/^Invalid arguments: status: /),
+        });
+        expect(await getMovies(user.id)).toEqual([]);
+      });
+
+      test("a userId arg is rejected; only the session user's list is written", async () => {
+        const victim = await seedUser();
+        const victimList = [makeMovie({ movieId: 1, rating: 9 })];
+        await seedList(victim.id, victimList);
+        asUser(user);
+        rounds(
+          toolRound(
+            "i1",
+            saveCall("c1", { userId: victim.id }),
+            saveCall("c2"),
+          ),
+          answerRound("i2", "."),
+        );
+
+        await readNdjson(await post({ content: "add Fury" }));
+
+        expect(results(1)[0]).toEqual({
+          type: "function_result",
+          call_id: "c1",
+          name: "save_to_list",
+          result: 'Invalid arguments: Unrecognized key: "userId"',
+          is_error: true,
+        });
+        expect(results(1)[1]).not.toHaveProperty("is_error");
+        expect(await getMovies(victim.id)).toEqual(victimList);
+        expect(await getMovies(user.id)).toEqual([furyRow({ rating: 0 })]);
+      });
+
+      test("the session can't be read: the chat goes on, the save is an error result without a TMDB request", async () => {
+        const spy = tmdb();
+        vi.mocked(auth as unknown as () => Promise<unknown>).mockRejectedValue(
+          new Error("db down"),
+        );
+        rounds(toolRound("i1", saveCall("c1")), answerRound("i2", "Sorry."));
+
+        const { events } = await readNdjson(await post({ content: "add it" }));
+
+        expect(results(1)[0]).toMatchObject({
+          result: "Can't save right now, try again later",
+          is_error: true,
+        });
+        expect(spy).not.toHaveBeenCalled();
+        expect(events.at(-1)).toEqual({ type: "done", interactionId: "i2" });
+        expect(console.error).toHaveBeenCalledWith(
+          "Couldn't read the session for the chat:",
+          expect.objectContaining({ message: "db down" }),
+        );
+      });
+
+      test("the session is read once per request", async () => {
+        asUser(user);
+        rounds(
+          toolRound("i1", saveCall("c1")),
+          toolRound("i2", saveCall("c2", { status: "Completed" })),
+          answerRound("i3", "."),
+        );
+
+        await readNdjson(await post({ content: "add Fury" }));
+
+        expect(auth).toHaveBeenCalledTimes(1);
+        expect(await getMovies(user.id)).toEqual([
+          furyRow({ status: "Completed", rating: 0 }),
+        ]);
+      });
+
+      test("events follow the round's tool_ends in call order", async () => {
+        asUser(user);
+        tmdb({
+          "/3/movie/228150": FURY_DETAILS,
+          "/3/movie/550": rawDetails(550, { title: "Fight Club" }),
+        });
+        rounds(
+          toolRound(
+            "i1",
+            saveCall("c1", { id: 550, title: "Fight Club" }),
+            showCall("c2", 228150),
+            saveCall("c3"),
+          ),
+          answerRound("i2", "."),
+        );
+
+        const { events } = await readNdjson(await post({ content: "x" }));
+
+        expect(
+          events
+            .filter((e) => e.type !== "delta")
+            .map((e) =>
+              e.type === "list_saved" ? `${e.type} ${e.entry.id}` : e.type,
+            ),
+        ).toEqual([
+          "start",
+          "tool_start",
+          "tool_start",
+          "tool_start",
+          "tool_end",
+          "tool_end",
+          "tool_end",
+          "list_saved 550",
+          "cards",
+          "list_saved 228150",
+          "done",
+        ]);
+        // the cards are shown: the model only writes text now
+        expect(toolChoices()).toEqual(["auto", "none"]);
       });
     });
 

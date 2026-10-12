@@ -12,11 +12,13 @@ import {
   SHOW_RECOMMENDATIONS,
   showRecommendations,
 } from "./showRecommendations";
+import { saveToList } from "./saveToList";
 import {
-  CardsOutput,
+  DisplayOutput,
   ToolError,
   type ChatTool,
   type ToolCall,
+  type ToolContext,
   type ToolResult,
 } from "./types";
 
@@ -30,6 +32,7 @@ export const CHAT_TOOLS: ChatTool[] = [
   getPersonCredits,
   getTitleDetails,
   showRecommendations,
+  saveToList,
 ];
 
 // enough for a round of parallel lookups
@@ -58,8 +61,9 @@ export function statusFor(name: string): string {
 // except when the signal aborts
 export async function runToolCalls(
   calls: ToolCall[],
-  signal: AbortSignal,
+  ctx: ToolContext,
 ): Promise<ToolResult[]> {
+  const { signal } = ctx;
   // one list of cards per round: each item is a TMDB request, so more calls
   // could flood TMDB
   const firstShow = calls.findIndex(
@@ -79,7 +83,7 @@ export async function runToolCalls(
           `Call ${SHOW_RECOMMENDATIONS} once per answer, with every title`,
         );
       }
-      return runToolCall(call, signal);
+      return runToolCall(call, ctx);
     }),
   );
   // stopped turn: no results, the loop ends here
@@ -99,8 +103,9 @@ export async function runToolCalls(
 
 async function runToolCall(
   call: ToolCall,
-  signal: AbortSignal,
+  ctx: ToolContext,
 ): Promise<ToolResult> {
+  const { signal } = ctx;
   const tool = findTool(call.name);
   if (!tool) {
     return rejected(call, `Unknown tool: ${call.name}`);
@@ -112,13 +117,16 @@ async function runToolCall(
 
   const timeout = withTimeout(signal, TOOL_TIMEOUT_MS);
   try {
-    const value = await tool.run(args.value, { signal: timeout.signal });
-    return value instanceof CardsOutput
+    const value = await tool.run(args.value, {
+      ...ctx,
+      signal: timeout.signal,
+    });
+    return value instanceof DisplayOutput
       ? {
           callId: call.id,
           name: call.name,
           output: value.output,
-          cards: value.cards,
+          events: value.events,
           isError: false,
         }
       : { callId: call.id, name: call.name, output: value, isError: false };

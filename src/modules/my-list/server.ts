@@ -6,3 +6,4 @@ export {
   saveEntry,
   saveEntryStatus,
 } from "./store";
+export { SaveTitleError, checkTitle, saveTitle } from "./saveTitle";

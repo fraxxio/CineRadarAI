@@ -9,7 +9,7 @@ import {
 import type { ChatStreamEvent, StoppedTurn } from "../protocol";
 import { CHAT_TOOLS, runToolCalls } from "../tools/registry";
 import { SHOW_RECOMMENDATIONS } from "../tools/showRecommendations";
-import type { ToolCall, ToolResult } from "../tools/types";
+import type { ChatUser, ToolCall, ToolResult } from "../tools/types";
 import { toFunctionResults, toGeminiTools } from "./geminiTools";
 import { readRound, type RoundOutcome } from "./readRound";
 
@@ -20,6 +20,8 @@ type ChatReplyParams = {
   previousInteractionId?: string;
   // aborts the Gemini request, also while it's streaming
   signal: AbortSignal;
+  // from the session; the tools act for this user only
+  user: ChatUser;
 };
 
 const text = (value: string): Interactions.Content[] => [
@@ -130,6 +132,7 @@ export async function streamChatReply({
   stoppedTurns,
   previousInteractionId,
   signal,
+  user,
 }: ChatReplyParams): Promise<AsyncIterable<ChatStreamEvent>> {
   const ai = geminiClient();
   const base = baseRequest();
@@ -155,14 +158,14 @@ export async function streamChatReply({
     previousInteractionId,
     toolChoice: FIRST_TOOL_CHOICE,
   });
-  return runTurn(first, openRound, signal);
+  return runTurn(first, openRound, { signal, user });
 }
 
 // reads rounds and runs the requested tools until the model answers
 async function* runTurn(
   first: GeminiStream,
   openRound: (request: RoundRequest) => Promise<GeminiStream>,
-  signal: AbortSignal,
+  ctx: { signal: AbortSignal; user: ChatUser },
 ): AsyncGenerator<ChatStreamEvent> {
   let stream = first;
   // the choice the request of the current round was sent with
@@ -209,7 +212,7 @@ async function* runTurn(
     const started = Date.now();
     const results = ignored
       ? outcome.calls.map(refused)
-      : await runToolCalls(outcome.calls, signal);
+      : await runToolCalls(outcome.calls, ctx);
     const errors = results.filter((result) => result.isError).length;
     console.info(
       `Tool round ${round + 1}: ${names} (${Date.now() - started} ms, ${errors} errors)`,
@@ -219,14 +222,10 @@ async function* runTurn(
     for (const call of outcome.calls) {
       yield { type: "tool_end", id: call.id };
     }
-    // below the paused tool line
-    let shownCards = false;
-    for (const result of results) {
-      if (result.cards?.length) {
-        shownCards = true;
-        yield { type: "cards", items: result.cards };
-      }
-    }
+    // below the paused tool line, in call order
+    const events = results.flatMap((result) => result.events ?? []);
+    yield* events;
+    const shownCards = events.some((event) => event.type === "cards");
 
     toolChoice = ignored ? "none" : nextToolChoice(round, shownCards);
     stream = await openRound({

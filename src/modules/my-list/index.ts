@@ -10,6 +10,8 @@ export {
   type ListEntry,
   type ListStatus,
   type ListStatusSlug,
+  type PreviousEntry,
+  type SavedEntry,
   type StoredEntry,
 } from "./entry";
 export { entryInput, entryKeyInput } from "./entryInput";

@@ -1,10 +1,11 @@
 import { z } from "zod/v4";
 import type { MediaType } from "@/infra/tmdb";
 import { TmdbError, getTitle } from "@/infra/tmdb/server";
+import { matchesTitle } from "@/shared/lib/titleKey";
 import { today } from "../date";
 import type { RecommendedTitle } from "../protocol";
 import { isReleased, mediaTypeArg, roundRating, yearOf } from "./shared";
-import { CardsOutput, defineTool } from "./types";
+import { DisplayOutput, defineTool } from "./types";
 
 export const SHOW_RECOMMENDATIONS = "show_recommendations";
 const MAX_ITEMS = 10;
@@ -15,15 +16,6 @@ type NotShown = { id: number; type: MediaType; reason: string };
 
 const isNotFound = (error: unknown) =>
   error instanceof TmdbError && error.status === 404;
-
-// anything but letters and digits, in any script; a literal /u regex fails
-// tsc's default ES5 target, the runtimes support it
-const NOT_LETTER_OR_DIGIT = new RegExp("[^\\p{L}\\p{N}]", "gu");
-
-// ignores case, accents, spaces and punctuation: "Ford v. Ferrari" matches
-// "Ford v Ferrari"
-const titleKey = (title: string) =>
-  title.normalize("NFKD").replace(NOT_LETTER_OR_DIGIT, "").toLowerCase();
 
 export const showRecommendations = defineTool({
   name: SHOW_RECOMMENDATIONS,
@@ -100,11 +92,7 @@ export const showRecommendations = defineTool({
       }
       // a real id of another title would show a card that doesn't match the
       // reason
-      const key = titleKey(item.title);
-      if (
-        key !== titleKey(title.title) &&
-        key !== titleKey(title.originalTitle)
-      ) {
+      if (!matchesTitle(item.title, title)) {
         leaveOut(`the id is "${title.title}", not "${item.title}"`);
         return;
       }
@@ -136,7 +124,7 @@ export const showRecommendations = defineTool({
       throw failures[0];
     }
 
-    return new CardsOutput(
+    return new DisplayOutput(
       {
         // what the user sees, in order: "the second one" is position 2
         shown: cards.map((card, i) => ({
@@ -148,7 +136,7 @@ export const showRecommendations = defineTool({
         })),
         notShown,
       },
-      cards,
+      cards.length ? [{ type: "cards", items: cards }] : [],
     );
   },
 });

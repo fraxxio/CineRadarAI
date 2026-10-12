@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { auth } from "@/infra/auth/auth";
 import {
   MAX_PROMPT_LENGTH,
   MAX_STOPPED_TEXT_LENGTH,
   MAX_STOPPED_TURNS,
   type ChatStreamEvent,
 } from "@/modules/chat";
-import { isInteractionGone, streamChatReply } from "@/modules/chat/server";
+import {
+  isInteractionGone,
+  streamChatReply,
+  type ChatUser,
+} from "@/modules/chat/server";
 
 export const runtime = "edge";
 
@@ -30,6 +35,17 @@ const chatRequestSchema = z.object({
     .optional(),
 });
 
+// the only source of the user the tools act for; the chat works without it
+async function chatUser(): Promise<ChatUser> {
+  try {
+    const id = (await auth())?.user?.id;
+    return id ? { status: "signed_in", id } : { status: "signed_out" };
+  } catch (error) {
+    console.error("Couldn't read the session for the chat:", error);
+    return { status: "unavailable" };
+  }
+}
+
 // post a new message and stream Gemini response
 export async function POST(request: NextRequest) {
   if (process.env.AI_CHAT_ENABLED !== "true") {
@@ -48,6 +64,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
   const { content, previousInteractionId, stoppedTurns = [] } = parsed.data;
+  const user = await chatUser();
 
   // stops the Gemini request when the client leaves: cancel() below is the
   // reliable trigger, request.signal may not abort on every runtime
@@ -61,6 +78,7 @@ export async function POST(request: NextRequest) {
       stoppedTurns,
       previousInteractionId: previousInteractionId ?? undefined,
       signal: abort.signal,
+      user,
     });
   } catch (error) {
     // the client is already gone, nobody reads this response

@@ -9,6 +9,7 @@ import {
   rawDetails,
   rawMovie,
 } from "../testing/tmdbData";
+import { toolContext } from "../testing/toolContext";
 import {
   CHAT_TOOLS,
   MAX_CALLS_PER_ROUND,
@@ -110,7 +111,7 @@ const search = (id: string, args: object | string): ToolCall => ({
   rawArgs: typeof args === "string" ? args : JSON.stringify(args),
 });
 
-const live = () => new AbortController().signal;
+const live = () => toolContext();
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -121,7 +122,7 @@ afterEach(() => {
 });
 
 describe("CHAT_TOOLS", () => {
-  test("the TMDB tools, then the display tool", () => {
+  test("the TMDB tools, then the display tool, then the list tool", () => {
     expect(CHAT_TOOLS.map((tool) => tool.name)).toEqual([
       "search_titles",
       "search_person",
@@ -132,6 +133,7 @@ describe("CHAT_TOOLS", () => {
       "get_person_credits",
       "get_title_details",
       "show_recommendations",
+      "save_to_list",
     ]);
   });
 
@@ -443,6 +445,45 @@ describe("CHAT_TOOLS", () => {
           ],
           "type": "object",
         },
+        "save_to_list": {
+          "properties": {
+            "id": {
+              "description": "TMDB id of the title, exactly as a tool returned it in this conversation",
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer",
+            },
+            "status": {
+              "description": "Omit to add a new title as Planning to watch, or to leave a title already in the list as it is",
+              "enum": [
+                "Planning to watch",
+                "Completed",
+                "Watching",
+              ],
+              "type": "string",
+            },
+            "title": {
+              "description": "Title of that id, exactly as the tool returned it",
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string",
+            },
+            "type": {
+              "description": "movie for films, tv for TV shows",
+              "enum": [
+                "movie",
+                "tv",
+              ],
+              "type": "string",
+            },
+          },
+          "required": [
+            "type",
+            "id",
+            "title",
+          ],
+          "type": "object",
+        },
         "search_person": {
           "properties": {
             "query": {
@@ -618,6 +659,7 @@ describe("statusFor", () => {
     ["get_person_credits", "Checking filmography..."],
     ["get_title_details", "Checking title details..."],
     ["show_recommendations", "Preparing recommendations..."],
+    ["save_to_list", "Saving to your list..."],
     // the model's mistake
     ["get_weather", "Checking TMDB database..."],
     ["", "Checking TMDB database..."],
@@ -689,7 +731,7 @@ describe("runToolCalls", () => {
     );
   });
 
-  test("a CardsOutput becomes the model output plus the cards", async () => {
+  test("a DisplayOutput becomes the model output plus the events", async () => {
     mockTmdb({ "/3/movie/1": rawDetails(1) });
 
     const [result] = await runToolCalls(
@@ -716,12 +758,41 @@ describe("runToolCalls", () => {
         ],
         notShown: [],
       },
-      cards: [expect.objectContaining({ id: 1, reason: "Fits." })],
+      events: [
+        {
+          type: "cards",
+          items: [expect.objectContaining({ id: 1, reason: "Fits." })],
+        },
+      ],
       isError: false,
     });
   });
 
-  test("a plain output has no cards key", async () => {
+  // no DB in unit tests: only an unavailable session answers without one
+  test("the tool gets the caller's user", async () => {
+    const fetch = mockTmdb({});
+
+    const [result] = await runToolCalls(
+      [
+        {
+          id: "c1",
+          name: "save_to_list",
+          rawArgs: { type: "movie", id: 1, title: "Movie 1" },
+        },
+      ],
+      toolContext(undefined, { status: "unavailable" }),
+    );
+
+    expect(result).toEqual({
+      callId: "c1",
+      name: "save_to_list",
+      output: "Can't save right now, try again later",
+      isError: true,
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("a plain output has no events key", async () => {
     mockTmdb({ ...GENRES, "/3/search/movie": page([]) });
 
     const [result] = await runToolCalls(
@@ -729,7 +800,7 @@ describe("runToolCalls", () => {
       live(),
     );
 
-    expect(result).not.toHaveProperty("cards");
+    expect(result).not.toHaveProperty("events");
   });
 
   test("defaults are applied before the handler runs", async () => {
@@ -981,7 +1052,9 @@ describe("runToolCalls", () => {
       );
 
       expect(results.map((r) => r.isError)).toEqual([false, false, true]);
-      expect(results[1].cards).toEqual([expect.objectContaining({ id: 1 })]);
+      expect(results[1].events).toEqual([
+        { type: "cards", items: [expect.objectContaining({ id: 1 })] },
+      ]);
       expect(results[2]).toEqual(
         errorResult(
           "c3",
@@ -1003,7 +1076,7 @@ describe("runToolCalls", () => {
           search("c1", { query: "Fury", type: "movie" }),
           { id: "c2", name: "get_weather", rawArgs: "{}" },
         ],
-        controller.signal,
+        toolContext(controller.signal),
       );
       await vi.waitFor(() =>
         expect(tmdbUrls(spy, "/3/search/movie")).toHaveLength(1),
@@ -1022,7 +1095,7 @@ describe("runToolCalls", () => {
       await expect(
         runToolCalls(
           [search("c1", { query: "Fury", type: "movie" })],
-          controller.signal,
+          toolContext(controller.signal),
         ),
       ).rejects.toBe(controller.signal.reason);
       // fetch is called with the aborted signal; a real fetch rejects at once

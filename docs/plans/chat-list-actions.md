@@ -1056,3 +1056,68 @@ Template:
   - The live result above ran with the real key. A chat that actually
     expired after a day wasn't waited for. Deleting the interaction gives the
     same 404.
+
+### Phase 3: List service and the `save_to_list` tool
+
+- **Status:** done
+- **Commits:** `feat(my-list): save a title's status without touching its rating`,
+  then `feat(chat): add save_to_list tool` (this entry is in it)
+- **Deviations from the plan:**
+  - `save_to_list` loads `@/modules/my-list/server` with a lazy `import()`
+    inside `run`. The list's server code loads React (`cache` in `store.ts`)
+    and the DB client. `check:chat-tools` runs under `--conditions=react-server`,
+    where stable React throws on import, and unit tests have no
+    `DATABASE_URL`. So the statuses in the schema are a literal tuple, which
+    tsc checks against `ListStatus` both ways (`LIST_STATUSES` is only
+    reachable through my-list's index, which has components, or `/server`).
+  - `SavedEntry` and `PreviousEntry` are defined in `my-list/entry.ts` and
+    re-exported from `protocol.ts`, so my-list doesn't import from chat.
+    `PendingSave` is in `protocol.ts` as planned.
+  - The domain error is `SaveTitleError` with `rejection.reason`
+    `not_found | not_available | title_mismatch`. `checkTitle` (lookup and
+    checks, no write) is exported too; the signed-out path uses it.
+  - `matchesTitle` (`shared/lib/titleKey.ts`) also rejects a name without
+    letters or digits: its key `""` used to match a missing original title.
+    This applies to `show_recommendations` too.
+  - A row with a legacy status, saved without a status, is set to "Planning
+    to watch" (rating kept), because `SavedEntry.status` is a `ListStatus`.
+    `previous` keeps the legacy status, so Undo gets the 400 the plan
+    expects in phase 5.
+  - A row that's already in the list keeps its image, and `entry.image` is
+    the stored one. `saveTitle` doesn't write if the signal aborted during
+    the lookups.
+  - One phase 4 prompt bullet was added now: "Call save_to_list only when
+    the user asks to save a title to their list or change its status. Never
+    on your own initiative." The "names every tool" test needs it, and
+    without it the model could save on its own. Keep it in phase 4
+    (`chatConfig.test.ts` checks it).
+  - `runToolCalls(calls, ctx)` takes the whole `ToolContext`. Tests build one
+    with `toolContext(signal?, user?)` from `chat/testing/toolContext.ts`
+    (signed out by default).
+- **For the next phase:**
+  - `ChatUser` is exported from `chat/server.ts`. The route reads the session
+    once, after validating the body. If `auth()` throws, the user is
+    `unavailable` and the route logs a `console.error`.
+  - `assistant.route.int.test.ts` now mocks `@/infra/auth/auth`. The top
+    `beforeEach` calls `asUser(null)`; tests call `asUser(user)` to sign in.
+  - A save doesn't count as cards: the next round's tool choice stays
+    `"auto"`. Only cards switch it to `"none"`.
+  - Live, signed out, "Add the movie Fury (2014, Brad Pitt) to my watchlist":
+    the model called `search_titles`, then `save_to_list` without a status,
+    so the stream had `sign_in_required` (`status: null`), then "Please sign
+    in to your CineRadar account to add titles to your watchlist." Phase 4's
+    status mapping should make "watchlist" explicit.
+  - Under a local `next start` without `AUTH_TRUST_HOST`, Auth.js logs
+    `UntrustedHost` and returns no session, so the chat is signed out. For
+    signed-in manual checks use `npm run dev`, or set `AUTH_TRUST_HOST=true`.
+- **Checks:**
+  - `npm run lint`, `npx tsc --noEmit`, `npm run typecheck:tests` and
+    `npm run test:run` (1034 tests) are green.
+  - `npm run check:chat-tools` with the real key passed: both requests were
+    accepted with 10 tools.
+  - `npx playwright test tests/e2e/chat.spec.ts` (15) is green. It stubs
+    `/api/assistant`, so it doesn't load the route.
+  - A production build into a throwaway `NEXT_DIST_DIR` compiled the edge
+    route. One real signed-out request against it gave the stream above. A
+    signed-in save wasn't tried live; the route integration tests cover it
+    with the real DB.

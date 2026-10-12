@@ -49,8 +49,8 @@ describe("toFunctionResults", () => {
     ]);
   });
 
-  // the client gets the cards; the model gets only the short output
-  test("a result with cards sends only its output", () => {
+  // the client gets the events; the model gets only the short output
+  test("a result with events sends only its output", () => {
     const output = { shown: [], notShown: [] };
     expect(
       toFunctionResults([
@@ -58,17 +58,22 @@ describe("toFunctionResults", () => {
           callId: "c1",
           name: "show_recommendations",
           output,
-          cards: [
+          events: [
             {
-              type: "movie",
-              id: 1,
-              title: "Movie 1",
-              year: 2014,
-              rating: 7.5,
-              genres: [],
-              posterPath: "/p.jpg",
-              backdropPath: null,
-              reason: "Fits.",
+              type: "cards",
+              items: [
+                {
+                  type: "movie",
+                  id: 1,
+                  title: "Movie 1",
+                  year: 2014,
+                  rating: 7.5,
+                  genres: [],
+                  posterPath: "/p.jpg",
+                  backdropPath: null,
+                  reason: "Fits.",
+                },
+              ],
             },
           ],
           isError: false,

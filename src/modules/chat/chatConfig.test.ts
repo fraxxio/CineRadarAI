@@ -66,6 +66,12 @@ describe("tool rules", () => {
     );
   });
 
+  test("saves to the list only when asked", () => {
+    expect(prompt).toContain(
+      "Call save_to_list only when the user asks to save a title to their list or change its status. Never on your own initiative.",
+    );
+  });
+
   test("recommends nothing from memory when the tools fail", () => {
     expect(prompt).toContain("Don't recommend titles from memory.");
   });
