@@ -64,6 +64,29 @@ describe("toDetails", () => {
     });
   });
 
+  test("no original title or adult flag -> empty string and false", () => {
+    expect(toDetails("movie", bareDetails)).toMatchObject({
+      originalTitle: "",
+      adult: false,
+    });
+  });
+
+  test("movies read original_title, TV original_name; adult is kept", () => {
+    const raw = {
+      ...bareDetails,
+      original_title: "Le Mans 66",
+      original_name: "La casa de papel",
+      adult: true,
+    };
+    expect(toDetails("movie", raw)).toMatchObject({
+      originalTitle: "Le Mans 66",
+      adult: true,
+    });
+    expect(toDetails("tv", raw)).toMatchObject({
+      originalTitle: "La casa de papel",
+    });
+  });
+
   test("TV fields are read when present", () => {
     expect(
       toDetails("tv", {

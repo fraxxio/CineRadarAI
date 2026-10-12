@@ -9,6 +9,11 @@ import { getTrending } from "./getTrending";
 import { searchPerson } from "./searchPerson";
 import { searchTitles } from "./searchTitles";
 import {
+  SHOW_RECOMMENDATIONS,
+  showRecommendations,
+} from "./showRecommendations";
+import {
+  CardsOutput,
   ToolError,
   type ChatTool,
   type ToolCall,
@@ -24,9 +29,10 @@ export const CHAT_TOOLS: ChatTool[] = [
   getSimilar,
   getPersonCredits,
   getTitleDetails,
+  showRecommendations,
 ];
 
-// 10 recommendations max, one call each
+// enough for a round of parallel lookups
 export const MAX_CALLS_PER_ROUND = 10;
 const TOOL_TIMEOUT_MS = 8000;
 const MAX_ISSUES = 5;
@@ -54,15 +60,27 @@ export async function runToolCalls(
   calls: ToolCall[],
   signal: AbortSignal,
 ): Promise<ToolResult[]> {
+  // one list of cards per round: each item is a TMDB request, so more calls
+  // could flood TMDB
+  const firstShow = calls.findIndex(
+    (call) => call.name === SHOW_RECOMMENDATIONS,
+  );
   const settled = await Promise.allSettled(
-    calls.map((call, i) =>
-      i < MAX_CALLS_PER_ROUND
-        ? runToolCall(call, signal)
-        : rejected(
-            call,
-            `Too many calls in one round (max ${MAX_CALLS_PER_ROUND})`,
-          ),
-    ),
+    calls.map((call, i) => {
+      if (i >= MAX_CALLS_PER_ROUND) {
+        return rejected(
+          call,
+          `Too many calls in one round (max ${MAX_CALLS_PER_ROUND})`,
+        );
+      }
+      if (call.name === SHOW_RECOMMENDATIONS && i !== firstShow) {
+        return rejected(
+          call,
+          `Call ${SHOW_RECOMMENDATIONS} once per answer, with every title`,
+        );
+      }
+      return runToolCall(call, signal);
+    }),
   );
   // stopped turn: no results, the loop ends here
   if (signal.aborted) {
@@ -94,8 +112,16 @@ async function runToolCall(
 
   const timeout = withTimeout(signal, TOOL_TIMEOUT_MS);
   try {
-    const output = await tool.run(args.value, { signal: timeout.signal });
-    return { callId: call.id, name: call.name, output, isError: false };
+    const value = await tool.run(args.value, { signal: timeout.signal });
+    return value instanceof CardsOutput
+      ? {
+          callId: call.id,
+          name: call.name,
+          output: value.output,
+          cards: value.cards,
+          isError: false,
+        }
+      : { callId: call.id, name: call.name, output: value, isError: false };
   } catch (error) {
     if (signal.aborted) {
       throw error;

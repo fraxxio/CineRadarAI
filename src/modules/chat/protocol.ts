@@ -1,3 +1,5 @@
+import type { MediaType } from "@/infra/tmdb";
+
 // newline-delimited JSON events streamed by POST /api/assistant
 export type ChatStreamEvent =
   | { type: "start"; interactionId: string }
@@ -7,8 +9,28 @@ export type ChatStreamEvent =
   | { type: "tool_start"; id: string; name: string; text: string }
   // the call with this id finished (not sent when the turn is stopped or fails)
   | { type: "tool_end"; id: string }
+  // a show_recommendations call finished; only the titles TMDB confirmed, in
+  // the model's order
+  | { type: "cards"; items: RecommendedTitle[] }
   | { type: "done"; interactionId: string }
   | { type: "error" };
+
+// one recommendation card; every field except `reason` comes from TMDB
+export type RecommendedTitle = {
+  type: MediaType;
+  id: number;
+  title: string;
+  // null when TMDB has no date
+  year: number | null;
+  // vote average to 1 decimal; null when nobody voted
+  rating: number | null;
+  genres: string[];
+  posterPath: string | null;
+  // what "Add to list" saves, like the search cards
+  backdropPath: string | null;
+  // the model's one sentence on why it fits
+  reason: string;
+};
 
 // a turn the user stopped mid-answer; the model hasn't seen it yet
 export type StoppedTurn = { prompt: string; partialText: string };
@@ -38,8 +60,9 @@ export type ToolPart = {
   runningSince?: number;
 };
 
-// future: | { type: "titles"; items: ... } for movie cards
-export type MessagePart = TextPart | ToolPart;
+export type CardsPart = { type: "cards"; items: RecommendedTitle[] };
+
+export type MessagePart = TextPart | ToolPart | CardsPart;
 
 export type ChatMessage = {
   id: string;

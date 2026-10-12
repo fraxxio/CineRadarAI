@@ -1,5 +1,6 @@
 // tools the model can call during a chat turn; our own types, no Gemini types
 import type { ZodType } from "zod/v4";
+import type { RecommendedTitle } from "../protocol";
 
 export type ToolContext = {
   // aborted when the turn is stopped or the call times out
@@ -15,7 +16,7 @@ export type ChatTool<Args = unknown> = {
   status: string;
   // validated before the handler runs
   args: ZodType<Args>;
-  // short JSON for the model
+  // short JSON for the model, or a CardsOutput
   run(args: Args, ctx: ToolContext): Promise<object>;
 };
 
@@ -35,6 +36,8 @@ export type ToolResult = {
   // the handler's JSON, or a short message when isError
   output: object | string;
   isError: boolean;
+  // only for a successful CardsOutput
+  cards?: RecommendedTitle[];
 };
 
 // thrown by a handler: the message goes to the model as is
@@ -43,4 +46,12 @@ export class ToolError extends Error {
     super(message);
     this.name = "ToolError";
   }
+}
+
+// returned by a display tool: the model gets `output`, the chat shows `cards`
+export class CardsOutput {
+  constructor(
+    readonly output: object,
+    readonly cards: RecommendedTitle[],
+  ) {}
 }

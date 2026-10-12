@@ -111,3 +111,24 @@ export const rawPerson = (id: number, extra: object = {}) => ({
   ],
   ...extra,
 });
+
+// a /movie/{id} or /tv/{id} response; it has the movie and the TV keys, each
+// type reads its own
+export const rawDetails = (id: number, extra: object = {}) => ({
+  id,
+  title: `Movie ${id}`,
+  name: `Show ${id}`,
+  release_date: "2014-10-15",
+  first_air_date: "2017-12-01",
+  status: "Released",
+  overview: "Not passed to the model.",
+  poster_path: "/p.jpg",
+  backdrop_path: "/b.jpg",
+  vote_average: 7.456,
+  vote_count: 1234,
+  genres: [
+    { id: 10752, name: "War" },
+    { id: 18, name: "Drama" },
+  ],
+  ...extra,
+});

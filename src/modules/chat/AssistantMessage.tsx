@@ -9,11 +9,18 @@ type AssistantMessageProps = {
     parts: ChatMessage["parts"];
     stopped?: boolean;
   };
+  // for "Add to list" on the cards; required, so no message can forget it and
+  // tell signed-in users to log in
+  signedIn: boolean;
   // after the parts, e.g. the loader
   children?: React.ReactNode;
 };
 
-export function AssistantMessage({ message, children }: AssistantMessageProps) {
+export function AssistantMessage({
+  message,
+  signedIn,
+  children,
+}: AssistantMessageProps) {
   function displayRole(roleName: string) {
     switch (roleName) {
       case "user":
@@ -40,7 +47,7 @@ export function AssistantMessage({ message, children }: AssistantMessageProps) {
         {displayRole(message.role)}
       </div>
       <div className="chatLink overflow-auto text-left">
-        <MessageParts parts={message.parts} />
+        <MessageParts parts={message.parts} signedIn={signedIn} />
         {children}
       </div>
       {message.stopped && (

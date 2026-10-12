@@ -1,9 +1,11 @@
 // Live check that Gemini accepts the chat's tool schemas.
 //
-// What: sends one real request to Gemini with the exact tool schemas, model
+// What: sends two real requests to Gemini with the exact tool schemas, model
 // and system prompt the AI chat uses, and reports whether Gemini accepts
-// them. The request is the chat's own baseRequest() (llm/llmService.ts), so
-// it can't drift from what the chat sends.
+// them. The first uses tool_choice "auto", the second
+// DISPLAY_ONLY_TOOL_CHOICE (allowed_tools), which the chat sends with the
+// last tool round's results. Both are the chat's own baseRequest()
+// (llm/llmService.ts), so they can't drift from what the chat sends.
 //
 // Why: the tool schemas go out with every chat request, also requests that
 // never call a tool. Gemini supports only a subset of JSON Schema, and if it
@@ -17,11 +19,13 @@
 // When to run it:
 // - before merging any change to a tool's args or description, or to
 //   CHAT_TOOLS
+// - after changing the tool choices (DISPLAY_ONLY_TOOL_CHOICE, the round
+//   loop)
 // - after changing GEMINI_MODEL / CHAT_MODEL or the thinking level
 // - after upgrading @google/genai or zod (zod generates the schemas)
 // - when every chat message suddenly fails
 //
-// Cost: one small Gemini request with the real GEMINI_API_KEY (read from
+// Cost: two small Gemini requests with the real GEMINI_API_KEY (read from
 // .env / .env.local). No tool is run, so no TMDB calls. It doesn't check
 // answer quality.
 //
@@ -32,9 +36,12 @@
 // If it fails: the error names the rejected field. Simplify that zod type (or
 // hand-write that tool's schema), and keep ALLOWED_SCHEMA_KEYWORDS in
 // registry.test.ts in line with what Gemini accepts.
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, type Interactions } from "@google/genai";
 import { CHAT_MODEL, CHAT_THINKING_LEVEL } from "@/modules/chat/chatConfig";
-import { baseRequest } from "@/modules/chat/llm/llmService";
+import {
+  DISPLAY_ONLY_TOOL_CHOICE,
+  baseRequest,
+} from "@/modules/chat/llm/llmService";
 import { CHAT_TOOLS } from "@/modules/chat/tools/registry";
 
 const dryRun = process.argv.includes("--dry-run");
@@ -56,36 +63,50 @@ async function main(): Promise<number> {
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  try {
-    const interaction = await ai.interactions.create({
-      ...request,
-      input: "Reply with the single word OK.",
-      generation_config: {
-        ...request.generation_config,
-        // "none" might skip the tools; a tool call is fine, it isn't run
-        tool_choice: "auto",
-      },
-    });
-    if (
-      interaction.status !== "completed" &&
-      interaction.status !== "requires_action"
-    ) {
+  const checks: [string, Interactions.ToolChoiceConfig | "auto"][] = [
+    // "none" might skip the tools; a tool call is fine, it isn't run
+    ["auto", "auto"],
+    ["display only", DISPLAY_ONLY_TOOL_CHOICE],
+  ];
+  for (const [label, toolChoice] of checks) {
+    let outcome: string;
+    try {
+      const interaction = await ai.interactions.create({
+        ...request,
+        input: "Reply with the single word OK.",
+        generation_config: {
+          ...request.generation_config,
+          tool_choice: toolChoice,
+        },
+      });
+      if (
+        interaction.status !== "completed" &&
+        interaction.status !== "requires_action"
+      ) {
+        console.error(
+          `FAIL (${label}): interaction ended with status "${interaction.status}"`,
+        );
+        return 1;
+      }
+      outcome = interaction.status;
+    } catch (error) {
+      // Gemini's message names the rejected field; the key is redacted in
+      // case a client error echoes the request
+      const { status, statusCode, message } = error as {
+        status?: number;
+        statusCode?: number;
+        message?: string;
+      };
       console.error(
-        `FAIL: interaction ended with status "${interaction.status}"`,
+        `FAIL (${label}): HTTP status ${statusCode ?? status ?? "unknown"}`,
+      );
+      console.error(
+        (message ?? String(error)).replaceAll(apiKey, "[redacted]"),
       );
       return 1;
     }
-  } catch (error) {
-    // Gemini's message names the rejected field; the key is redacted in case
-    // a client error echoes the request
-    const { status, statusCode, message } = error as {
-      status?: number;
-      statusCode?: number;
-      message?: string;
-    };
-    console.error(`FAIL: HTTP status ${statusCode ?? status ?? "unknown"}`);
-    console.error((message ?? String(error)).replaceAll(apiKey, "[redacted]"));
-    return 1;
+    // "completed": answered in text, "requires_action": called a tool
+    console.log(`Request with tool_choice ${label}: accepted (${outcome})`);
   }
 
   console.log(

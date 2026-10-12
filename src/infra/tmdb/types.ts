@@ -60,6 +60,8 @@ export type Genre = { id: number; name: string };
 type TitleDetailsBase = {
   id: number;
   title: string;
+  // in the original language; "" when TMDB leaves it out
+  originalTitle: string;
   status: string;
   overview: string;
   genres: { id: number; name: string }[];
@@ -69,6 +71,8 @@ type TitleDetailsBase = {
   voteCount: number;
   // movie: release date, TV: first air date
   releaseDate: string;
+  // false when TMDB leaves it out
+  adult: boolean;
 };
 
 export type MovieDetails = TitleDetailsBase & {

@@ -1,6 +1,6 @@
 // builds an assistant message from stream events; pure, never mutates its
 // input (it feeds React state), `now` is the client clock in ms
-import type { MessagePart, ToolPart } from "./protocol";
+import type { MessagePart, RecommendedTitle, ToolPart } from "./protocol";
 
 type ToolStart = { id: string; name: string; text: string };
 
@@ -13,14 +13,22 @@ export function appendText(parts: MessagePart[], text: string): MessagePart[] {
   return [...parts, { type: "text", text }];
 }
 
+// each show_recommendations result is a part of its own
+export function addCards(
+  parts: MessagePart[],
+  items: RecommendedTitle[],
+): MessagePart[] {
+  return [...parts, { type: "cards", items }];
+}
+
 // merges into the line of the same tool in the current tool block (the parts
-// after the last text part), otherwise adds a new line
+// after the last text or cards part), otherwise adds a new line
 export function startTool(
   parts: MessagePart[],
   { id, name, text }: ToolStart,
   now: number,
 ): MessagePart[] {
-  const blockStart = parts.findLastIndex((part) => part.type === "text") + 1;
+  const blockStart = parts.findLastIndex((part) => part.type !== "tool") + 1;
   const index = parts.findIndex(
     (part, i) => i >= blockStart && part.type === "tool" && part.name === name,
   );
@@ -85,6 +93,11 @@ export function partsToText(parts: MessagePart[]): string {
         break;
       case "tool":
         break;
+      // the reasons are left out: the note stays short and doesn't look like
+      // a list the model might copy
+      case "cards":
+        texts.push(`[Shown as cards: ${part.items.map(cardNote).join("; ")}]`);
+        break;
       default:
         part satisfies never;
     }
@@ -94,10 +107,15 @@ export function partsToText(parts: MessagePart[]): string {
 
 export const isToolRunning = (part: ToolPart) => part.runningIds.length > 0;
 
-// the tools are done and the model is reading their results
-export function lastPartIsFinishedTool(parts: MessagePart[]): boolean {
+// nothing has arrived yet, or the tools are done (or the cards are shown) and
+// the model is working on its next round
+export function isWaitingForModel(parts: MessagePart[]): boolean {
   const last = parts.at(-1);
-  return last?.type === "tool" && !isToolRunning(last);
+  return (
+    last === undefined ||
+    last.type === "cards" ||
+    (last.type === "tool" && !isToolRunning(last))
+  );
 }
 
 // rounds down, so a time never shows a unit it hasn't reached ("9.9s", not
@@ -124,6 +142,10 @@ function updateTool(
     i === index && part.type === "tool" ? update(part) : part,
   );
 }
+
+// "1. Fury (movie 228150, 2014)"
+const cardNote = ({ title, type, id, year }: RecommendedTitle, index: number) =>
+  `${index + 1}. ${title} (${type} ${id}, ${year ?? "unknown year"})`;
 
 const pause = (part: ToolPart, now: number): ToolPart => ({
   ...part,

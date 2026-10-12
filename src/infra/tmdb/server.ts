@@ -74,11 +74,13 @@ export async function findTitles({
 export async function getTitle(
   type: MediaType,
   id: TitleId,
+  options?: FetchOptions,
 ): Promise<TitleDetails> {
   const raw = await tmdbFetch<RawDetails>(
     `/${type}/${id}`,
     { language: "en-US" },
     `${type} details`,
+    options,
   );
   return toDetails(type, raw);
 }

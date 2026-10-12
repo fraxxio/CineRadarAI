@@ -16,10 +16,14 @@ export const personIdArg = z
   .min(1)
   .describe("TMDB person id from search_person results");
 
+// "" (no date) counts as not released
+export const isReleased = (releaseDate: string, asOf: string) =>
+  releaseDate !== "" && releaseDate <= asOf;
+
 // TMDB lists upcoming and adult titles in trending, recommendations and
 // credits; the tools list only released, non-adult ones
 export const isListable = (hit: TitleHit, asOf: string) =>
-  hit.releaseDate !== "" && hit.releaseDate <= asOf && !hit.adult;
+  isReleased(hit.releaseDate, asOf) && !hit.adult;
 
 // "2014-10-15" -> 2014, null when TMDB has no date
 export const yearOf = (date: string) =>

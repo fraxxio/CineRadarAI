@@ -1,5 +1,8 @@
 import type { Page } from "@playwright/test";
-import type { ChatStreamEvent } from "../../../src/modules/chat";
+import type {
+  ChatStreamEvent,
+  RecommendedTitle,
+} from "../../../src/modules/chat";
 
 type Reply = {
   status?: number;
@@ -35,6 +38,46 @@ export const answer = (id: string, markdown: string): ChatStreamEvent[] => [
   { type: "done", interactionId: id },
 ];
 
+// a card's data; the TMDB mock has a details fixture for movie 550
+export const title = (
+  id: number,
+  extra: Partial<RecommendedTitle> = {},
+): RecommendedTitle => ({
+  type: "movie",
+  id,
+  title: `Title ${id}`,
+  year: 2014,
+  rating: 7.5,
+  genres: ["War", "Drama"],
+  posterPath: `/poster-${id}.jpg`,
+  backdropPath: `/backdrop-${id}.jpg`,
+  reason: `Why ${id} fits.`,
+  ...extra,
+});
+
+// a turn as the server streams it: intro, the show_recommendations line, cards
+export const cardsAnswer = (
+  id: string,
+  intro: string,
+  items: RecommendedTitle[],
+): ChatStreamEvent[] => [
+  { type: "start", interactionId: id },
+  { type: "delta", text: intro },
+  ...showCards(items),
+  { type: "done", interactionId: id },
+];
+
+export const showCards = (items: RecommendedTitle[]): ChatStreamEvent[] => [
+  {
+    type: "tool_start",
+    id: "show",
+    name: "show_recommendations",
+    text: "Preparing recommendations...",
+  },
+  { type: "tool_end", id: "show" },
+  { type: "cards", items },
+];
+
 // /api/assistant answered in the browser by a stream the test writes event
 // by event; page.route can only answer with a complete body. Takes effect on
 // the next navigation.
@@ -45,6 +88,9 @@ export async function openAssistantStream(page: Page) {
       if (String(input) !== "/api/assistant") {
         return realFetch(input, init);
       }
+      ((window as any).__assistantCalls ??= []).push(
+        JSON.parse(String(init?.body)),
+      );
       const encoder = new TextEncoder();
       let controller!: ReadableStreamDefaultController<Uint8Array>;
       const body = new ReadableStream<Uint8Array>({
@@ -71,5 +117,8 @@ export async function openAssistantStream(page: Page) {
       }, events);
     },
     close: () => page.evaluate(() => (window as any).__assistantStream.close()),
+    // the request bodies so far
+    calls: (): Promise<any[]> =>
+      page.evaluate(() => (window as any).__assistantCalls ?? []),
   };
 }

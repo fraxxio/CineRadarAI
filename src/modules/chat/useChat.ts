@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { MAX_STOPPED_TEXT_LENGTH, MAX_STOPPED_TURNS } from "./chatLimits";
 import {
+  addCards,
   appendText,
   endTool,
   partsToText,
@@ -39,7 +40,7 @@ const capped = (messages: ChatMessage[]) => messages.slice(-MAX_MESSAGES);
 
 export function useChat({ beforeSend }: UseChatOptions = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  // the answer in flight: text and tool lines in order
+  // the answer in flight: text, tool lines and cards in order
   const [streamingParts, setStreamingParts] = useState<MessagePart[]>([]);
   const [status, setStatus] = useState<ChatStatus>("idle");
   const turnRef = useRef<Turn | null>(null);
@@ -157,6 +158,10 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
             break;
           case "tool_end":
             turn.parts = endTool(turn.parts, serverEvent.id, Date.now());
+            setStreamingParts(turn.parts);
+            break;
+          case "cards":
+            turn.parts = addCards(turn.parts, serverEvent.items);
             setStreamingParts(turn.parts);
             break;
           case "done":
