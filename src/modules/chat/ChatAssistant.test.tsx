@@ -9,7 +9,8 @@ import {
   MAX_STOPPED_TEXT_LENGTH,
   MAX_STOPPED_TURNS,
 } from "./chatLimits";
-import type { RecommendedTitle, StoppedTurn } from "./protocol";
+import { loadChat, saveChat, type ChatSnapshot } from "./chatStorage";
+import type { ChatMessage, RecommendedTitle, StoppedTurn } from "./protocol";
 import { controlledStream, ndjson, streamResponse } from "./testing/stream";
 
 const GREETING = "Hi! What would you like to watch?";
@@ -1084,6 +1085,290 @@ describe("ChatAssistant", () => {
 
       expect(screen.getByText("a1")).toBeInTheDocument();
       expect(screen.queryByText(ERROR_TEXT)).toBeNull();
+    });
+  });
+
+  describe("kept for the session", () => {
+    const KEY = "cineradar.chat.v1";
+    const text = (
+      id: string,
+      role: ChatMessage["role"],
+      value: string,
+    ): ChatMessage => ({ id, role, parts: [{ type: "text", text: value }] });
+    const SAVED: ChatSnapshot = {
+      messages: [
+        text("m1", "user", "war films"),
+        {
+          id: "m2",
+          role: "assistant",
+          parts: [
+            {
+              type: "tool",
+              name: "search_titles",
+              label: SEARCHING,
+              callIds: ["c1"],
+              runningIds: [],
+              elapsedMs: 2400,
+            },
+            { type: "text", text: "Watch Fury." },
+            { type: "cards", items: [FURY] },
+          ],
+        },
+        text("m3", "user", "older ones"),
+        { ...text("m4", "assistant", "Try"), stopped: true },
+      ],
+      interactionId: "i1",
+      stoppedTurns: [{ prompt: "older ones", partialText: "Try" }],
+    };
+    const stopBtn = () => screen.getByRole("button", { name: "Stop" });
+
+    test("a saved chat is restored on mount", async () => {
+      saveChat(SAVED);
+      renderChat();
+
+      expect(await screen.findByText("Watch Fury.")).toBeInTheDocument();
+      expect(screen.getByText("war films")).toBeInTheDocument();
+      expect(screen.getByText("Stopped")).toBeInTheDocument();
+      expect(
+        screen.getByRole("list", { name: "Recommendations" }),
+      ).toBeInTheDocument();
+      expect(newChatBtn()).toBeEnabled();
+    });
+
+    test("a restored tool line shows its final time and doesn't tick", async () => {
+      saveChat(SAVED);
+      renderChat();
+
+      expect(await screen.findByText(SEARCHING)).toHaveTextContent("2.4s");
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+
+    test("the next request continues the restored conversation", async () => {
+      saveChat(SAVED);
+      const { bodies } = routeFetch({ "/api/assistant": [answer("i2", "a2")] });
+      renderChat();
+      await screen.findByText("Watch Fury.");
+
+      await send("p2");
+      await settled();
+
+      expect(bodies("/api/assistant")).toEqual([
+        {
+          content: "p2",
+          previousInteractionId: "i1",
+          stoppedTurns: [{ prompt: "older ones", partialText: "Try" }],
+        },
+      ]);
+    });
+
+    test("the first render doesn't overwrite the saved chat", async () => {
+      saveChat(SAVED);
+      const before = sessionStorage.getItem(KEY);
+      renderChat();
+      await screen.findByText("Watch Fury.");
+
+      // not even its age: restoring isn't a change
+      expect(sessionStorage.getItem(KEY)).toBe(before);
+    });
+
+    test("new messages after a restore get unique ids", async () => {
+      const consoleError = vi.spyOn(console, "error");
+      saveChat(SAVED);
+      routeFetch({ "/api/assistant": [answer("i2", "a2")] });
+      renderChat();
+      await screen.findByText("Watch Fury.");
+
+      await send("p2");
+      await settled();
+
+      const ids = loadChat()!.messages.map((m) => m.id);
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(ids.slice(-2)).toEqual(["m5", "m6"]);
+      expect(consoleError).not.toHaveBeenCalled();
+    });
+
+    test("a completed turn survives a remount", async () => {
+      routeFetch({
+        "/api/assistant": [answer("i1", "a1"), answer("i2", "a2")],
+      });
+      const { unmount } = renderChat();
+      await send("p1");
+      await settled();
+      unmount();
+
+      const { bodies } = routeFetch({ "/api/assistant": [answer("i2", "a2")] });
+      renderChat();
+      expect(await screen.findByText("a1")).toBeInTheDocument();
+      expect(screen.getByText("p1")).toBeInTheDocument();
+
+      await send("p2");
+      await settled();
+      expect(bodies("/api/assistant")[0]).toEqual({
+        content: "p2",
+        previousInteractionId: "i1",
+      });
+    });
+
+    test("a stop is saved with its stopped turn", async () => {
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("hi");
+      stream.push(ndjson(start("i1"), delta("part")));
+      await screen.findByText("part");
+
+      await user.click(stopBtn());
+
+      expect(loadChat()).toMatchObject({
+        messages: [
+          { role: "user", parts: [{ type: "text", text: "hi" }] },
+          { role: "assistant", stopped: true },
+        ],
+        stoppedTurns: [{ prompt: "hi", partialText: "part" }],
+      });
+    });
+
+    test("a failed turn drops the saved interaction id", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      saveChat(SAVED);
+      routeFetch({ "/api/assistant": [new Response("", { status: 500 })] });
+      renderChat();
+      await screen.findByText("Watch Fury.");
+
+      await send("p2");
+      await screen.findByText(ERROR_TEXT);
+
+      const saved = loadChat()!;
+      expect(saved).not.toHaveProperty("interactionId");
+      expect(saved.stoppedTurns).toEqual([]);
+      expect(saved.messages.at(-1)).toMatchObject({ role: "user" });
+    });
+
+    test("New chat clears it", async () => {
+      saveChat(SAVED);
+      renderChat();
+      await screen.findByText("Watch Fury.");
+
+      await user.click(newChatBtn());
+
+      expect(sessionStorage.getItem(KEY)).toBeNull();
+    });
+
+    describe.each([
+      ["pagehide", () => window.dispatchEvent(new Event("pagehide"))],
+      ["unmount", (unmount: () => void) => unmount()],
+    ])("leaving mid-answer (%s)", (_, leave) => {
+      // read before React renders again: there's no later render to save in
+      // when the page goes away
+      const savedOnLeave = (unmount: () => void) => {
+        const saved: ReturnType<typeof loadChat>[] = [];
+        act(() => {
+          leave(unmount);
+          saved.push(loadChat());
+        });
+        return saved[0];
+      };
+
+      test("saves the partial answer as a stopped message", async () => {
+        saveChat(SAVED);
+        const stream = controlledStream();
+        const { spy } = routeFetch({ "/api/assistant": [stream.response] });
+        const { unmount } = renderChat();
+        await screen.findByText("Watch Fury.");
+        await send("p2");
+        stream.push(ndjson(start("i2"), delta("Hal")));
+        await screen.findByText("Hal");
+
+        const saved = savedOnLeave(unmount);
+
+        expect(spy.mock.calls[0][1]?.signal?.aborted).toBe(true);
+        expect(saved).toMatchObject({
+          // stays on the last completed turn, as with Stop
+          interactionId: "i1",
+          stoppedTurns: [
+            { prompt: "older ones", partialText: "Try" },
+            { prompt: "p2", partialText: "Hal" },
+          ],
+        });
+        expect(saved!.messages.slice(-2)).toEqual([
+          text("m5", "user", "p2"),
+          { ...text("m6", "assistant", "Hal"), stopped: true },
+        ]);
+      });
+
+      test("while the tools run: their lines keep their time", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        const stream = controlledStream();
+        routeFetch({ "/api/assistant": [stream.response] });
+        const { unmount } = renderChat();
+        await send("hi");
+        stream.push(ndjson(start("i1"), toolStart("t1")));
+        await screen.findByText(SEARCHING);
+        vi.advanceTimersByTime(1500);
+
+        const [, answer] = savedOnLeave(unmount)!.messages;
+        expect(answer.parts).toEqual([
+          expect.objectContaining({
+            type: "tool",
+            runningIds: [],
+            elapsedMs: expect.toSatisfy((ms: number) => ms >= 1500),
+          }),
+        ]);
+        expect(answer.parts[0]).not.toHaveProperty("runningSince");
+      });
+
+      test("before the prompt was accepted: saves nothing", async () => {
+        mockRecaptcha(async () => "tok");
+        const verification = controlledStream();
+        const { calls } = routeFetch({
+          "/api/recaptcha": [verification.response],
+        });
+        const { unmount } = renderChat({ recaptchaEnabled: true });
+        await send("hi");
+        await waitFor(() => expect(calls).toHaveLength(1));
+
+        expect(savedOnLeave(unmount)).toBeNull();
+      });
+    });
+
+    test("pagehide after the answer changes nothing", async () => {
+      routeFetch({ "/api/assistant": [answer("i1", "a1")] });
+      renderChat();
+      await send("hi");
+      await settled();
+      const before = sessionStorage.getItem(KEY);
+
+      act(() => void window.dispatchEvent(new Event("pagehide")));
+
+      expect(sessionStorage.getItem(KEY)).toBe(before);
+      expect(screen.queryByText("Stopped")).toBeNull();
+    });
+
+    test("storage throwing: the chat still works", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const failing = () => {
+        throw new DOMException("blocked", "SecurityError");
+      };
+      vi.spyOn(Storage.prototype, "getItem").mockImplementation(failing);
+      vi.spyOn(Storage.prototype, "setItem").mockImplementation(failing);
+      vi.spyOn(Storage.prototype, "removeItem").mockImplementation(failing);
+      const { bodies } = routeFetch({
+        "/api/assistant": [answer("i1", "a1"), answer("i2", "a2")],
+      });
+      renderChat();
+
+      await send("p1");
+      await settled();
+      await send("p2");
+      await settled();
+      await user.click(newChatBtn());
+
+      expect(bodies("/api/assistant")[1]).toEqual({
+        content: "p2",
+        previousInteractionId: "i1",
+      });
+      expect(screen.queryByText(ERROR_TEXT)).toBeNull();
+      expect(screen.queryByText("a2")).toBeNull();
     });
   });
 

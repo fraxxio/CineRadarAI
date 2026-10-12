@@ -1,5 +1,6 @@
 "use client";
 import { SignOut } from "./actions";
+import { clearSavedChat } from "@/modules/chat";
 import { LogOut } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -85,8 +86,10 @@ export default function AuthBtn({ user }: AuthBtnProps) {
         <p className="pt-1">{user.email}</p>
         <DeleteModal />
         <form action={SignOut}>
+          {/* runs before the form submits; the next user mustn't see the chat */}
           <button
             type="submit"
+            onClick={clearSavedChat}
             className="mt-3 flex w-full items-center justify-center gap-2  rounded-md duration-300 hover:bg-primary-text hover:text-dark-bg"
           >
             Sign Out

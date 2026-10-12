@@ -1,4 +1,5 @@
 export { default as ChatAssistant } from "./ChatAssistant";
+export { clearSavedChat } from "./chatStorage";
 export {
   MAX_PROMPT_LENGTH,
   MAX_STOPPED_TEXT_LENGTH,

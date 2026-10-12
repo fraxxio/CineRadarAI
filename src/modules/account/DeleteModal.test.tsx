@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useFormStatus } from "react-dom";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import DeleteModal from "./DeleteModal";
 import DeleteModalBtn from "./DeleteModalBtn";
 
@@ -35,6 +35,50 @@ describe("DeleteModal", () => {
   test("sends no user id: the action deletes the session user (B3)", async () => {
     const dialog = await open();
     expect(dialog.querySelector('input[name="id"]')).toBeNull();
+  });
+
+  describe("the saved chat", () => {
+    const CHAT_KEY = "cineradar.chat.v1";
+    // jsdom can't navigate; React's handlers have run by the time this does
+    const preventSubmit = (e: Event) => e.preventDefault();
+    beforeEach(() => document.addEventListener("submit", preventSubmit));
+    afterEach(() => document.removeEventListener("submit", preventSubmit));
+
+    test("stays when the dialog opens", async () => {
+      sessionStorage.setItem(CHAT_KEY, "{}");
+      await open();
+      expect(sessionStorage.getItem(CHAT_KEY)).toBe("{}");
+    });
+
+    test("is cleared when the deletion is submitted", async () => {
+      sessionStorage.setItem(CHAT_KEY, "{}");
+      const dialog = await open();
+      const user = userEvent.setup();
+
+      await user.type(
+        within(dialog).getByLabelText(/To permamently delete/),
+        "Delete account",
+      );
+      await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+      expect(sessionStorage.getItem(CHAT_KEY)).toBeNull();
+    });
+
+    test("stays on a blocked submit or a wrong confirmation", async () => {
+      sessionStorage.setItem(CHAT_KEY, "{}");
+      const dialog = await open();
+      const user = userEvent.setup();
+      const deleteBtn = within(dialog).getByRole("button", { name: "Delete" });
+
+      await user.click(deleteBtn); // the input is required
+      await user.type(
+        within(dialog).getByLabelText(/To permamently delete/),
+        "delete",
+      );
+      await user.click(deleteBtn);
+
+      expect(sessionStorage.getItem(CHAT_KEY)).toBe("{}");
+    });
   });
 });
 

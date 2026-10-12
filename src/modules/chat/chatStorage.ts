@@ -1,0 +1,164 @@
+// keeps the chat for the browser-tab session: it survives refreshes,
+// navigation and the OAuth round trip, and goes when the tab closes; every
+// call fails soft (storage can be disabled, full or blocked), the chat then
+// just isn't kept
+import type {
+  ChatMessage,
+  MessagePart,
+  RecommendedTitle,
+  StoppedTurn,
+} from "./protocol";
+
+const STORAGE_KEY = "cineradar.chat.v1";
+const VERSION = 1;
+// Gemini keeps interactions for 1 day on the free tier, so a saved chat
+// expires before its interaction does
+export const MAX_SAVED_CHAT_AGE_MS = 20 * 60 * 60 * 1000;
+
+// new optional fields don't need a version bump, changing one does
+export type SavedChat = {
+  version: typeof VERSION;
+  savedAt: number;
+  messages: ChatMessage[];
+  // last completed turn
+  interactionId?: string;
+  stoppedTurns: StoppedTurn[];
+};
+
+export type ChatSnapshot = Omit<SavedChat, "version" | "savedAt">;
+
+// null when nothing usable is saved; a broken, old or outdated blob is removed
+export function loadChat(): SavedChat | null {
+  let raw: string | null;
+  try {
+    raw = window.sessionStorage.getItem(STORAGE_KEY);
+  } catch (error) {
+    console.warn("Couldn't read the saved chat:", error);
+    return null;
+  }
+  if (raw === null) {
+    return null;
+  }
+
+  let chat: unknown;
+  try {
+    chat = JSON.parse(raw);
+  } catch {
+    chat = null;
+  }
+  if (!isSavedChat(chat) || Date.now() - chat.savedAt > MAX_SAVED_CHAT_AGE_MS) {
+    clearSavedChat();
+    return null;
+  }
+  return chat;
+}
+
+export function saveChat(chat: ChatSnapshot) {
+  const saved: SavedChat = { ...chat, version: VERSION, savedAt: Date.now() };
+  try {
+    window.sessionStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+  } catch (error) {
+    console.warn("Couldn't save the chat:", error);
+  }
+}
+
+export function clearSavedChat() {
+  try {
+    window.sessionStorage.removeItem(STORAGE_KEY);
+  } catch (error) {
+    console.warn("Couldn't clear the saved chat:", error);
+  }
+}
+
+// a hand-written check, client code doesn't ship zod; anything unexpected
+// throws the whole blob away rather than repairing it, e.g. a card without
+// genres would crash the render
+function isSavedChat(value: unknown): value is SavedChat {
+  return (
+    isObject(value) &&
+    value.version === VERSION &&
+    typeof value.savedAt === "number" &&
+    isArrayOf(value.messages, isMessage) &&
+    (value.interactionId === undefined ||
+      typeof value.interactionId === "string") &&
+    isArrayOf(value.stoppedTurns, isStoppedTurn)
+  );
+}
+
+function isMessage(value: unknown): value is ChatMessage {
+  return (
+    isObject(value) &&
+    typeof value.id === "string" &&
+    (value.role === "user" || value.role === "assistant") &&
+    isArrayOf(value.parts, isPart) &&
+    (value.stopped === undefined || typeof value.stopped === "boolean")
+  );
+}
+
+function isPart(value: unknown): value is MessagePart {
+  if (!isObject(value)) {
+    return false;
+  }
+  const part = value as Partial<MessagePart>;
+  switch (part.type) {
+    case "text":
+      return typeof part.text === "string";
+    // only finished lines are saved, a running one would never stop
+    case "tool":
+      return (
+        typeof part.name === "string" &&
+        typeof part.label === "string" &&
+        isArrayOf(part.callIds, isString) &&
+        Array.isArray(part.runningIds) &&
+        part.runningIds.length === 0 &&
+        typeof part.elapsedMs === "number" &&
+        part.runningSince === undefined
+      );
+    case "cards":
+      return isArrayOf(part.items, isCard);
+    case undefined:
+      return false;
+    default:
+      // a new part type needs a check here
+      part satisfies never;
+      return false;
+  }
+}
+
+function isCard(value: unknown): value is RecommendedTitle {
+  return (
+    isObject(value) &&
+    (value.type === "movie" || value.type === "tv") &&
+    typeof value.id === "number" &&
+    typeof value.title === "string" &&
+    isNumberOrNull(value.year) &&
+    isNumberOrNull(value.rating) &&
+    isArrayOf(value.genres, isString) &&
+    isStringOrNull(value.posterPath) &&
+    isStringOrNull(value.backdropPath) &&
+    typeof value.reason === "string"
+  );
+}
+
+function isStoppedTurn(value: unknown): value is StoppedTurn {
+  return (
+    isObject(value) &&
+    typeof value.prompt === "string" &&
+    typeof value.partialText === "string"
+  );
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isArrayOf = <T>(
+  value: unknown,
+  isItem: (item: unknown) => item is T,
+): value is T[] => Array.isArray(value) && value.every(isItem);
+
+const isString = (value: unknown): value is string => typeof value === "string";
+
+const isStringOrNull = (value: unknown) => value === null || isString(value);
+
+const isNumberOrNull = (value: unknown) =>
+  value === null || typeof value === "number";

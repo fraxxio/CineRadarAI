@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { MAX_STOPPED_TEXT_LENGTH, MAX_STOPPED_TURNS } from "./chatLimits";
+import { clearSavedChat, loadChat, saveChat } from "./chatStorage";
 import {
   addCards,
   appendText,
@@ -38,6 +39,9 @@ const MAX_MESSAGES = 10;
 
 const capped = (messages: ChatMessage[]) => messages.slice(-MAX_MESSAGES);
 
+// the number in an "m12" id, 0 for any other id
+const idNumber = (id: string) => Number(/^m(\d+)$/.exec(id)?.[1] ?? 0);
+
 export function useChat({ beforeSend }: UseChatOptions = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // the answer in flight: text, tool lines and cards in order
@@ -49,17 +53,65 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
   // stopped since the last completed turn, the model hasn't seen them yet
   const stoppedTurnsRef = useRef<StoppedTurn[]>([]);
   const messageCount = useRef(0);
+  // the saved chat has been read; state, not a ref, so the effects of the
+  // first render (run twice in strict mode) can't save over it
+  const [restored, setRestored] = useState(false);
+  // the messages the restore set, already saved as they are
+  const restoredMessagesRef = useRef<ChatMessage[]>();
+  // the latest messages, for saving when the page goes away
+  const messagesRef = useRef<ChatMessage[]>([]);
 
   const nextId = () => `m${++messageCount.current}`;
 
-  // abort the request in flight when the chat unmounts
-  useEffect(
-    () => () => {
-      turnRef.current?.controller.abort();
-      turnRef.current = null;
-    },
-    [],
-  );
+  // after mount, not during render: the server has no saved chat to render
+  useEffect(() => {
+    const saved = loadChat();
+    if (saved) {
+      interactionIdRef.current = saved.interactionId;
+      stoppedTurnsRef.current = saved.stoppedTurns;
+      // new ids continue after the restored ones, so keys don't collide
+      messageCount.current = Math.max(
+        0,
+        ...saved.messages.map((m) => idNumber(m.id)),
+      );
+      restoredMessagesRef.current = saved.messages;
+      setMessages(saved.messages);
+    }
+    setRestored(true);
+  }, []);
+
+  // the refs are written before the setMessages (or setStatus) of the same
+  // update, so this sees them; the answer in flight isn't saved
+  useEffect(() => {
+    messagesRef.current = messages;
+    // saving the restored chat again would only extend its age
+    if (!restored || messages === restoredMessagesRef.current) {
+      return;
+    }
+    if (messages.length === 0) {
+      clearSavedChat();
+      return;
+    }
+    saveChat({
+      messages,
+      interactionId: interactionIdRef.current,
+      stoppedTurns: stoppedTurnsRef.current,
+    });
+  }, [messages, status, restored]);
+
+  // leaving mid-answer counts as Stop; there's no later render to save it in,
+  // so it's saved right away. pagehide: refresh, closing the tab, leaving the
+  // site; unmount: client-side navigation
+  useEffect(() => {
+    const leave = () => stopTurn({ saveNow: true });
+    window.addEventListener("pagehide", leave);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      leave();
+    };
+    // stopTurn only uses refs and state setters, the first one is enough
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // resolves once the prompt is accepted (true) or cancelled before sending
   // (false); the answer keeps streaming after that
@@ -238,6 +290,11 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
 
   // keeps the partial answer; the next send shares it with the model
   function stop() {
+    stopTurn({ saveNow: false });
+  }
+
+  // ends the turn in flight; `saveNow` when the page is going away
+  function stopTurn({ saveNow }: { saveNow: boolean }) {
     const turn = turnRef.current;
     if (!turn) {
       return;
@@ -258,17 +315,20 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
           partialText: partsToText(parts).slice(0, MAX_STOPPED_TEXT_LENGTH),
         },
       ].slice(-MAX_STOPPED_TURNS);
-      setMessages((prev) =>
-        capped([
-          ...prev,
-          {
-            id: nextId(),
-            role: "assistant",
-            parts,
-            stopped: true,
-          },
-        ]),
-      );
+      const message: ChatMessage = {
+        id: nextId(),
+        role: "assistant",
+        parts,
+        stopped: true,
+      };
+      setMessages((prev) => capped([...prev, message]));
+      if (saveNow) {
+        saveChat({
+          messages: capped([...messagesRef.current, message]),
+          interactionId: interactionIdRef.current,
+          stoppedTurns: stoppedTurnsRef.current,
+        });
+      }
     }
     setStreamingParts([]);
     setStatus("idle");
@@ -280,6 +340,7 @@ export function useChat({ beforeSend }: UseChatOptions = {}) {
     turnRef.current = null;
     interactionIdRef.current = undefined;
     stoppedTurnsRef.current = [];
+    clearSavedChat();
     setMessages([]);
     setStreamingParts([]);
     setStatus("idle");
