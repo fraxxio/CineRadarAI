@@ -1435,6 +1435,8 @@ describe("ChatAssistant", () => {
 
         expect(await screen.findAllByText(ADDED)).toHaveLength(2);
         expect(screen.getByText("Please sign in.")).toBeInTheDocument();
+        // signed in now: no sign-in card above the rows
+        expect(screen.queryByText(/^Sign in to add/)).toBeNull();
         const saves = calls.filter((c) => c.url === "/api/save-title");
         expect(saves.map((c) => c.method)).toEqual(["PUT", "PUT"]);
         expect(bodies("/api/save-title")).toEqual([

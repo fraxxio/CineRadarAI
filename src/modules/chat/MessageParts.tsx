@@ -68,7 +68,10 @@ function MessagePartView({
     case "list_saved":
       return <ListSavedRow part={part} onUndo={onUndo} />;
     case "sign_in":
-      return <SignInCard saves={part.saves} onSignIn={onSignIn} />;
+      // back from signing in, the titles are saved in a later message
+      return signedIn ? null : (
+        <SignInCard saves={part.saves} onSignIn={onSignIn} />
+      );
     default:
       part satisfies never;
       return null;
