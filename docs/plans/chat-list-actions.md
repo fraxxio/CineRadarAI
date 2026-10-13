@@ -1305,3 +1305,68 @@ Template:
     the one- and three-title cards at 320 and 1280 px, the resumed row and
     `/signin` were checked by eye: nothing overflows, and the buttons wrap
     at 320 px.
+
+### Phase 7: E2E, manual checks, cleanup
+
+- **Status:** done with gaps (manual checks 3–7 not run: Gemini capacity and rate limits)
+- **Commits:** `fix(chat): hide the sign-in card once the user is signed in`,
+  `refactor(my-list): export only saveTitle for chat saves`, then
+  `test(e2e): cover chat persistence and list changes` (this entry is in it)
+- **Deviations from the plan:**
+  - The new tests are in two files: `chat-session.spec.ts` (persistence,
+    expired) and `chat-list.spec.ts` (rows, Undo, sign-in round trip,
+    320 px). `send`, `promptInput`, `cards` and `card` moved from
+    `chat.spec.ts` to `helpers/chat.ts`. `stubAssistant` takes `json` for a
+    non-stream answer (the 409).
+  - `/api/assistant` is stubbed, so a save "made by the model" is seeded in
+    the DB before the stubbed `list_saved` event. Undo (both routes) and
+    `/api/save-title` run for real against the e2e DB and the TMDB mock.
+  - Phase 6's suggestion: the sign-in card isn't rendered once `signedIn`
+    (`MessageParts`). After the round trip the model's "please sign in"
+    line is followed by the resumed "Added" row, without provider buttons.
+  - `getEntry` and `saveEntryStatus` are no longer exported from
+    `my-list/server.ts`: only `saveTitle` uses them, and other modules
+    should save through its title check.
+  - The manual checks ran through a throwaway vitest config (real env, temp
+    SQLite DB via `tests/setup/integration.ts`) calling `streamChatReply`,
+    like phase 4. It was deleted afterwards.
+- **For the next phase:** none (last phase). Left as is:
+  - A New chat while resumed saves are in flight still appends their rows
+    to the new chat (phase 6 note).
+  - The unknown-tool line for a made-up `save_title_to_list` (phase 4 note)
+    wasn't looked at: it needs a live run that happens to call it.
+  - Live, the model answered "Added to your list." to a status change
+    (Watching → Completed). The row underneath says "Moved to Completed",
+    so it's only loose wording from the prompt's example.
+- **Checks:**
+  - `npm run lint`, `npx tsc --noEmit`, `npm run typecheck:tests` and
+    `npm run test:run` (1181 tests) are green.
+  - Default e2e run: 73 passed. `npm run test:e2e:variants`: 2 + 2 passed.
+  - The new e2e tests were checked to fail when the behaviour breaks:
+    without the sign-out `clearSavedChat`, and with the sign-in card shown
+    to signed-in users.
+  - `npm run check:chat-tools` with the real key passed (10 tools, both
+    choices), after one 503 "high demand" retry.
+  - Manual checks with the real key (`gemini-3.5-flash-lite`, minimal
+    thinking, real TMDB):
+    1. Brad Pitt war cards → "add the second one to my watchlist" →
+       Inglourious Basterds (card 2) saved as Planning to watch, "Added to
+       your list." **Passed.**
+    2. Dune (2021) seeded as Watching, rating 9 → "mark Dune as completed"
+       → asked "the 2021 film, the 2024 sequel, or the 1984 original?" (a
+       second run: 2021 or 1984) → "the 2021 one" → Completed, rating 9
+       kept. **Passed.**
+    3. "add all of them" after 5 cards: **not run.** The first turn
+       ("recommend 5 heist movies") timed out (`APIConnectionTimeoutError`,
+       2 min abort) on 5 attempts while Gemini reported high demand; turns
+       in 1 and 2 had the same timeout once and then went through. Then
+       the key hit its rate limit.
+    4. Signed out → sign-in → "add another one like it": **not run** (rate
+       limit). The browser side is covered by the e2e round trip test.
+    5. Undo, then "is it in my list?": **not run** (rate limit); phase 4
+       passed it 5 of 5 against the same note.
+    6. Refresh mid-answer: the browser side (stopped message, the
+       follow-up's `stoppedTurns`) is covered by e2e; the model's
+       continuation **not run** (rate limit).
+    7. Expired conversation: **not run**; relies on phase 2's mock tests
+       and its live check with a deleted interaction (same 404).

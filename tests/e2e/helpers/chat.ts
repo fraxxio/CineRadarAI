@@ -7,6 +7,8 @@ import type {
 type Reply = {
   status?: number;
   events?: ChatStreamEvent[];
+  // a JSON body instead of the stream, e.g. an error response
+  json?: unknown;
   hold?: Promise<void>;
 };
 
@@ -18,18 +20,41 @@ export async function stubAssistant(
   await page.route("**/api/assistant", async (route) => {
     const body = route.request().postDataJSON();
     calls.push(body);
-    const { status = 200, events = [], hold } = await reply(body, calls.length);
+    const {
+      status = 200,
+      events = [],
+      json,
+      hold,
+    } = await reply(body, calls.length);
     await hold; // lets a test observe the loading state
     await route
-      .fulfill({
-        status,
-        contentType: "application/x-ndjson",
-        body: events.map((e) => JSON.stringify(e) + "\n").join(""),
-      })
+      .fulfill(
+        json === undefined
+          ? {
+              status,
+              contentType: "application/x-ndjson",
+              body: events.map((e) => JSON.stringify(e) + "\n").join(""),
+            }
+          : { status, json },
+      )
       .catch(() => {}); // the page aborted the request (Stop, New chat)
   });
   return calls;
 }
+
+export const promptInput = (page: Page) =>
+  page.getByPlaceholder(/Suggest me movies/);
+
+export async function send(page: Page, text: string) {
+  await promptInput(page).fill(text);
+  await page.getByRole("button", { name: "Submit" }).click();
+}
+
+export const cards = (page: Page) =>
+  page.getByRole("list", { name: "Recommendations" }).getByRole("listitem");
+
+export const card = (page: Page, name: string) =>
+  cards(page).filter({ has: page.getByRole("link", { name, exact: true }) });
 
 export const answer = (id: string, markdown: string): ChatStreamEvent[] => [
   { type: "start", interactionId: id },

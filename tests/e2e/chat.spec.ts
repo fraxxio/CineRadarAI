@@ -3,8 +3,12 @@ import { deferred } from "../helpers/deferred";
 import { expect, test } from "./fixtures";
 import {
   answer,
+  card,
+  cards,
   cardsAnswer,
   openAssistantStream,
+  promptInput,
+  send,
   showCards,
   stubAssistant,
   title,
@@ -31,19 +35,6 @@ const PREPARING = "Preparing recommendations...";
 const SEARCHING = "Searching TMDB database...";
 const BROWSING = "Browsing TMDB database...";
 const DETAILS = "Checking title details...";
-
-const promptInput = (page: Page) => page.getByPlaceholder(/Suggest me movies/);
-
-const cards = (page: Page) =>
-  page.getByRole("list", { name: "Recommendations" }).getByRole("listitem");
-
-const card = (page: Page, name: string) =>
-  cards(page).filter({ has: page.getByRole("link", { name, exact: true }) });
-
-async function send(page: Page, text: string) {
-  await promptInput(page).fill(text);
-  await page.getByRole("button", { name: "Submit" }).click();
-}
 
 // needs page.clock.install() before the page loads; from here on the page's
 // time only moves with page.clock.runFor
