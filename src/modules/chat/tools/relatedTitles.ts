@@ -2,12 +2,8 @@
 import { z } from "zod/v4";
 import type { MediaType, Paged, TitleHit } from "@/infra/tmdb";
 import { getGenres, type FetchOptions } from "@/infra/tmdb/server";
-import {
-  TITLE_ITEM_FIELDS,
-  listStatuses,
-  mediaTypeArg,
-  toTitleItems,
-} from "./shared";
+import { TITLE_ITEM_FIELDS, mediaTypeArg, toTitleItems } from "./shared";
+import { listStatuses } from "./userList";
 import { defineTool } from "./types";
 
 const MAX_RESULTS = 10;

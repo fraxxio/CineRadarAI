@@ -15,10 +15,14 @@ beforeEach(async () => {
 const signedIn = (): ChatUser => ({ status: "signed_in", id: user.id });
 
 // args as the registry passes them: parsed
-const run = (chatUser: ChatUser, list?: ToolContext["list"]) =>
+const run = (
+  chatUser: ChatUser,
+  list?: ToolContext["list"],
+  signal?: AbortSignal,
+) =>
   getMyList.run(
     getMyList.args.parse({}),
-    toolContext(undefined, chatUser, list),
+    toolContext({ user: chatUser, list, signal }),
   );
 
 const UNAVAILABLE = new ToolError(
@@ -161,16 +165,24 @@ describe("get_my_list", () => {
       expect(value.titles.map((title) => title.title)).toEqual(["Fury"]);
     });
 
-    test("a failed read: a ToolError, logged", async () => {
-      const error = vi.spyOn(console, "error").mockImplementation(() => {});
-
+    test("a failed read: a ToolError", async () => {
       await expect(
         run(signedIn(), () => Promise.reject(new Error("db down"))),
       ).rejects.toEqual(UNAVAILABLE);
-      expect(error).toHaveBeenCalledWith(
-        "Can't read the list:",
-        new Error("db down"),
+    });
+
+    // the shared read takes no signal: the call stops waiting for it
+    test("a hung read: a ToolError once the call is aborted", async () => {
+      const controller = new AbortController();
+      const running = run(
+        signedIn(),
+        () => new Promise(() => {}),
+        controller.signal,
       );
+
+      controller.abort(new DOMException("Tool timed out", "TimeoutError"));
+
+      await expect(running).rejects.toEqual(UNAVAILABLE);
     });
   });
 

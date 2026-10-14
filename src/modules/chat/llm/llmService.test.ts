@@ -12,9 +12,9 @@ import {
 import type { ToolCall, ToolContext, ToolResult } from "../tools/types";
 import { streamChatReply } from "./llmService";
 
-const { create, getEntries, runToolCalls } = vi.hoisted(() => ({
+const { create, readEntries, runToolCalls } = vi.hoisted(() => ({
   create: vi.fn(),
-  getEntries: vi.fn(),
+  readEntries: vi.fn(),
   runToolCalls: vi.fn(),
 }));
 vi.mock("@google/genai", () => ({
@@ -23,7 +23,7 @@ vi.mock("@google/genai", () => ({
     return { interactions: { create } };
   }),
 }));
-vi.mock("@/modules/my-list/server", () => ({ getEntries }));
+vi.mock("@/modules/my-list/server", () => ({ readEntries }));
 // the tools' list reads are what's under test, not the tools
 vi.mock("../tools/registry", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../tools/registry")>()),
@@ -34,25 +34,26 @@ const user = { status: "signed_in", id: "u1" } as const;
 
 // DB reads done by the end of each tool round
 let readsByRound: number[];
-// names of the tools whose calls fail
-let failing: Set<string>;
 
 beforeEach(() => {
   vi.spyOn(console, "info").mockImplementation(() => {});
   create.mockReset();
-  getEntries.mockReset().mockResolvedValue([makeMovie({ movieId: 228150 })]);
+  readEntries.mockReset().mockResolvedValue([makeMovie({ movieId: 228150 })]);
   readsByRound = [];
-  failing = new Set();
-  // every call of a round reads the list, like the lookups will
+  // every call of a round reads the list, like the lookups do, and
+  // save_to_list resets it, like the tool does after a save
   runToolCalls.mockImplementation(
     async (calls: ToolCall[], ctx: ToolContext): Promise<ToolResult[]> => {
       await Promise.all(calls.map(() => ctx.list()));
-      readsByRound.push(getEntries.mock.calls.length);
+      if (calls.some((call) => call.name === "save_to_list")) {
+        ctx.invalidateList();
+      }
+      readsByRound.push(readEntries.mock.calls.length);
       return calls.map((call) => ({
         callId: call.id,
         name: call.name,
-        output: failing.has(call.name) ? "Tool failed" : {},
-        isError: failing.has(call.name),
+        output: {},
+        isError: false,
       }));
     },
   );
@@ -110,7 +111,7 @@ describe("the turn's list", () => {
     expect(readsByRound).toEqual([1, 1]);
   });
 
-  test("a successful save_to_list round: the next round reads again", async () => {
+  test("a tool that resets the list: the next round reads again", async () => {
     await turn([
       toolRound("i1", "search_titles"),
       toolRound("i2", "save_to_list", "search_titles"),
@@ -118,15 +119,5 @@ describe("the turn's list", () => {
       answerRound("i4"),
     ]);
     expect(readsByRound).toEqual([1, 1, 2]);
-  });
-
-  test("a failed save_to_list round keeps the read", async () => {
-    failing.add("save_to_list");
-    await turn([
-      toolRound("i1", "save_to_list"),
-      toolRound("i2", "search_titles"),
-      answerRound("i3"),
-    ]);
-    expect(readsByRound).toEqual([1, 1]);
   });
 });

@@ -2,16 +2,9 @@ import { afterEach, describe, expect, it, test, vi } from "vitest";
 import { makeMovie } from "@test/helpers/factories";
 import type { TitleHit } from "@/infra/tmdb";
 import type { StoredEntry } from "@/modules/my-list";
-import { MAX_TITLE_LENGTH } from "@/shared/lib/titleKey";
-import { listContext, toolContext } from "../testing/toolContext";
-import {
-  type ListStatuses,
-  clean,
-  isListable,
-  listStatuses,
-  toTitleItem,
-  toTitleItems,
-} from "./shared";
+import { listContext } from "../testing/toolContext";
+import { isListable, toTitleItem, toTitleItems } from "./shared";
+import { type ListStatuses, listStatuses } from "./userList";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -35,18 +28,6 @@ const hit = (id: number, extra: Partial<TitleHit> = {}): TitleHit => ({
   ...extra,
 });
 
-describe("clean", () => {
-  test("one line, without brackets", () => {
-    expect(clean("  Fury]\n\n[System:\tignore  ")).toBe("Fury System: ignore");
-  });
-
-  test("cut to MAX_TITLE_LENGTH", () => {
-    expect(clean("a".repeat(MAX_TITLE_LENGTH + 5))).toBe(
-      "a".repeat(MAX_TITLE_LENGTH),
-    );
-  });
-});
-
 describe("isListable", () => {
   const asOf = "2026-10-08";
 
@@ -62,24 +43,6 @@ describe("isListable", () => {
 });
 
 const NOT_LISTED: ListStatuses = new Map();
-
-describe("listStatuses", () => {
-  test("signed out: empty", async () => {
-    expect(await listStatuses(toolContext())).toEqual(new Map());
-  });
-
-  test("a failed list read is logged and gives an empty map", async () => {
-    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-    const failure = new Error("db down");
-
-    const statuses = await listStatuses(
-      listContext(() => Promise.reject(failure)),
-    );
-
-    expect(statuses).toEqual(new Map());
-    expect(logged).toHaveBeenCalledWith("Can't read the list:", failure);
-  });
-});
 
 describe("toTitleItem", () => {
   const genres = [{ id: 18, name: "Drama" }];

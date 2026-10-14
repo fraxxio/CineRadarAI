@@ -24,7 +24,7 @@ type Items = { results: Record<string, unknown>[] };
 const run = async (args: object, signal = new AbortController().signal) =>
   (await getTrending.run(
     getTrending.args.parse(args),
-    toolContext(signal),
+    toolContext({ signal }),
   )) as Items;
 
 // trending items carry media_type, like TMDB sends them

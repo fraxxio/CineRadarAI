@@ -122,7 +122,7 @@ describe("search_titles", () => {
 
     await searchTitles.run(
       { query: "Fury", type: "movie" },
-      toolContext(signal),
+      toolContext({ signal }),
     );
 
     expect(spy).toHaveBeenCalledTimes(2);

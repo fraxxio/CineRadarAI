@@ -36,7 +36,7 @@ const mockDiscover = (movies: object[] = [], shows: object[] = []) =>
 const run = async (args: object, signal = new AbortController().signal) =>
   (await discoverTitles.run(
     discoverTitles.args.parse(args),
-    toolContext(signal),
+    toolContext({ signal }),
   )) as Items;
 
 const discoverUrl = (spy: ReturnType<typeof mockTmdb>, type = "movie") =>

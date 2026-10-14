@@ -1,7 +1,7 @@
 // what the model learns of list changes it didn't make (Undo, saves after
 // sign-in): the client sends only their keys, the state comes from the DB
 import type { EntryKey, StoredEntry } from "@/modules/my-list";
-import { clean } from "../tools/shared";
+import { clean } from "../tools/userList";
 import type { ToolContext } from "../tools/types";
 
 const sameKey = (a: EntryKey, b: EntryKey) =>
@@ -30,8 +30,8 @@ export function formatListChangeNote(
 }
 
 // undefined when there's nothing to tell, the user isn't signed in, or the
-// list can't be read: the chat works without the note. Reads through the
-// turn's list, so the tools reuse the read
+// list can't be read (logged by userList): the chat works without the note.
+// Reads through the turn's list, so the tools reuse the read
 export async function listChangeNote(
   list: ToolContext["list"],
   keys: EntryKey[],
@@ -42,8 +42,7 @@ export async function listChangeNote(
   try {
     const entries = await list();
     return entries ? formatListChangeNote(keys, entries) : undefined;
-  } catch (error) {
-    console.error("Couldn't read the list for the list-change note:", error);
+  } catch {
     return undefined;
   }
 }

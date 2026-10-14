@@ -41,7 +41,7 @@ describe.each([
   });
 
   const run = async (args: object, signal = new AbortController().signal) =>
-    (await tool.run(tool.args.parse(args), toolContext(signal))) as Items;
+    (await tool.run(tool.args.parse(args), toolContext({ signal }))) as Items;
 
   // movie and TV ids overlap: 1399 is a movie and a show
   const mockList = (movies: object[], shows: object[] = []) =>

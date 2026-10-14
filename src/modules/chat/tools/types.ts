@@ -15,8 +15,11 @@ export type ToolContext = {
   // aborted when the turn is stopped or the call times out
   signal: AbortSignal;
   user: ChatUser;
-  // the user's list, shared by the turn's calls (see userList.ts)
+  // the user's list, shared by the turn's calls; wait for it with
+  // waitForList, so a slow DB can't outlast the call (see userList.ts)
   list(): Promise<StoredEntry[] | null>;
+  // called by a tool that wrote the list, so later reads see the change
+  invalidateList(): void;
 };
 
 export type ChatTool<Args = unknown> = {

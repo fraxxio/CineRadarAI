@@ -1,7 +1,7 @@
 import { z } from "zod/v4";
-import type { StoredEntry } from "@/modules/my-list";
-import { clean } from "./shared";
+import type { ListStatus, StoredEntry } from "@/modules/my-list";
 import { ToolError, defineTool } from "./types";
+import { clean, waitForList } from "./userList";
 
 const GET_MY_LIST = "get_my_list";
 
@@ -10,14 +10,19 @@ export const MAX_LIST_TITLES = 50;
 
 const UNAVAILABLE = "Can't read the list right now, try again later";
 
-// unrated titles by how much they say about taste; old statuses last
-const UNRATED_ORDER: readonly string[] = [
+// unrated titles by how much they say about taste; old statuses last. A
+// status added to LIST_STATUSES fails the check below, a renamed one fails
+// `satisfies`
+const UNRATED_ORDER = [
   "Completed",
   "Watching",
   "Planning to watch",
-];
+] as const satisfies readonly ListStatus[];
+type UnrankedStatus = Exclude<ListStatus, (typeof UNRATED_ORDER)[number]>;
+const ranksComplete: [UnrankedStatus] extends [never] ? true : never = true;
+
 const unratedRank = (status: string) => {
-  const rank = UNRATED_ORDER.indexOf(status);
+  const rank = (UNRATED_ORDER as readonly string[]).indexOf(status);
   return rank === -1 ? UNRATED_ORDER.length : rank;
 };
 
@@ -31,7 +36,8 @@ export const getMyList = defineTool({
   description: `Get the signed-in user's own list: each title's type, TMDB id, title, status and the user's own rating (1-10, null when not rated). A long list is cut to ${MAX_LIST_TITLES} titles: rated ones highest first, then unrated Completed, Watching and Planning to watch ones. Returns signedIn: false when the user isn't signed in.`,
   status: "Reading your list...",
   args: z.object({}),
-  async run(_, { user, list }) {
+  async run(_, ctx) {
+    const { user } = ctx;
     switch (user.status) {
       case "unavailable":
         throw new ToolError(UNAVAILABLE);
@@ -47,9 +53,9 @@ export const getMyList = defineTool({
       case "signed_in": {
         let entries: StoredEntry[];
         try {
-          entries = (await list()) ?? [];
-        } catch (error) {
-          console.error("Can't read the list:", error);
+          entries = (await waitForList(ctx)) ?? [];
+        } catch {
+          // a failed read (logged by userList), or the call timed out
           throw new ToolError(UNAVAILABLE);
         }
         // the list is oldest first and sort() is stable, so ties go newest

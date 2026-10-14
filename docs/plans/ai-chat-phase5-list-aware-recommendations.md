@@ -161,6 +161,9 @@ Statuses: `not started`, `in progress`, `done`, `blocked (<reason>)`.
 8. **The list is read at most once per turn,** through a memoized loader in
    `ToolContext`. The loader is reset after a round in which `save_to_list`
    succeeded. A failed read isn't memoized, so the next call retries.
+   **Changed after the review:** `save_to_list` resets it itself, through
+   `ToolContext.invalidateList()`, right after a successful write (see the
+   phase 5 notes).
 9. **The thinking level will be raised from `minimal`.**
    - The prompt can rely on the model following multi-step rules, but keep them
      short and explicit.
@@ -592,7 +595,43 @@ goals against the real model.
   11 tools with both tool choices) pass.
 - **Live manual check (step 3):** pending. The user runs it on the dev
   environment. Record the results and any prompt tweaks here, then set the
-  phase to `done`.
+  phase to `done`. Also check the review's prompt changes there: a generic
+  "find a thriller for me" (no `get_my_list` call), "based on my list" while
+  signed out (no `get_my_list` call, one sign-in line, general picks), and a
+  failing list read (general picks, not "can't look titles up").
+- **Review fixes** (after the phase 5 code review):
+  - **Hung list read:** the shared read still takes no signal, but each
+    caller now waits through `waitForList(ctx, ms?)` (`tools/userList.ts`),
+    which stops on the call's signal (timeout or Stop) or after `ms`.
+    `listStatuses` gives up after `LIST_MARKS_TIMEOUT_MS = 2000` and returns
+    no marks (a slow DB costs the marks, not the lookup); `get_my_list` waits
+    until the call's 8 s timeout and throws its `ToolError`. Tests in
+    `registry.test.ts` ("a hung list read") fail without it.
+  - **Reset:** `ToolContext.invalidateList()`, called by `save_to_list` after
+    a successful write. `runTurn` no longer knows any tool name for it. Every
+    lookup calls `list()` synchronously when it starts, so a lookup in the
+    save's round still sees the list from before the save, as before.
+  - **Uncached read:** `readEntries` in `my-list/store.ts` is the uncached
+    query, `getEntries = cache(readEntries)`. The chat reads through
+    `readEntries`, so the reset doesn't depend on React's `cache` being a
+    pass-through in the route.
+  - **List helpers moved:** `clean`, `ListStatuses`, `listedKey` and
+    `listStatuses` live in `tools/userList.ts`; `tools/shared.ts` holds only
+    the TMDB tools' args and result fields again.
+  - **Logs:** a failed read is logged once, by `userList` ("Can't read the
+    user's list:"), not by each caller. A marks timeout warns "No inList
+    marks: ...".
+  - **`UNRATED_ORDER`** in `getMyList.ts` is checked against `ListStatus`
+    like `saveToList.ts`'s `STATUSES`.
+  - **Prompt:** "for me" is no longer a `get_my_list` trigger; signed out →
+    don't call `get_my_list`; a `get_my_list` error → one line, general
+    picks.
+  - **Test helper:** `toolContext({ signal, user, list, invalidateList })`
+    takes an options object.
+  - **Not done:** narrowing the list query (only needed for very long lists;
+    a narrow query would split Decision 8's single read). `.env.example`
+    still says `GEMINI_THINKING_LEVEL="minimal"` and the deploy env must set
+    `"high"` (Decision 9): the user does both.
 
 ---
 
@@ -613,3 +652,4 @@ _(one dated line per session: date, phase, what was done or what blocked it)_
 - 2026-10-14, phase 3: added `listStatuses` and the `inList` mark to the six lookup tools, with tests. Unit, integration, tsc, typecheck:tests, lint and `check:chat-tools --dry-run` pass. The user's live `check:chat-tools` run passed. Done.
 - 2026-10-14, phase 4: thinking level set to `high` via env only (user's choice); prompt rules for listed titles, "based on my list", dislikes, own ratings, signed out and empty list, with tests. Unit, integration, tsc, typecheck:tests, lint and live `check:chat-tools` pass. Done.
 - 2026-10-14, phase 5: added the route tests (based on my list, signed out, save then re-read) and reviewed phases 1–5 (`GET_MY_LIST` no longer exported). All test projects, tsc, typecheck:tests, lint and live `check:chat-tools` pass. The live chat check is pending (user, on dev), so the phase stays `in progress`.
+- 2026-10-14, phase 5: fixed the code review's findings (hung list read, reset through `ToolContext`, uncached read, log noise, prompt triggers and failures, typed status order, helper moves). Unit, integration, tsc, typecheck:tests and lint pass. The live chat check is still pending.

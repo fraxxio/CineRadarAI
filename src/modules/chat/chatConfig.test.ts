@@ -173,8 +173,10 @@ describe("list rules", () => {
 
   test('"based on my list" seeds from the top-rated titles', () => {
     expect(prompt).toContain(
-      '"Based on my list", "for me", "my taste" or "what I like": get_my_list, then get_recommendations and get_similar in parallel for its 2-3 highest-rated titles, preferring Completed ones.',
+      '"Based on my list", "my taste" or "what I like": get_my_list, then get_recommendations and get_similar in parallel for its 2-3 highest-rated titles, preferring Completed ones.',
     );
+    // too generic: "find a thriller for me" would cost a get_my_list round
+    expect(prompt).not.toContain('"for me"');
     expect(prompt).toContain(
       "If none is rated, use Completed and Watching ones.",
     );
@@ -195,9 +197,13 @@ describe("list rules", () => {
     expect(prompt).toContain("Avoid titles similar to ones they rated 1-4.");
   });
 
-  test("signed out or empty list: one line, then general picks", () => {
+  test("signed out, failed read or empty list: one line, then general picks", () => {
     expect(prompt).toContain(
-      "If it returns signedIn: false, ask the user in one short line to sign in to use their list, and still give general picks.",
+      "If the user is signed out, don't call it. When they ask about their list, ask them in one short line to sign in to use it, and still give general picks. Do the same if it returns signedIn: false.",
+    );
+    // not the "can't look titles up" line of a failed lookup: TMDB works
+    expect(prompt).toContain(
+      "If it returns an error, say in one short line that the list can't be read right now, and still give general picks.",
     );
     expect(prompt).toContain(
       "If the list is empty or has no rated, Completed or Watching titles, say so in one short line, give general picks",

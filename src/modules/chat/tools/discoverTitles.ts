@@ -9,12 +9,12 @@ import {
 import { today } from "../date";
 import {
   TITLE_ITEM_FIELDS,
-  listStatuses,
   mediaTypeArg,
   personIdArg,
   toTitleItem,
   yearArg,
 } from "./shared";
+import { listStatuses } from "./userList";
 import { ToolError, defineTool } from "./types";
 
 const MAX_RESULTS = 10;

@@ -2,11 +2,11 @@ import { z } from "zod/v4";
 import { getGenres, searchTitlesByYear } from "@/infra/tmdb/server";
 import {
   TITLE_ITEM_FIELDS,
-  listStatuses,
   mediaTypeArg,
   toTitleItem,
   yearArg,
 } from "./shared";
+import { listStatuses } from "./userList";
 import { defineTool } from "./types";
 
 const MAX_RESULTS = 5;

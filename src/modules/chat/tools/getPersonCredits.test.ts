@@ -25,7 +25,7 @@ type Items = { results: Record<string, unknown>[] };
 const run = async (args: object, signal = new AbortController().signal) =>
   (await getPersonCredits.run(
     getPersonCredits.args.parse(args),
-    toolContext(signal),
+    toolContext({ signal }),
   )) as Items;
 
 const credits = (cast: object[], crew: object[] = []) => ({

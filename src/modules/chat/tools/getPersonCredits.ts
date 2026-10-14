@@ -11,13 +11,12 @@ import { today } from "../date";
 import { isTalkOrNews } from "./genres";
 import {
   TITLE_ITEM_FIELDS,
-  type ListStatuses,
   isListable,
-  listStatuses,
   mediaTypeArg,
   personIdArg,
   toTitleItem,
 } from "./shared";
+import { type ListStatuses, listStatuses } from "./userList";
 import { ToolError, defineTool } from "./types";
 
 const MAX_RESULTS = 20;

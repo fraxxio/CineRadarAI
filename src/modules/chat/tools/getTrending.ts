@@ -1,12 +1,8 @@
 import { z } from "zod/v4";
 import { getGenres, getTrending as fetchTrending } from "@/infra/tmdb/server";
 import { isTalkOrNews } from "./genres";
-import {
-  TITLE_ITEM_FIELDS,
-  listStatuses,
-  mediaTypeArg,
-  toTitleItems,
-} from "./shared";
+import { TITLE_ITEM_FIELDS, mediaTypeArg, toTitleItems } from "./shared";
+import { listStatuses } from "./userList";
 import { defineTool } from "./types";
 
 const MAX_RESULTS = 10;
