@@ -7,6 +7,7 @@ import {
   rawMovie,
   rawShow,
 } from "../testing/tmdbData";
+import { toolContext } from "../testing/toolContext";
 
 // fresh module per test: the genre list is cached at module level
 let searchTitles: typeof import("./searchTitles").searchTitles;
@@ -15,12 +16,10 @@ beforeEach(async () => {
   ({ searchTitles } = await import("./searchTitles"));
 });
 
-const ctx = () => ({ signal: new AbortController().signal });
-
 // handlers return plain JSON for the model
 type Items = { results: Record<string, unknown>[] };
 const search = async (args: Parameters<typeof searchTitles.run>[0]) =>
-  (await searchTitles.run(args, ctx())) as Items;
+  (await searchTitles.run(args, toolContext())) as Items;
 
 const mockSearch = (movies: object[], shows: object[] = []) =>
   mockTmdb({
@@ -78,8 +77,14 @@ describe("search_titles", () => {
   test("the year goes to the per-type param", async () => {
     const spy = mockSearch([]);
 
-    await searchTitles.run({ query: "Fury", type: "movie", year: 2014 }, ctx());
-    await searchTitles.run({ query: "Dark", type: "tv", year: 2017 }, ctx());
+    await searchTitles.run(
+      { query: "Fury", type: "movie", year: 2014 },
+      toolContext(),
+    );
+    await searchTitles.run(
+      { query: "Dark", type: "tv", year: 2017 },
+      toolContext(),
+    );
 
     const [movie] = tmdbUrls(spy, "/3/search/movie");
     const [tv] = tmdbUrls(spy, "/3/search/tv");
@@ -104,7 +109,7 @@ describe("search_titles", () => {
   test("no matches: an empty list", async () => {
     mockSearch([]);
     expect(
-      await searchTitles.run({ query: "zzz", type: "movie" }, ctx()),
+      await searchTitles.run({ query: "zzz", type: "movie" }, toolContext()),
     ).toEqual({ results: [] });
   });
 
@@ -114,7 +119,10 @@ describe("search_titles", () => {
     const spy = mockSearch([rawMovie(1)]);
     const { signal } = new AbortController();
 
-    await searchTitles.run({ query: "Fury", type: "movie" }, { signal });
+    await searchTitles.run(
+      { query: "Fury", type: "movie" },
+      toolContext(signal),
+    );
 
     expect(spy).toHaveBeenCalledTimes(2);
     for (const [input, init] of spy.mock.calls) {

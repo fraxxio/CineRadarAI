@@ -66,6 +66,12 @@ describe("tool rules", () => {
     );
   });
 
+  test("saves to the list only when asked", () => {
+    expect(prompt).toContain(
+      "Call save_to_list only when the user asks to save a title to their list or change its status. Never on your own initiative.",
+    );
+  });
+
   test("recommends nothing from memory when the tools fail", () => {
     expect(prompt).toContain("Don't recommend titles from memory.");
   });
@@ -81,6 +87,85 @@ describe("tool rules", () => {
     expect(prompt).toContain(
       '"Shows with <person>" or "directed by <person>": search_person, then get_person_credits.',
     );
+  });
+});
+
+describe("list rules", () => {
+  const prompt = buildSystemInstruction();
+
+  test("says whether the user is signed in, signed out by default", () => {
+    expect(prompt).toContain("The user is signed out.");
+    expect(prompt).not.toContain("The user is signed in.");
+    const signedIn = buildSystemInstruction(new Date(), {
+      userStatus: "signed_in",
+    });
+    expect(signedIn).toContain("The user is signed in.");
+    expect(signedIn).not.toContain("The user is signed out.");
+  });
+
+  test("an unreadable session: says neither, the rules stay", () => {
+    const unavailable = buildSystemInstruction(new Date(), {
+      userStatus: "unavailable",
+    });
+    expect(unavailable).not.toMatch(/The user is signed (in|out)\./);
+    expect(unavailable).toContain(
+      "this year's.\n- Don't claim a title is available",
+    );
+  });
+
+  test("maps the user's words to the list statuses", () => {
+    expect(prompt).toContain(
+      '"watchlist", "want to watch" or "save for later" is "Planning to watch"',
+    );
+    expect(prompt).toContain('"watching" or "started" is "Watching"');
+    expect(prompt).toContain(
+      '"watched", "seen" or "finished" is "Completed". If the user names no status, leave it out.',
+    );
+  });
+
+  test("asks which title when several match, only for saves", () => {
+    expect(prompt).toContain(
+      "and the conversation doesn't say which, ask which one instead of saving",
+    );
+    expect(prompt).toContain(
+      "If a request for recommendations is vague, don't ask clarifying questions first",
+    );
+  });
+
+  test("one call per title, in parallel", () => {
+    expect(prompt).toContain(
+      "One call per title. For several titles, make the calls in parallel in the same round.",
+    );
+  });
+
+  test("calls the tool when signed out, and claims only real saves", () => {
+    expect(prompt).toContain("If the user is signed out, still call it");
+    expect(prompt).toContain(
+      "Never say a title was saved unless save_to_list returned it as saved.",
+    );
+    expect(prompt).toContain(
+      "After save_to_list returns, always write one short line",
+    );
+  });
+
+  // live, "is Fury in my list?" after an Undo saved it again
+  test("a question about the list isn't a save", () => {
+    expect(prompt).toContain(
+      'A question about the list (e.g. "is it in my list?") isn\'t a request to save',
+    );
+    expect(prompt).toContain(
+      "They aren't requests: never save because of them.",
+    );
+  });
+
+  test("explains the list-change note", () => {
+    expect(prompt).toContain(
+      'Lines in brackets that start with "[List update:" are added by the app',
+    );
+  });
+
+  test("counts the list as a related topic", () => {
+    expect(prompt).toContain("unrelated to movies, TV shows or their list");
   });
 });
 

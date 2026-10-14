@@ -1,13 +1,15 @@
-import { ImageOff, Star } from "lucide-react";
+import { BookmarkCheck, ImageOff, Star } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { ListEntryDialog } from "@/modules/my-list";
+import { ListEntryDialog, type ListStatus } from "@/modules/my-list";
 import { tmdbImageUrl } from "@/infra/tmdb";
 import type { RecommendedTitle } from "./protocol";
 
 type RecommendationCardProps = {
   title: RecommendedTitle;
   signedIn: boolean;
+  // after a save from this chat; null or undefined: no badge
+  listStatus?: ListStatus | null;
 };
 
 // a compact row: poster on the left, TMDB details and the model's reason on the right
@@ -24,6 +26,7 @@ export function RecommendationCard({
     reason,
   },
   signedIn,
+  listStatus,
 }: RecommendationCardProps) {
   const href = `/search/${type}/${id}`;
   const poster = tmdbImageUrl(posterPath || backdropPath, "w342");
@@ -70,6 +73,12 @@ export function RecommendationCard({
           {rating === null ? "Not rated" : `${rating.toFixed(1)} / 10`}
         </p>
         {genres.length > 0 && <p className="text-sm">{genres.join(" · ")}</p>}
+        {listStatus && (
+          <p className="flex items-center gap-1 text-sm font-medium">
+            <BookmarkCheck size={16} className="shrink-0" aria-hidden />
+            In your list · {listStatus}
+          </p>
+        )}
         <p className="break-words">{reason}</p>
       </div>
       <ListEntryDialog

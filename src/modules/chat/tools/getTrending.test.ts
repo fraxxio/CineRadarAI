@@ -7,6 +7,7 @@ import {
   rawMovie,
   rawShow,
 } from "../testing/tmdbData";
+import { toolContext } from "../testing/toolContext";
 
 // fresh module per test: the genre list is cached at module level
 let getTrending: typeof import("./getTrending").getTrending;
@@ -20,7 +21,10 @@ type Items = { results: Record<string, unknown>[] };
 
 // args as the registry passes them: parsed, defaults applied
 const run = async (args: object, signal = new AbortController().signal) =>
-  (await getTrending.run(getTrending.args.parse(args), { signal })) as Items;
+  (await getTrending.run(
+    getTrending.args.parse(args),
+    toolContext(signal),
+  )) as Items;
 
 // trending items carry media_type, like TMDB sends them
 const movie = (id: number, extra: object = {}) =>

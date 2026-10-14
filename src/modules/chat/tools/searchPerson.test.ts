@@ -1,14 +1,13 @@
 import { describe, expect, test } from "vitest";
 import { lastTmdbUrl, mockTmdb } from "@test/helpers/tmdb";
 import { page, rawMovie, rawPerson, rawShow } from "../testing/tmdbData";
+import { toolContext } from "../testing/toolContext";
 import { searchPerson } from "./searchPerson";
-
-const ctx = () => ({ signal: new AbortController().signal });
 
 // handlers return plain JSON for the model
 type Items = { results: Record<string, unknown>[] };
 const search = async (query: string) =>
-  (await searchPerson.run({ query }, ctx())) as Items;
+  (await searchPerson.run({ query }, toolContext())) as Items;
 
 const mockPeople = (people: object[]) =>
   mockTmdb({ "/3/search/person": page(people) });
@@ -78,7 +77,7 @@ describe("search_person", () => {
     const spy = mockPeople([rawPerson(1)]);
     const { signal } = new AbortController();
 
-    await searchPerson.run({ query: "Brad Pitt" }, { signal });
+    await searchPerson.run({ query: "Brad Pitt" }, toolContext(signal));
 
     expect(spy).toHaveBeenCalledOnce();
     expect(spy.mock.calls[0][1]?.signal).toBe(signal);

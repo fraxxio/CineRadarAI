@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import type { NextRequest } from "next/server";
 import { POST } from "@/app/api/assistant/route";
+import { auth } from "@/infra/auth/auth";
 import {
   CHAT_MODEL,
   CHAT_THINKING_LEVEL,
@@ -8,14 +9,18 @@ import {
   buildSystemInstruction,
 } from "./chatConfig";
 import {
+  MAX_LIST_CHANGES,
   MAX_PROMPT_LENGTH,
   MAX_STOPPED_TEXT_LENGTH,
   MAX_STOPPED_TURNS,
 } from "./chatLimits";
 import { toGeminiTools } from "./llm/geminiTools";
-import { DISPLAY_ONLY_TOOL_CHOICE } from "./llm/llmService";
+import { FINAL_ROUND_TOOL_CHOICE } from "./llm/llmService";
 import { CHAT_TOOLS } from "./tools/registry";
+import { asUser } from "@test/helpers/auth";
+import { getMovies, seedList, seedUser } from "@test/helpers/db";
 import { deferred } from "@test/helpers/deferred";
+import { makeMovie } from "@test/helpers/factories";
 import { jsonRequest } from "@test/helpers/requests";
 import {
   hangUntilAborted,
@@ -45,18 +50,30 @@ import {
   rawShow,
 } from "./testing/tmdbData";
 
-const { create, ctor } = vi.hoisted(() => ({ create: vi.fn(), ctor: vi.fn() }));
+const { create, get, ctor } = vi.hoisted(() => ({
+  create: vi.fn(),
+  get: vi.fn(),
+  ctor: vi.fn(),
+}));
 vi.mock("@google/genai", () => ({
   // `function`, not arrow: the route calls `new GoogleGenAI(...)` (Vitest 4)
   GoogleGenAI: vi.fn(function (opts: unknown) {
     ctor(opts);
-    return { interactions: { create } };
+    return { interactions: { create, get } };
   }),
+}));
+
+vi.mock("@/infra/auth/auth", () => ({
+  auth: vi.fn(),
+  signIn: vi.fn(),
+  signOut: vi.fn(),
 }));
 
 beforeEach(() => {
   vi.stubEnv("AI_CHAT_ENABLED", "true");
   create.mockReset();
+  get.mockReset();
+  asUser(null);
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -237,11 +254,204 @@ describe("POST /api/assistant", () => {
     );
   });
 
+  describe("sign-in state", () => {
+    const instruction = () =>
+      create.mock.lastCall?.[0].system_instruction as string;
+
+    test("signed in: the prompt says so", async () => {
+      asUser(await seedUser());
+      create.mockResolvedValue(geminiEvents([]));
+      await post({ content: "hi" });
+      expect(instruction()).toContain("The user is signed in.");
+    });
+
+    test("signed out: the prompt says so", async () => {
+      create.mockResolvedValue(geminiEvents([]));
+      await post({ content: "hi" });
+      expect(instruction()).toContain("The user is signed out.");
+    });
+
+    test("an unreadable session: the prompt says neither", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.mocked(auth as unknown as () => Promise<unknown>).mockRejectedValue(
+        new Error("db down"),
+      );
+      create.mockResolvedValue(geminiEvents([]));
+      await post({ content: "hi" });
+      expect(instruction()).not.toMatch(/The user is signed (in|out)\./);
+    });
+  });
+
+  describe("list changes", () => {
+    const text = (t: string) => [{ type: "text", text: t }];
+    const key = (movieId: unknown = 228150, type: unknown = "movie") => ({
+      movieId,
+      type,
+    });
+    const input = () => create.mock.lastCall?.[0].input;
+
+    it.each([
+      ["not an array", key()],
+      ["more than MAX_LIST_CHANGES", Array(MAX_LIST_CHANGES + 1).fill(key())],
+      ["a movieId that isn't a number", [key("228150")]],
+      ["a movieId that isn't positive", [key(0)]],
+      ["a movieId that isn't an integer", [key(1.5)]],
+      ["an unknown type", [key(1, "person")]],
+      ["a missing type", [{ movieId: 1 }]],
+    ])("returns 400 for %s", async (_, listChanges) => {
+      const res = await post({ content: "hi", listChanges });
+      expect(res.status).toBe(400);
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    test("signed in: a note with the entries' state from the DB, after the stopped turns", async () => {
+      const user = await seedUser();
+      await seedList(user.id, [
+        makeMovie({
+          movieId: 693134,
+          name: "Dune: Part Two",
+          status: "Completed",
+        }),
+        makeMovie({
+          movieId: 1396,
+          type: "tv",
+          name: "Breaking Bad",
+          status: "Watching",
+        }),
+      ]);
+      asUser(user);
+      create.mockResolvedValue(geminiEvents([]));
+
+      const res = await post({
+        content: "is Fury in my list?",
+        stoppedTurns: [{ prompt: "p1", partialText: "A" }],
+        listChanges: [key(693134), key(228150), key(1396, "tv")],
+      });
+
+      expect(res.status).toBe(200);
+      expect(input()).toEqual([
+        { type: "user_input", content: text("p1") },
+        { type: "model_output", content: text("A") },
+        {
+          type: "user_input",
+          content: text(
+            "[List update: Dune: Part Two (movie 693134) is Completed; movie 228150 is not in the list; Breaking Bad (tv 1396) is Watching]",
+          ),
+        },
+        { type: "user_input", content: text("is Fury in my list?") },
+      ]);
+    });
+
+    test("another user's entries aren't in the note", async () => {
+      const user = await seedUser();
+      const other = await seedUser();
+      await seedList(other.id, [makeMovie({ movieId: 228150 })]);
+      asUser(user);
+      create.mockResolvedValue(geminiEvents([]));
+
+      await post({ content: "hi", listChanges: [key()] });
+
+      expect(input()).toEqual([
+        {
+          type: "user_input",
+          content: text("[List update: movie 228150 is not in the list]"),
+        },
+        { type: "user_input", content: text("hi") },
+      ]);
+    });
+
+    test("signed out: no note", async () => {
+      create.mockResolvedValue(geminiEvents([]));
+      const res = await post({ content: "hi", listChanges: [key()] });
+      expect(res.status).toBe(200);
+      expect(input()).toBe("hi");
+    });
+
+    test("an empty list: no note", async () => {
+      asUser(await seedUser());
+      create.mockResolvedValue(geminiEvents([]));
+      await post({ content: "hi", listChanges: [] });
+      expect(input()).toBe("hi");
+    });
+  });
+
   test("returns 502 when interactions.create throws", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     create.mockRejectedValue(new Error("quota"));
     const res = await post({ content: "hi" });
     expect(res.status).toBe(502);
+  });
+
+  describe("an expired conversation", () => {
+    // what the SDK throws, live: NotFoundError for a deleted or unknown
+    // interaction, BadRequestError for an invalid key
+    const apiError = (status: number, message: string) =>
+      Object.assign(new Error(`${status} ${message}`), { status });
+    const notFound = () => apiError(404, "Requested entity was not found.");
+
+    beforeEach(() => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.spyOn(console, "info").mockImplementation(() => {});
+    });
+
+    test("returns 409 when the previous interaction is gone", async () => {
+      create.mockRejectedValue(notFound());
+      get.mockRejectedValue(notFound());
+
+      const res = await post({
+        content: "hi",
+        previousInteractionId: "v1_old",
+      });
+
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: "conversation_expired" });
+      expect(get).toHaveBeenCalledWith(
+        "v1_old",
+        null,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+      expect(console.error).not.toHaveBeenCalled();
+    });
+
+    test("without a previous interaction the same error is a 502", async () => {
+      create.mockRejectedValue(notFound());
+
+      const res = await post({ content: "hi" });
+
+      expect(res.status).toBe(502);
+      expect(get).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["an invalid key", apiError(400, "API error occurred")],
+      ["a quota error", apiError(429, "Resource exhausted")],
+      ["a network failure", new TypeError("fetch failed")],
+    ])("returns 502 when the lookup fails with %s", async (_, error) => {
+      create.mockRejectedValue(error);
+      get.mockRejectedValue(error);
+
+      const res = await post({
+        content: "hi",
+        previousInteractionId: "v1_old",
+      });
+
+      expect(res.status).toBe(502);
+      expect(console.error).toHaveBeenCalled();
+    });
+
+    test("returns 502 when the previous interaction still exists", async () => {
+      create.mockRejectedValue(
+        apiError(400, "Request contains an invalid argument."),
+      );
+      get.mockResolvedValue({ id: "v1_old", status: "completed" });
+
+      const res = await post({
+        content: "hi",
+        previousInteractionId: "v1_old",
+      });
+
+      expect(res.status).toBe(502);
+    });
   });
 
   test("responds with Content-Type application/x-ndjson", async () => {
@@ -804,7 +1014,7 @@ describe("POST /api/assistant", () => {
       // the response to the request after the last lookup round
       const LAST = MAX_TOOL_ROUNDS + 1;
 
-      test(`after ${MAX_TOOL_ROUNDS} tool rounds the last request allows only show_recommendations`, async () => {
+      test(`after ${MAX_TOOL_ROUNDS} tool rounds the last request allows only show_recommendations and save_to_list`, async () => {
         const spy = tmdb();
         alwaysTools({ [LAST]: answerRound(`i${LAST}`, "Here you go.") });
 
@@ -816,10 +1026,13 @@ describe("POST /api/assistant", () => {
           "auto",
           "auto",
           "auto",
-          DISPLAY_ONLY_TOOL_CHOICE,
+          FINAL_ROUND_TOOL_CHOICE,
         ]);
-        expect(DISPLAY_ONLY_TOOL_CHOICE).toEqual({
-          allowed_tools: { mode: "validated", tools: ["show_recommendations"] },
+        expect(FINAL_ROUND_TOOL_CHOICE).toEqual({
+          allowed_tools: {
+            mode: "validated",
+            tools: ["show_recommendations", "save_to_list"],
+          },
         });
         expect(
           create.mock.calls.map(([body]) => body.previous_interaction_id),
@@ -838,7 +1051,7 @@ describe("POST /api/assistant", () => {
         const { events } = await readNdjson(await post({ content: "war" }));
 
         expect(toolChoices().slice(-2)).toEqual([
-          DISPLAY_ONLY_TOOL_CHOICE,
+          FINAL_ROUND_TOOL_CHOICE,
           "none",
         ]);
         expect(events.slice(-5)).toEqual([
@@ -853,6 +1066,39 @@ describe("POST /api/assistant", () => {
         ]);
       });
 
+      test("save_to_list in the last round runs, then the model may still save", async () => {
+        const user = await seedUser();
+        asUser(user);
+        tmdb({ "/3/movie/228150": FURY_DETAILS });
+        alwaysTools({
+          [LAST]: toolRound(`i${LAST}`, {
+            id: "c-save",
+            name: "save_to_list",
+            args: { type: "movie", id: 228150, title: "Fury" },
+          }),
+          [LAST + 1]: answerRound(`i${LAST + 1}`, "Added."),
+        });
+
+        const { events } = await readNdjson(await post({ content: "war" }));
+
+        // a save isn't the cards, but the rounds are used up
+        expect(toolChoices().slice(-2)).toEqual([
+          FINAL_ROUND_TOOL_CHOICE,
+          "none",
+        ]);
+        expect(events).toContainEqual(
+          expect.objectContaining({ type: "list_saved" }),
+        );
+        expect(await getMovies(user.id)).toEqual([
+          makeMovie({
+            movieId: 228150,
+            name: "Fury",
+            image: "/b.jpg",
+            status: "Planning to watch",
+          }),
+        ]);
+      });
+
       const REFUSED = "No more tool calls in this answer: reply in text";
 
       test("a lookup call in the last round isn't run; Gemini gets one more request, with none", async () => {
@@ -863,7 +1109,7 @@ describe("POST /api/assistant", () => {
 
         expect(create).toHaveBeenCalledTimes(MAX_TOOL_ROUNDS + 2);
         expect(toolChoices().slice(-2)).toEqual([
-          DISPLAY_ONLY_TOOL_CHOICE,
+          FINAL_ROUND_TOOL_CHOICE,
           "none",
         ]);
         // the extra call isn't run
@@ -883,7 +1129,7 @@ describe("POST /api/assistant", () => {
           { type: "done", interactionId: `i${LAST + 1}` },
         ]);
         expect(console.warn).toHaveBeenCalledWith(
-          `Gemini round ${MAX_TOOL_ROUNDS} ignored tool_choice ${JSON.stringify(DISPLAY_ONLY_TOOL_CHOICE)}: search_titles`,
+          `Gemini round ${MAX_TOOL_ROUNDS} ignored tool_choice ${JSON.stringify(FINAL_ROUND_TOOL_CHOICE)}: search_titles`,
         );
       });
 
@@ -957,6 +1203,278 @@ describe("POST /api/assistant", () => {
         expect(console.warn).toHaveBeenCalledWith(
           'Gemini round 1 ignored tool_choice "none": show_recommendations, search_titles',
         );
+      });
+    });
+
+    describe("save_to_list", () => {
+      const saving = (id: string) => ({
+        type: "tool_start",
+        id,
+        name: "save_to_list",
+        text: "Saving to your list...",
+      });
+      const saveCall = (id: string, args: object = {}): Call => ({
+        id,
+        name: "save_to_list",
+        args: { type: "movie", id: 228150, title: "Fury", ...args },
+      });
+      const FURY_SAVED = {
+        type: "movie",
+        id: 228150,
+        title: "Fury",
+        posterPath: "/p.jpg",
+        image: "/b.jpg",
+        status: "Planning to watch",
+      };
+      const furyRow = (extra: object = {}) =>
+        makeMovie({
+          movieId: 228150,
+          name: "Fury",
+          image: "/b.jpg",
+          status: "Planning to watch",
+          ...extra,
+        });
+
+      let user: Awaited<ReturnType<typeof seedUser>>;
+      beforeEach(async () => {
+        user = await seedUser();
+        tmdb({ "/3/movie/228150": FURY_DETAILS });
+      });
+
+      test("signed in: saves to the session user's list and streams list_saved after tool_end", async () => {
+        asUser(user);
+        rounds(toolRound("i1", saveCall("c1")), answerRound("i2", "Added."));
+
+        const { events } = await readNdjson(
+          await post({ content: "add Fury to my list" }),
+        );
+
+        expect(events).toEqual([
+          { type: "start", interactionId: "i1" },
+          saving("c1"),
+          ended("c1"),
+          { type: "list_saved", entry: FURY_SAVED, previous: null },
+          { type: "delta", text: "Added." },
+          { type: "done", interactionId: "i2" },
+        ]);
+        expect(results(1)).toEqual([
+          {
+            type: "function_result",
+            call_id: "c1",
+            name: "save_to_list",
+            result: {
+              saved: {
+                id: 228150,
+                type: "movie",
+                title: "Fury",
+                status: "Planning to watch",
+              },
+              previousStatus: null,
+            },
+          },
+        ]);
+        expect(await getMovies(user.id)).toEqual([furyRow({ rating: 0 })]);
+        // a save isn't the cards: the model may still call tools
+        expect(toolChoices()).toEqual(["auto", "auto"]);
+      });
+
+      test("already in the list: the status changes, the rating stays", async () => {
+        asUser(user);
+        await seedList(user.id, [furyRow({ status: "Watching", rating: 8 })]);
+        rounds(
+          toolRound("i1", saveCall("c1", { status: "Completed" })),
+          answerRound("i2", "Done."),
+        );
+
+        const { events } = await readNdjson(
+          await post({ content: "I finished Fury" }),
+        );
+
+        expect(events).toContainEqual({
+          type: "list_saved",
+          entry: { ...FURY_SAVED, status: "Completed" },
+          previous: {
+            name: "Fury",
+            image: "/b.jpg",
+            status: "Watching",
+            rating: 8,
+          },
+        });
+        expect(results(1)[0].result).toMatchObject({
+          previousStatus: "Watching",
+        });
+        expect(await getMovies(user.id)).toEqual([
+          furyRow({ status: "Completed", rating: 8 }),
+        ]);
+      });
+
+      test("signed out: sign_in_required with TMDB's title, a non-error result, nothing written", async () => {
+        rounds(
+          toolRound("i1", saveCall("c1", { title: "FURY" })),
+          answerRound("i2", "Sign in to save it."),
+        );
+
+        const { events } = await readNdjson(
+          await post({ content: "add Fury to my list" }),
+        );
+
+        expect(events).toContainEqual({
+          type: "sign_in_required",
+          save: {
+            type: "movie",
+            id: 228150,
+            title: "Fury",
+            posterPath: "/p.jpg",
+            status: null,
+          },
+        });
+        expect(results(1)[0]).not.toHaveProperty("is_error");
+        expect(results(1)[0].result).toMatchObject({ saved: false });
+        expect(await getMovies(user.id)).toEqual([]);
+      });
+
+      test("an id TMDB doesn't know: an error result, nothing written", async () => {
+        asUser(user);
+        rounds(
+          toolRound("i1", saveCall("c1", { id: 404 })),
+          answerRound("i2", "."),
+        );
+
+        const { events } = await readNdjson(await post({ content: "add it" }));
+
+        expect(results(1)).toEqual([
+          {
+            type: "function_result",
+            call_id: "c1",
+            name: "save_to_list",
+            result: "not found on TMDB",
+            is_error: true,
+          },
+        ]);
+        expect(events.some((e) => e.type === "list_saved")).toBe(false);
+        expect(await getMovies(user.id)).toEqual([]);
+      });
+
+      test("a status the list doesn't have is rejected before the handler runs", async () => {
+        asUser(user);
+        rounds(
+          toolRound("i1", saveCall("c1", { status: "Dropped" })),
+          answerRound("i2", "."),
+        );
+
+        await readNdjson(await post({ content: "drop Fury" }));
+
+        expect(results(1)[0]).toMatchObject({
+          is_error: true,
+          result: expect.stringMatching(/^Invalid arguments: status: /),
+        });
+        expect(await getMovies(user.id)).toEqual([]);
+      });
+
+      test("a userId arg is rejected; only the session user's list is written", async () => {
+        const victim = await seedUser();
+        const victimList = [makeMovie({ movieId: 1, rating: 9 })];
+        await seedList(victim.id, victimList);
+        asUser(user);
+        rounds(
+          toolRound(
+            "i1",
+            saveCall("c1", { userId: victim.id }),
+            saveCall("c2"),
+          ),
+          answerRound("i2", "."),
+        );
+
+        await readNdjson(await post({ content: "add Fury" }));
+
+        expect(results(1)[0]).toEqual({
+          type: "function_result",
+          call_id: "c1",
+          name: "save_to_list",
+          result: 'Invalid arguments: Unrecognized key: "userId"',
+          is_error: true,
+        });
+        expect(results(1)[1]).not.toHaveProperty("is_error");
+        expect(await getMovies(victim.id)).toEqual(victimList);
+        expect(await getMovies(user.id)).toEqual([furyRow({ rating: 0 })]);
+      });
+
+      test("the session can't be read: the chat goes on, the save is an error result without a TMDB request", async () => {
+        const spy = tmdb();
+        vi.mocked(auth as unknown as () => Promise<unknown>).mockRejectedValue(
+          new Error("db down"),
+        );
+        rounds(toolRound("i1", saveCall("c1")), answerRound("i2", "Sorry."));
+
+        const { events } = await readNdjson(await post({ content: "add it" }));
+
+        expect(results(1)[0]).toMatchObject({
+          result: "Can't save right now, try again later",
+          is_error: true,
+        });
+        expect(spy).not.toHaveBeenCalled();
+        expect(events.at(-1)).toEqual({ type: "done", interactionId: "i2" });
+        expect(console.error).toHaveBeenCalledWith(
+          "Couldn't read the session for the chat:",
+          expect.objectContaining({ message: "db down" }),
+        );
+      });
+
+      test("the session is read once per request", async () => {
+        asUser(user);
+        rounds(
+          toolRound("i1", saveCall("c1")),
+          toolRound("i2", saveCall("c2", { status: "Completed" })),
+          answerRound("i3", "."),
+        );
+
+        await readNdjson(await post({ content: "add Fury" }));
+
+        expect(auth).toHaveBeenCalledTimes(1);
+        expect(await getMovies(user.id)).toEqual([
+          furyRow({ status: "Completed", rating: 0 }),
+        ]);
+      });
+
+      test("events follow the round's tool_ends in call order", async () => {
+        asUser(user);
+        tmdb({
+          "/3/movie/228150": FURY_DETAILS,
+          "/3/movie/550": rawDetails(550, { title: "Fight Club" }),
+        });
+        rounds(
+          toolRound(
+            "i1",
+            saveCall("c1", { id: 550, title: "Fight Club" }),
+            showCall("c2", 228150),
+            saveCall("c3"),
+          ),
+          answerRound("i2", "."),
+        );
+
+        const { events } = await readNdjson(await post({ content: "x" }));
+
+        expect(
+          events
+            .filter((e) => e.type !== "delta")
+            .map((e) =>
+              e.type === "list_saved" ? `${e.type} ${e.entry.id}` : e.type,
+            ),
+        ).toEqual([
+          "start",
+          "tool_start",
+          "tool_start",
+          "tool_start",
+          "tool_end",
+          "tool_end",
+          "tool_end",
+          "list_saved 550",
+          "cards",
+          "list_saved 228150",
+          "done",
+        ]);
+        // the cards are shown: the model only writes text now
+        expect(toolChoices()).toEqual(["auto", "none"]);
       });
     });
 

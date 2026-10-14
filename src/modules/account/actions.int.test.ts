@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { redirect } from "next/navigation";
-import { DeleteUser } from "./actions";
+import { signIn } from "@/infra/auth/auth";
+import { DeleteUser, signInWithProvider } from "./actions";
 import { asUser } from "@test/helpers/auth";
+import { RedirectError } from "@test/helpers/next";
 import { forceFailure, seedFullUser, userRows } from "@test/helpers/db";
 
 vi.mock("@/infra/auth/auth", () => ({
@@ -90,5 +92,49 @@ describe("DeleteUser", () => {
 
     expect(await userRows(b.id)).toEqual(all);
     expect(await userRows(a.id)).toEqual(none);
+  });
+});
+
+describe("signInWithProvider", () => {
+  const signInForm = (fields: Record<string, string>) => {
+    const f = new FormData();
+    for (const [name, value] of Object.entries(fields)) f.set(name, value);
+    return f;
+  };
+
+  test.each(["google", "github"])("signs in with %s", async (provider) => {
+    await signInWithProvider(signInForm({ provider, callbackUrl: "/my-list" }));
+
+    expect(vi.mocked(signIn)).toHaveBeenCalledExactlyOnceWith(provider, {
+      redirectTo: "/my-list",
+    });
+  });
+
+  // the rules themselves are covered by safeRedirect.test.ts
+  test.each([
+    ["a foreign origin", { callbackUrl: "https://evil.example//evil.example" }],
+    ["no callbackUrl", {}],
+  ])("[B10] returns home for %s", async (_, fields) => {
+    await signInWithProvider(signInForm({ provider: "github", ...fields }));
+
+    expect(vi.mocked(signIn).mock.lastCall?.[1]).toEqual({ redirectTo: "/" });
+  });
+
+  test.each([
+    ["an unknown provider", { provider: "credentials" }],
+    ["no provider", {}],
+  ])("rejects %s", async (_, fields) => {
+    await expect(signInWithProvider(signInForm(fields))).rejects.toThrow(
+      "Unknown sign-in provider",
+    );
+    expect(vi.mocked(signIn)).not.toHaveBeenCalled();
+  });
+
+  test("lets the sign-in redirect through", async () => {
+    vi.mocked(signIn).mockRejectedValueOnce(new RedirectError("/oauth"));
+
+    await expect(
+      signInWithProvider(signInForm({ provider: "github" })),
+    ).rejects.toBeInstanceOf(RedirectError);
   });
 });

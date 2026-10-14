@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { SquarePen } from "lucide-react";
 import { AssistantMessage } from "./AssistantMessage";
 import { ThinkingLoader } from "./ThinkingLoader";
@@ -8,7 +8,7 @@ import { useChat } from "./useChat";
 import { useRecaptchaCheck } from "@/infra/recaptcha/useRecaptchaCheck";
 import { MAX_PROMPT_LENGTH } from "./chatLimits";
 import { LOADER_WORDS } from "./loaderWords";
-import { isWaitingForModel } from "./messageParts";
+import { isWaitingForModel, listStatuses, undoableSaves } from "./messageParts";
 import type { ChatMessage } from "./protocol";
 import { shuffle } from "@/shared/lib/shuffle";
 
@@ -24,9 +24,17 @@ export default function ChatAssistant({
   signedIn,
 }: ChatAssistantProps) {
   const recaptcha = useRecaptchaCheck(recaptchaEnabled);
-  const { messages, streamingParts, status, send, stop, reset } = useChat({
-    beforeSend: recaptcha.verify,
-  });
+  const {
+    messages,
+    streamingParts,
+    streamingSaves,
+    status,
+    send,
+    stop,
+    reset,
+    undoSave,
+    startSignIn,
+  } = useChat({ beforeSend: recaptcha.verify, signedIn });
   const [prompt, setPrompt] = useState("");
   // safe to shuffle during render: the loader never renders on the server
   const [loaderWords] = useState(() => shuffle(LOADER_WORDS));
@@ -37,6 +45,16 @@ export default function ChatAssistant({
   // nothing has arrived yet, or the model is working on its next round after
   // the tools or the cards; a running tool line has its own spinner
   const showLoader = isWaitingForModel(streamingParts);
+  // the saves of every answer, the streaming one's too; recomputed when a
+  // message, a save or an Undo arrives, not on every streamed delta, so the
+  // memoized messages don't re-render
+  const answers = useMemo(
+    () => [...messages.map((m) => m.parts), streamingSaves],
+    [messages, streamingSaves],
+  );
+  // the cards' list badges
+  const listStatus = useMemo(() => listStatuses(answers), [answers]);
+  const undoable = useMemo(() => undoableSaves(answers), [answers]);
 
   const assistantText = (text: string): Omit<ChatMessage, "id"> => ({
     role: "assistant",
@@ -79,12 +97,22 @@ export default function ChatAssistant({
             signedIn={signedIn}
           />
           {messages.map((m) => (
-            <AssistantMessage key={m.id} message={m} signedIn={signedIn} />
+            <AssistantMessage
+              key={m.id}
+              message={m}
+              signedIn={signedIn}
+              listStatus={listStatus}
+              undoable={undoable}
+              onUndo={undoSave}
+              onSignIn={startSignIn}
+            />
           ))}
           {isBusy && (
             <AssistantMessage
               message={{ role: "assistant", parts: streamingParts }}
               signedIn={signedIn}
+              listStatus={listStatus}
+              onSignIn={startSignIn}
             >
               {showLoader && (
                 <ThinkingLoader
@@ -98,6 +126,14 @@ export default function ChatAssistant({
             <AssistantMessage
               message={assistantText(
                 "Unfortunately an error occurred. Try again later.",
+              )}
+              signedIn={signedIn}
+            />
+          )}
+          {status === "expired" && (
+            <AssistantMessage
+              message={assistantText(
+                "This conversation is too old to continue. Send your message again to start fresh — the assistant won't remember the messages above.",
               )}
               signedIn={signedIn}
             />

@@ -1,6 +1,14 @@
 // builds an assistant message from stream events; pure, never mutates its
 // input (it feeds React state), `now` is the client clock in ms
-import type { MessagePart, RecommendedTitle, ToolPart } from "./protocol";
+import { isListStatus, type ListStatus } from "@/modules/my-list";
+import type { MediaType } from "@/infra/tmdb";
+import type {
+  ListSavedPart,
+  MessagePart,
+  PendingSave,
+  RecommendedTitle,
+  ToolPart,
+} from "./protocol";
 
 type ToolStart = { id: string; name: string; text: string };
 
@@ -19,6 +27,36 @@ export function addCards(
   items: RecommendedTitle[],
 ): MessagePart[] {
   return [...parts, { type: "cards", items }];
+}
+
+export const isListSaved = (part: MessagePart): part is ListSavedPart =>
+  part.type === "list_saved";
+
+// each save is a row of its own
+export function addListSaved(
+  parts: MessagePart[],
+  { entry, previous }: Pick<ListSavedPart, "entry" | "previous">,
+): MessagePart[] {
+  return [...parts, { type: "list_saved", entry, previous }];
+}
+
+// one sign-in card per answer, wherever its first save arrived; a title
+// already on it isn't added again
+export function addSignIn(
+  parts: MessagePart[],
+  save: PendingSave,
+): MessagePart[] {
+  const index = parts.findIndex((part) => part.type === "sign_in");
+  if (index === -1) {
+    return [...parts, { type: "sign_in", saves: [save] }];
+  }
+  return parts.map((part, i) =>
+    i === index &&
+    part.type === "sign_in" &&
+    !part.saves.some((s) => s.type === save.type && s.id === save.id)
+      ? { ...part, saves: [...part.saves, save] }
+      : part,
+  );
 }
 
 // merges into the line of the same tool in the current tool block (the parts
@@ -98,6 +136,17 @@ export function partsToText(parts: MessagePart[]): string {
       case "cards":
         texts.push(`[Shown as cards: ${part.items.map(cardNote).join("; ")}]`);
         break;
+      case "list_saved":
+        texts.push(
+          `[Saved to list: ${titleNote(part.entry)} as ${part.entry.status}]` +
+            (part.undone ? " (undone)" : ""),
+        );
+        break;
+      case "sign_in":
+        texts.push(
+          `[Asked to sign in to save: ${part.saves.map(titleNote).join("; ")}]`,
+        );
+        break;
       default:
         part satisfies never;
     }
@@ -107,14 +156,70 @@ export function partsToText(parts: MessagePart[]): string {
 
 export const isToolRunning = (part: ToolPart) => part.runningIds.length > 0;
 
-// nothing has arrived yet, or the tools are done (or the cards are shown) and
-// the model is working on its next round
+// nothing has arrived yet, or the tools are done (or their cards, saves or
+// sign-in card are shown) and the model is working on its next round
 export function isWaitingForModel(parts: MessagePart[]): boolean {
   const last = parts.at(-1);
   return (
     last === undefined ||
     last.type === "cards" ||
+    last.type === "list_saved" ||
+    last.type === "sign_in" ||
     (last.type === "tool" && !isToolRunning(last))
+  );
+}
+
+// movie and TV ids can collide: "movie-228150"
+export const listKey = (type: MediaType, id: number) => `${type}-${id}`;
+
+export type ListStatuses = ReadonlyMap<string, ListStatus | null>;
+
+// each title's list status after the chat's saves, by listKey, newest wins;
+// null: not in the list (an add that was undone). Titles the chat didn't
+// save, or whose status before an undone save is a legacy one, aren't in it
+export function listStatuses(answers: MessagePart[][]): ListStatuses {
+  const statuses = new Map<string, ListStatus | null>();
+  for (const part of answers.flat()) {
+    if (part.type !== "list_saved") {
+      continue;
+    }
+    const key = listKey(part.entry.type, part.entry.id);
+    if (!part.undone) {
+      statuses.set(key, part.entry.status);
+    } else if (part.previous === null) {
+      statuses.set(key, null);
+    } else if (isListStatus(part.previous.status)) {
+      statuses.set(key, part.previous.status);
+    } else {
+      statuses.delete(key);
+    }
+  }
+  return statuses;
+}
+
+// the save changed the row: added it or moved it to another status
+export const changedRow = ({ entry, previous }: ListSavedPart) =>
+  previous === null || previous.status !== entry.status;
+
+// the saves Undo can reverse: per title only the newest save that isn't
+// undone, as undoing an older one would overwrite the newer save; and only if
+// it changed the row from something Undo can put back (not a legacy status,
+// which the list no longer takes)
+export function undoableSaves(
+  answers: MessagePart[][],
+): ReadonlySet<ListSavedPart> {
+  const newest = new Map<string, ListSavedPart>();
+  for (const part of answers.flat()) {
+    if (isListSaved(part) && !part.undone) {
+      newest.set(listKey(part.entry.type, part.entry.id), part);
+    }
+  }
+  return new Set(
+    Array.from(newest.values()).filter(
+      (part) =>
+        changedRow(part) &&
+        (part.previous === null || isListStatus(part.previous.status)),
+    ),
   );
 }
 
@@ -146,6 +251,13 @@ function updateTool(
 // "1. Fury (movie 228150, 2014)"
 const cardNote = ({ title, type, id, year }: RecommendedTitle, index: number) =>
   `${index + 1}. ${title} (${type} ${id}, ${year ?? "unknown year"})`;
+
+// "Fury (movie 228150)"
+const titleNote = ({
+  title,
+  type,
+  id,
+}: Pick<PendingSave, "title" | "type" | "id">) => `${title} (${type} ${id})`;
 
 const pause = (part: ToolPart, now: number): ToolPart => ({
   ...part,

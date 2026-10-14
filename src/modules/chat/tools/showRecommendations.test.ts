@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TmdbError } from "@/infra/tmdb/server";
 import { hangUntilAborted, mockTmdb, tmdbUrls } from "@test/helpers/tmdb";
 import { rawDetails } from "../testing/tmdbData";
+import { toolContext } from "../testing/toolContext";
 import { showRecommendations } from "./showRecommendations";
-import { CardsOutput } from "./types";
+import { DisplayOutput } from "./types";
 
 type Item = { type: "movie" | "tv"; id: number; title: string; reason: string };
 
@@ -20,10 +21,16 @@ const item = (id: number, extra: Partial<Item> = {}): Item => ({
 const run = async (items: Item[], signal = new AbortController().signal) => {
   const value = await showRecommendations.run(
     showRecommendations.args.parse({ items }),
-    { signal },
+    toolContext(signal),
   );
-  expect(value).toBeInstanceOf(CardsOutput);
-  return value as CardsOutput;
+  expect(value).toBeInstanceOf(DisplayOutput);
+  const { output, events } = value as DisplayOutput;
+  // one cards event, none when no title is shown
+  const cards = events.flatMap((event) =>
+    event.type === "cards" ? event.items : [],
+  );
+  expect(events).toHaveLength(cards.length ? 1 : 0);
+  return { output, cards };
 };
 
 const down = () => new Response("down", { status: 503 });
@@ -293,7 +300,7 @@ describe("show_recommendations", () => {
 
     const running = showRecommendations.run(
       { items: [item(1), item(2)] },
-      { signal: controller.signal },
+      toolContext(controller.signal),
     );
     await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
     controller.abort();

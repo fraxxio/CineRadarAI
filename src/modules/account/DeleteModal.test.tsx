@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useFormStatus } from "react-dom";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 import DeleteModal from "./DeleteModal";
 import DeleteModalBtn from "./DeleteModalBtn";
 
@@ -35,6 +35,35 @@ describe("DeleteModal", () => {
   test("sends no user id: the action deletes the session user (B3)", async () => {
     const dialog = await open();
     expect(dialog.querySelector('input[name="id"]')).toBeNull();
+  });
+
+  test('asks for "Delete account"', async () => {
+    const dialog = await open();
+    expect(
+      within(dialog).getByText(
+        'To permamently delete your account type "Delete account" and click Delete.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  // the deletion can still fail: DeleteResult clears it once it succeeded
+  test("the saved chat stays when the deletion is submitted", async () => {
+    const CHAT_KEY = "cineradar.chat.v1";
+    // jsdom can't navigate; React's handlers have run by the time this does
+    const preventSubmit = (e: Event) => e.preventDefault();
+    document.addEventListener("submit", preventSubmit);
+    onTestFinished(() => document.removeEventListener("submit", preventSubmit));
+    sessionStorage.setItem(CHAT_KEY, "{}");
+    const dialog = await open();
+    const user = userEvent.setup();
+
+    await user.type(
+      within(dialog).getByLabelText(/To permamently delete/),
+      "Delete account",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    expect(sessionStorage.getItem(CHAT_KEY)).toBe("{}");
   });
 });
 

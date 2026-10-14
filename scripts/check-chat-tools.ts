@@ -3,7 +3,7 @@
 // What: sends two real requests to Gemini with the exact tool schemas, model
 // and system prompt the AI chat uses, and reports whether Gemini accepts
 // them. The first uses tool_choice "auto", the second
-// DISPLAY_ONLY_TOOL_CHOICE (allowed_tools), which the chat sends with the
+// FINAL_ROUND_TOOL_CHOICE (allowed_tools), which the chat sends with the
 // last tool round's results. Both are the chat's own baseRequest()
 // (llm/llmService.ts), so they can't drift from what the chat sends.
 //
@@ -19,7 +19,7 @@
 // When to run it:
 // - before merging any change to a tool's args or description, or to
 //   CHAT_TOOLS
-// - after changing the tool choices (DISPLAY_ONLY_TOOL_CHOICE, the round
+// - after changing the tool choices (FINAL_ROUND_TOOL_CHOICE, the round
 //   loop)
 // - after changing GEMINI_MODEL / CHAT_MODEL or the thinking level
 // - after upgrading @google/genai or zod (zod generates the schemas)
@@ -39,7 +39,7 @@
 import { GoogleGenAI, type Interactions } from "@google/genai";
 import { CHAT_MODEL, CHAT_THINKING_LEVEL } from "@/modules/chat/chatConfig";
 import {
-  DISPLAY_ONLY_TOOL_CHOICE,
+  FINAL_ROUND_TOOL_CHOICE,
   baseRequest,
 } from "@/modules/chat/llm/llmService";
 import { CHAT_TOOLS } from "@/modules/chat/tools/registry";
@@ -50,7 +50,8 @@ const names = CHAT_TOOLS.map((tool) => tool.name).join(", ");
 async function main(): Promise<number> {
   console.log(`Model: ${CHAT_MODEL}, thinking level: ${CHAT_THINKING_LEVEL}`);
   console.log(`Tools (${CHAT_TOOLS.length}): ${names}`);
-  const request = baseRequest();
+  // the prompts differ in one line, the schemas not at all
+  const request = baseRequest({ userStatus: "signed_out" });
 
   if (dryRun) {
     console.log("Dry run: no request sent");
@@ -66,7 +67,7 @@ async function main(): Promise<number> {
   const checks: [string, Interactions.ToolChoiceConfig | "auto"][] = [
     // "none" might skip the tools; a tool call is fine, it isn't run
     ["auto", "auto"],
-    ["display only", DISPLAY_ONLY_TOOL_CHOICE],
+    ["final round", FINAL_ROUND_TOOL_CHOICE],
   ];
   for (const [label, toolChoice] of checks) {
     let outcome: string;

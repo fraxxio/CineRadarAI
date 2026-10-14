@@ -7,6 +7,7 @@ import {
   rawMovie,
   rawShow,
 } from "../testing/tmdbData";
+import { toolContext } from "../testing/toolContext";
 
 // handlers return plain JSON for the model
 type Items = { results: Record<string, unknown>[] };
@@ -39,7 +40,7 @@ describe.each([
   });
 
   const run = async (args: object, signal = new AbortController().signal) =>
-    (await tool.run(tool.args.parse(args), { signal })) as Items;
+    (await tool.run(tool.args.parse(args), toolContext(signal))) as Items;
 
   // movie and TV ids overlap: 1399 is a movie and a show
   const mockList = (movies: object[], shows: object[] = []) =>

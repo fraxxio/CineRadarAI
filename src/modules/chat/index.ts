@@ -1,5 +1,7 @@
 export { default as ChatAssistant } from "./ChatAssistant";
+export { clearSavedChat } from "./chatStorage";
 export {
+  MAX_LIST_CHANGES,
   MAX_PROMPT_LENGTH,
   MAX_STOPPED_TEXT_LENGTH,
   MAX_STOPPED_TURNS,
@@ -9,8 +11,13 @@ export type {
   ChatMessage,
   ChatRequest,
   ChatStreamEvent,
+  ListSavedPart,
   MessagePart,
+  PendingSave,
+  PreviousEntry,
   RecommendedTitle,
+  SavedEntry,
+  SignInPart,
   StoppedTurn,
   TextPart,
   ToolPart,

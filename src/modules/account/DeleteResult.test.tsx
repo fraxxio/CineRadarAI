@@ -39,6 +39,23 @@ describe("DeleteResult", () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
+  describe("the saved chat", () => {
+    const CHAT_KEY = "cineradar.chat.v1";
+    beforeEach(() => sessionStorage.setItem(CHAT_KEY, "{}"));
+
+    // before the chat on the page restores it, so no timer
+    test("is cleared once the account is deleted", () => {
+      render(<DeleteResult deleteAcc="success" />);
+      expect(sessionStorage.getItem(CHAT_KEY)).toBeNull();
+    });
+
+    it.each(["fail", undefined])("stays on %s", (deleteAcc) => {
+      render(<DeleteResult deleteAcc={deleteAcc as string} />);
+      vi.runAllTimers();
+      expect(sessionStorage.getItem(CHAT_KEY)).toBe("{}");
+    });
+  });
+
   test("[B12] a re-render doesn't show the toast again", () => {
     const { rerender } = render(<DeleteResult deleteAcc="success" />);
     vi.runAllTimers();

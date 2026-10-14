@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { auth } from "@/infra/auth/auth";
 import {
+  MAX_LIST_CHANGES,
   MAX_PROMPT_LENGTH,
   MAX_STOPPED_TEXT_LENGTH,
   MAX_STOPPED_TURNS,
   type ChatStreamEvent,
 } from "@/modules/chat";
-import { streamChatReply } from "@/modules/chat/server";
+import {
+  isInteractionGone,
+  streamChatReply,
+  type ChatUser,
+} from "@/modules/chat/server";
 
 export const runtime = "edge";
 
@@ -28,7 +34,28 @@ const chatRequestSchema = z.object({
     )
     .max(MAX_STOPPED_TURNS)
     .optional(),
+  // keys only: the note the model gets is read from the DB
+  listChanges: z
+    .array(
+      z.object({
+        movieId: z.number().int().positive(),
+        type: z.enum(["movie", "tv"]),
+      }),
+    )
+    .max(MAX_LIST_CHANGES)
+    .optional(),
 });
+
+// the only source of the user the tools act for; the chat works without it
+async function chatUser(): Promise<ChatUser> {
+  try {
+    const id = (await auth())?.user?.id;
+    return id ? { status: "signed_in", id } : { status: "signed_out" };
+  } catch (error) {
+    console.error("Couldn't read the session for the chat:", error);
+    return { status: "unavailable" };
+  }
+}
 
 // post a new message and stream Gemini response
 export async function POST(request: NextRequest) {
@@ -47,7 +74,13 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
-  const { content, previousInteractionId, stoppedTurns = [] } = parsed.data;
+  const {
+    content,
+    previousInteractionId,
+    stoppedTurns = [],
+    listChanges = [],
+  } = parsed.data;
+  const user = await chatUser();
 
   // stops the Gemini request when the client leaves: cancel() below is the
   // reliable trigger, request.signal may not abort on every runtime
@@ -61,15 +94,34 @@ export async function POST(request: NextRequest) {
       stoppedTurns,
       previousInteractionId: previousInteractionId ?? undefined,
       signal: abort.signal,
+      user,
+      listChanges,
     });
   } catch (error) {
     // the client is already gone, nobody reads this response
     if (abort.signal.aborted) {
       return new Response(null, { status: 499 });
     }
-    // e.g. expired/unknown previous_interaction_id, invalid key, quota
+    // a saved chat can outlive its interaction: the client starts fresh
+    if (
+      previousInteractionId &&
+      (await isInteractionGone(previousInteractionId, abort.signal))
+    ) {
+      console.info("Previous interaction is gone, the conversation expired");
+      return NextResponse.json(
+        { error: "conversation_expired" },
+        { status: 409 },
+      );
+    }
+    if (abort.signal.aborted) {
+      return new Response(null, { status: 499 });
+    }
+    // e.g. a malformed previous_interaction_id, invalid key, quota
     console.error("Gemini interaction error:", error);
-    return NextResponse.json({ error: "Failed to start chat" }, { status: 502 });
+    return NextResponse.json(
+      { error: "Failed to start chat" },
+      { status: 502 },
+    );
   }
 
   // encode events as NDJSON

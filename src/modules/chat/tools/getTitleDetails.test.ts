@@ -1,12 +1,14 @@
 import { describe, expect, test } from "vitest";
 import { lastTmdbUrl, mockTmdb, tmdbFixture } from "@test/helpers/tmdb";
+import { toolContext } from "../testing/toolContext";
 import { getTitleDetails } from "./getTitleDetails";
-
-const ctx = () => ({ signal: new AbortController().signal });
 
 // handlers return plain JSON for the model
 const details = async (type: "movie" | "tv", id: number) =>
-  (await getTitleDetails.run({ type, id }, ctx())) as Record<string, unknown>;
+  (await getTitleDetails.run({ type, id }, toolContext())) as Record<
+    string,
+    unknown
+  >;
 
 const cast = (...names: string[]) => ({
   // shuffled order on the wire: the billing order must come from `order`
@@ -35,7 +37,7 @@ describe("get_title_details", () => {
 
     const details = await getTitleDetails.run(
       { type: "movie", id: 550 },
-      ctx(),
+      toolContext(),
     );
 
     expect(spy).toHaveBeenCalledOnce();
@@ -73,7 +75,10 @@ describe("get_title_details", () => {
       },
     });
 
-    const details = await getTitleDetails.run({ type: "tv", id: 1399 }, ctx());
+    const details = await getTitleDetails.run(
+      { type: "tv", id: 1399 },
+      toolContext(),
+    );
 
     expect(details).toMatchObject({
       type: "tv",
@@ -92,8 +97,14 @@ describe("get_title_details", () => {
       "/3/tv/1399": { ...tmdbFixture<object>("tv-1399"), episode_run_time: [] },
     });
 
-    const film = await getTitleDetails.run({ type: "movie", id: 550 }, ctx());
-    const show = await getTitleDetails.run({ type: "tv", id: 1399 }, ctx());
+    const film = await getTitleDetails.run(
+      { type: "movie", id: 550 },
+      toolContext(),
+    );
+    const show = await getTitleDetails.run(
+      { type: "tv", id: 1399 },
+      toolContext(),
+    );
 
     expect(film).toMatchObject({ runtime: null });
     expect(film).not.toHaveProperty("seasons");
@@ -133,7 +144,7 @@ describe("get_title_details", () => {
     const spy = mockTmdb({ "/3/movie/550": movie() });
     const { signal } = new AbortController();
 
-    await getTitleDetails.run({ type: "movie", id: 550 }, { signal });
+    await getTitleDetails.run({ type: "movie", id: 550 }, toolContext(signal));
 
     expect(spy.mock.lastCall?.[1]?.signal).toBe(signal);
   });

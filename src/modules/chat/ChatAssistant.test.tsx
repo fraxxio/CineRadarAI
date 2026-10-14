@@ -1,20 +1,52 @@
+import { StrictMode } from "react";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
+import { useRouter } from "next/navigation";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { toast } from "sonner";
-import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  test,
+  vi,
+} from "vitest";
 import ChatAssistant from "./ChatAssistant";
 import {
   MAX_PROMPT_LENGTH,
   MAX_STOPPED_TEXT_LENGTH,
   MAX_STOPPED_TURNS,
 } from "./chatLimits";
-import type { RecommendedTitle, StoppedTurn } from "./protocol";
+import {
+  PENDING_SAVE_MAX_AGE_MS,
+  loadChat,
+  saveChat,
+  type ChatSnapshot,
+} from "./chatStorage";
+import type {
+  ChatMessage,
+  ListSavedPart,
+  PendingSave,
+  RecommendedTitle,
+  StoppedTurn,
+} from "./protocol";
+import {
+  listSavedPart,
+  pendingSave,
+  previousEntry,
+  savedEntry,
+} from "./testing/listParts";
 import { controlledStream, ndjson, streamResponse } from "./testing/stream";
 
 const GREETING = "Hi! What would you like to watch?";
 const ERROR_TEXT = "Unfortunately an error occurred. Try again later.";
 const CAPTCHA_FAILED = "Recaptcha failed to verify!";
+const EXPIRED_TEXT = /This conversation is too old to continue/;
+const expiredResponse = () =>
+  Response.json({ error: "conversation_expired" }, { status: 409 });
 
 const start = (interactionId: string) => ({ type: "start", interactionId });
 const delta = (text: string) => ({ type: "delta", text });
@@ -57,14 +89,26 @@ const DUNKIRK = card(374720, { title: "Dunkirk", year: 2017 });
 const answer = (id: string, text: string) =>
   streamResponse([ndjson(start(id), delta(text), done(id))]);
 
-// queues replies per URL and records every request body
+// queues replies per URL and records every request
 function routeFetch(routes: Record<string, Response[]>) {
-  const calls: { url: string; body: Record<string, unknown> }[] = [];
+  const calls: {
+    url: string;
+    method?: string;
+    headers: Headers;
+    body: Record<string, unknown>;
+  }[] = [];
   const spy = vi
     .spyOn(globalThis, "fetch")
     .mockImplementation(async (input, init) => {
       const url = String(input);
-      calls.push({ url, body: JSON.parse(String(init?.body)) });
+      calls.push({
+        url,
+        method: init?.method,
+        headers: new Headers(init?.headers),
+        // a DELETE has no body
+        body:
+          init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+      });
       const reply = routes[url]?.shift();
       if (!reply) throw new Error(`unexpected fetch: ${url}`);
       return reply;
@@ -572,7 +616,9 @@ describe("ChatAssistant", () => {
         ndjson(start("i1"), toolStart("c1"), toolStart("c2", DETAILS)),
       );
 
-      await waitFor(() => expect(screen.getAllByRole("status")).toHaveLength(2));
+      await waitFor(() =>
+        expect(screen.getAllByRole("status")).toHaveLength(2),
+      );
       expect(isBefore(toolLine(SEARCHING), toolLine(DETAILS))).toBe(true);
       expect(toolLine(SEARCHING)).not.toHaveTextContent(/\(\d+x\)/);
     });
@@ -942,6 +988,763 @@ describe("ChatAssistant", () => {
     });
   });
 
+  describe("list saves", () => {
+    const SAVING = "Saving to your list...";
+    const saveStart = (id: string) => ({
+      type: "tool_start",
+      id,
+      name: "save_to_list",
+      text: SAVING,
+    });
+    const saved = ({ entry, previous }: ListSavedPart) => ({
+      type: "list_saved",
+      entry,
+      previous,
+    });
+    const signInRequired = (save: PendingSave) => ({
+      type: "sign_in_required",
+      save,
+    });
+    // a save_to_list round and the model's line after it
+    const saveTurn = (id: string, ...events: object[]) =>
+      streamResponse([
+        ndjson(
+          start(id),
+          saveStart("t1"),
+          toolEnd("t1"),
+          ...events,
+          delta("Added to your list."),
+          done(id),
+        ),
+      ]);
+    const success = () => Response.json({ addToListResult: "success" });
+    const undoBtn = (title = "Fury") =>
+      screen.queryByRole("button", { name: `Undo ${title}` });
+    const FURY_KEY = { movieId: 228150, type: "movie" };
+
+    test("a save shows live, with Undo once the answer is finished", async () => {
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat({ signedIn: true });
+      await send("add Fury to my watchlist");
+
+      stream.push(
+        ndjson(
+          start("i1"),
+          saveStart("t1"),
+          toolEnd("t1"),
+          saved(listSavedPart()),
+        ),
+      );
+
+      const line = await screen.findByText(
+        "Added to your list · Planning to watch",
+      );
+      expect(line.closest("[aria-live]")).toHaveAttribute(
+        "aria-live",
+        "polite",
+      );
+      expect(undoBtn()).toBeNull();
+      // the model writes its line next
+      expect(screen.getByText("Generating response")).toBeInTheDocument();
+
+      stream.push(ndjson(delta("Added."), done("i1")));
+      stream.close();
+      await settled();
+      expect(undoBtn()).toBeEnabled();
+      expect(
+        screen
+          .getByText("Added to your list · Planning to watch")
+          .closest("[aria-live]"),
+      ).toBeNull();
+    });
+
+    test("Undo of a new title removes it and tells the model next turn", async () => {
+      const { calls, bodies } = routeFetch({
+        "/api/assistant": [
+          saveTurn("i1", saved(listSavedPart())),
+          answer("i2", "It isn't."),
+          answer("i3", "a3"),
+        ],
+        "/api/remove-from-list": [success()],
+      });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+      await settled();
+      vi.mocked(useRouter().refresh).mockClear();
+
+      await user.click(undoBtn()!);
+
+      expect(await screen.findByText("Undone")).toBeInTheDocument();
+      const [removal] = calls.filter((c) => c.url === "/api/remove-from-list");
+      expect(removal.method).toBe("DELETE");
+      expect(removal.headers.get("movieId")).toBe("228150");
+      expect(removal.headers.get("type")).toBe("movie");
+      expect(useRouter().refresh).toHaveBeenCalledOnce();
+
+      await send("is Fury in my list?");
+      await settled();
+      await send("p3");
+      await settled();
+      const [, second, third] = bodies("/api/assistant");
+      expect(second).toEqual({
+        content: "is Fury in my list?",
+        previousInteractionId: "i1",
+        listChanges: [FURY_KEY],
+      });
+      // the model has seen it
+      expect(third).not.toHaveProperty("listChanges");
+    });
+
+    it.each([
+      [8, 8],
+      [0, ""],
+    ])(
+      "Undo of a status change puts the row back (rating %j -> %j)",
+      async (rating, sent) => {
+        const part = listSavedPart(
+          { status: "Completed" },
+          previousEntry({ rating }),
+        );
+        const { calls, bodies } = routeFetch({
+          "/api/assistant": [saveTurn("i1", saved(part))],
+          "/api/add-to-list": [success()],
+        });
+        renderChat({ signedIn: true });
+        await send("mark Fury as completed");
+        await settled();
+        expect(
+          screen.getByText("Moved to Completed (was Watching)"),
+        ).toBeInTheDocument();
+
+        await user.click(undoBtn()!);
+
+        expect(await screen.findByText("Undone")).toBeInTheDocument();
+        expect(calls.find((c) => c.url === "/api/add-to-list")?.method).toBe(
+          "PUT",
+        );
+        expect(bodies("/api/add-to-list")).toEqual([
+          {
+            movieId: 228150,
+            title: "Fury",
+            image: "/old.jpg",
+            status: "Watching",
+            rating: sent,
+            type: "movie",
+          },
+        ]);
+      },
+    );
+
+    it.each([
+      [
+        "a rejected request (400)",
+        () => Response.json({ addToListResult: "fail" }, { status: 400 }),
+      ],
+      [
+        "a DB error (200 fail)",
+        () => Response.json({ addToListResult: "fail" }),
+      ],
+    ])("a failed Undo: %s -> toast, the save stays", async (_, reply) => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const part = listSavedPart({ status: "Completed" }, previousEntry());
+      const { bodies } = routeFetch({
+        "/api/assistant": [saveTurn("i1", saved(part)), answer("i2", "a2")],
+        "/api/add-to-list": [reply()],
+      });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+      await settled();
+      vi.mocked(useRouter().refresh).mockClear();
+
+      await user.click(undoBtn()!);
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(
+          "Something went wrong while undoing.",
+          expect.anything(),
+        ),
+      );
+      expect(undoBtn()).toBeEnabled();
+      expect(screen.queryByText("Undone")).toBeNull();
+      expect(useRouter().refresh).not.toHaveBeenCalled();
+
+      await send("p2");
+      await settled();
+      expect(bodies("/api/assistant")[1]).not.toHaveProperty("listChanges");
+    });
+
+    // the list no longer takes a legacy status, so Undo couldn't put it back
+    test("a save over a legacy status offers no Undo", async () => {
+      const part = listSavedPart({}, previousEntry({ status: "Dropped" }));
+      routeFetch({ "/api/assistant": [saveTurn("i1", saved(part))] });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+      await settled();
+
+      expect(
+        screen.getByText("Moved to Planning to watch (was Dropped)"),
+      ).toBeInTheDocument();
+      expect(undoBtn()).toBeNull();
+    });
+
+    describe("two saves of a title", () => {
+      const completed = listSavedPart(
+        { status: "Completed" },
+        previousEntry({ status: "Planning to watch" }),
+      );
+      const MOVED = "Moved to Completed (was Planning to watch)";
+
+      // undoing the add first would delete the row, and the newer save's Undo
+      // would bring it back
+      test("only the newest offers Undo, then the one before it", async () => {
+        const { calls, bodies } = routeFetch({
+          "/api/assistant": [
+            saveTurn("i1", saved(listSavedPart())),
+            saveTurn("i2", saved(completed)),
+          ],
+          "/api/add-to-list": [success()],
+          "/api/remove-from-list": [success()],
+        });
+        const listCalls = () =>
+          calls.map((c) => c.url).filter((url) => url !== "/api/assistant");
+        renderChat({ signedIn: true });
+        await send("add Fury");
+        await settled();
+        await send("mark it completed");
+        await settled();
+
+        // one button (queryByRole throws on more), the newer save's
+        await user.click(undoBtn()!);
+        await screen.findByText("Undone");
+        expect(listCalls()).toEqual(["/api/add-to-list"]);
+        expect(bodies("/api/add-to-list")[0]).toMatchObject({
+          status: "Planning to watch",
+        });
+
+        await user.click(undoBtn()!);
+        await waitFor(() =>
+          expect(screen.getAllByText("Undone")).toHaveLength(2),
+        );
+        expect(listCalls()).toEqual([
+          "/api/add-to-list",
+          "/api/remove-from-list",
+        ]);
+        expect(undoBtn()).toBeNull();
+      });
+
+      test("a newer save streaming in hides the older one's Undo", async () => {
+        const second = controlledStream();
+        routeFetch({
+          "/api/assistant": [
+            saveTurn("i1", saved(listSavedPart())),
+            second.response,
+          ],
+        });
+        renderChat({ signedIn: true });
+        await send("add Fury");
+        await settled();
+        expect(undoBtn()).toBeEnabled();
+
+        await send("mark it completed");
+        second.push(
+          ndjson(start("i2"), saveStart("t1"), toolEnd("t1"), saved(completed)),
+        );
+        await screen.findByText(MOVED);
+        expect(undoBtn()).toBeNull();
+
+        second.push(ndjson(delta("Done."), done("i2")));
+        second.close();
+        await settled();
+        expect(undoBtn()).toBeEnabled();
+      });
+    });
+
+    test("an error after a save keeps the save with its Undo and tells the model", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const { bodies } = routeFetch({
+        "/api/assistant": [
+          streamResponse([
+            ndjson(
+              start("i1"),
+              saveStart("t1"),
+              toolEnd("t1"),
+              saved(listSavedPart()),
+              delta("Lost line."),
+              { type: "error" },
+            ),
+          ]),
+          answer("i2", "a2"),
+        ],
+      });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+
+      const error = await screen.findByText(ERROR_TEXT);
+      await settled();
+      const row = screen.getByText("Added to your list · Planning to watch");
+      expect(
+        row.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(undoBtn()).toBeEnabled();
+      expect(screen.queryByText("Lost line.")).toBeNull();
+      expect(useRouter().refresh).toHaveBeenCalledOnce();
+      await waitFor(() => expect(loadChat()?.listChanges).toEqual([FURY_KEY]));
+
+      // the failed turn never completed: the model only learns of it this way
+      await send("is it in my list?");
+      await settled();
+      expect(bodies("/api/assistant")[1]).toEqual({
+        content: "is it in my list?",
+        listChanges: [FURY_KEY],
+      });
+    });
+
+    test("list changes are kept after a failed turn", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const { bodies } = routeFetch({
+        "/api/assistant": [
+          saveTurn("i1", saved(listSavedPart())),
+          new Response("", { status: 500 }),
+          answer("i3", "a3"),
+        ],
+        "/api/remove-from-list": [success()],
+      });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+      await settled();
+      await user.click(undoBtn()!);
+      await screen.findByText("Undone");
+
+      await send("p2");
+      await screen.findByText(ERROR_TEXT);
+      await send("p3");
+      await settled();
+
+      const [, failed, retry] = bodies("/api/assistant");
+      expect(failed.listChanges).toEqual([FURY_KEY]);
+      expect(retry.listChanges).toEqual([FURY_KEY]);
+    });
+
+    test("an Undo while the next answer streams is sent with the one after", async () => {
+      const second = controlledStream();
+      const { bodies } = routeFetch({
+        "/api/assistant": [
+          saveTurn("i1", saved(listSavedPart())),
+          second.response,
+          answer("i3", "a3"),
+        ],
+        "/api/remove-from-list": [success()],
+      });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+      await settled();
+
+      await send("p2");
+      await user.click(undoBtn()!);
+      await screen.findByText("Undone");
+      second.push(ndjson(start("i2"), delta("a2"), done("i2")));
+      second.close();
+      await settled();
+      await send("p3");
+      await settled();
+
+      const [, during, after] = bodies("/api/assistant");
+      expect(during).not.toHaveProperty("listChanges");
+      expect(after.listChanges).toEqual([FURY_KEY]);
+    });
+
+    test("cards show the list status from the chat's saves and Undo", async () => {
+      routeFetch({
+        "/api/assistant": [
+          streamResponse([
+            ndjson(
+              start("i1"),
+              showStart("s1"),
+              toolEnd("s1"),
+              cards([FURY, DUNKIRK]),
+              done("i1"),
+            ),
+          ]),
+          saveTurn("i2", saved(listSavedPart({ status: "Completed" }))),
+        ],
+        "/api/remove-from-list": [success()],
+      });
+      renderChat({ signedIn: true });
+      await send("war films");
+      await settled();
+      const badge = (title: string) =>
+        within(
+          screen.getByRole("heading", { name: title }).closest("li")!,
+        ).queryByText(/^In your list/);
+      expect(badge("Fury")).toBeNull();
+
+      await send("mark the first one as completed");
+      await settled();
+      expect(badge("Fury")).toHaveTextContent("In your list · Completed");
+      expect(badge("Dunkirk")).toBeNull();
+
+      await user.click(undoBtn()!);
+      await screen.findByText("Undone");
+      expect(badge("Fury")).toBeNull();
+    });
+
+    test("refreshes /my-list once per turn with saves", async () => {
+      routeFetch({
+        "/api/assistant": [
+          saveTurn(
+            "i1",
+            saved(listSavedPart()),
+            saved(listSavedPart({ id: 374720, title: "Dunkirk" })),
+          ),
+          answer("i2", "a2"),
+        ],
+      });
+      renderChat({ signedIn: true });
+
+      await send("add both");
+      await settled();
+      expect(screen.getAllByText(/^Added to your list ·/)).toHaveLength(2);
+      expect(useRouter().refresh).toHaveBeenCalledOnce();
+
+      await send("thanks");
+      await settled();
+      expect(useRouter().refresh).toHaveBeenCalledOnce();
+    });
+
+    test("a stop after a save refreshes too", async () => {
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+      stream.push(ndjson(start("i1"), saved(listSavedPart())));
+      await screen.findByText(/^Added to your list/);
+      expect(useRouter().refresh).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: "Stop" }));
+
+      expect(useRouter().refresh).toHaveBeenCalledOnce();
+    });
+
+    test("signed out: one sign-in card for the answer's titles; a provider keeps them", async () => {
+      const preventSubmit = (e: Event) => e.preventDefault();
+      document.addEventListener("submit", preventSubmit);
+      onTestFinished(() =>
+        document.removeEventListener("submit", preventSubmit),
+      );
+      routeFetch({
+        "/api/assistant": [
+          saveTurn(
+            "i1",
+            signInRequired(pendingSave()),
+            signInRequired(pendingSave({ id: 374720, title: "Dunkirk" })),
+          ),
+        ],
+      });
+      renderChat();
+      await send("add Fury and Dunkirk");
+      await settled();
+
+      expect(
+        screen.getByText("Sign in to add 2 titles to your list"),
+      ).toBeInTheDocument();
+      expect(useRouter().refresh).not.toHaveBeenCalled();
+      expect(loadChat()?.pendingSaves).toBeUndefined();
+
+      const now = Date.now();
+      await user.click(
+        screen.getByRole("button", { name: "Sign in with GitHub" }),
+      );
+
+      const pending = loadChat()?.pendingSaves;
+      expect(pending?.saves).toEqual([
+        pendingSave(),
+        pendingSave({ id: 374720, title: "Dunkirk" }),
+      ]);
+      expect(pending?.since).toBeGreaterThanOrEqual(now);
+      // the chat itself is still there
+      expect(loadChat()?.messages).toHaveLength(2);
+    });
+
+    test("the undone save and the list changes survive a remount", async () => {
+      routeFetch({
+        "/api/assistant": [saveTurn("i1", saved(listSavedPart()))],
+        "/api/remove-from-list": [success()],
+      });
+      const { unmount } = renderChat({ signedIn: true });
+      await send("add Fury");
+      await settled();
+      await user.click(undoBtn()!);
+      await screen.findByText("Undone");
+      unmount();
+      expect(loadChat()?.listChanges).toEqual([FURY_KEY]);
+
+      const { bodies } = routeFetch({ "/api/assistant": [answer("i2", "a2")] });
+      renderChat({ signedIn: true });
+      expect(await screen.findByText("Undone")).toBeInTheDocument();
+      expect(undoBtn()).toBeNull();
+
+      await send("p2");
+      await settled();
+      expect(bodies("/api/assistant")[0].listChanges).toEqual([FURY_KEY]);
+    });
+
+    test("New chat drops the list changes", async () => {
+      routeFetch({
+        "/api/assistant": [saveTurn("i1", saved(listSavedPart()))],
+        "/api/remove-from-list": [success()],
+      });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+      await settled();
+      await user.click(undoBtn()!);
+      await screen.findByText("Undone");
+
+      await user.click(newChatBtn());
+
+      const { bodies } = routeFetch({ "/api/assistant": [answer("i2", "a2")] });
+      await send("p2");
+      await settled();
+      expect(bodies("/api/assistant")[0]).toEqual({ content: "p2" });
+    });
+
+    describe("after sign-in", () => {
+      const DUNKIRK_SAVE = pendingSave({
+        id: 374720,
+        title: "Dunkirk",
+        status: null,
+      });
+      // the chat as the sign-in card's click left it
+      const withPending = (since = Date.now()) =>
+        saveChat({
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              parts: [{ type: "text", text: "add Fury and Dunkirk" }],
+            },
+            {
+              id: "m2",
+              role: "assistant",
+              parts: [
+                { type: "sign_in", saves: [pendingSave(), DUNKIRK_SAVE] },
+                { type: "text", text: "Please sign in." },
+              ],
+            },
+          ],
+          interactionId: "i1",
+          stoppedTurns: [],
+          pendingSaves: { saves: [pendingSave(), DUNKIRK_SAVE], since },
+        });
+      const savedReply = (extra: Parameters<typeof savedEntry>[0] = {}) =>
+        Response.json({ entry: savedEntry(extra), previous: null });
+      const DUNKIRK_KEY = { movieId: 374720, type: "movie" };
+      const ADDED = "Added to your list · Planning to watch";
+
+      test("saves each pending title once, shows the rows and tells the model", async () => {
+        withPending();
+        const { spy, calls, bodies } = routeFetch({
+          "/api/save-title": [
+            savedReply(),
+            savedReply({ id: 374720, title: "Dunkirk" }),
+          ],
+          "/api/assistant": [answer("i2", "a2")],
+        });
+        // what storage holds when each save is sent
+        const pendingAtRequest: unknown[] = [];
+        const route = spy.getMockImplementation()!;
+        spy.mockImplementation(async (input, init) => {
+          pendingAtRequest.push(loadChat()?.pendingSaves);
+          return route(input, init);
+        });
+        renderChat({ signedIn: true });
+
+        expect(await screen.findAllByText(ADDED)).toHaveLength(2);
+        expect(screen.getByText("Please sign in.")).toBeInTheDocument();
+        // signed in now: no sign-in card above the rows
+        expect(screen.queryByText(/^Sign in to add/)).toBeNull();
+        const saves = calls.filter((c) => c.url === "/api/save-title");
+        expect(saves.map((c) => c.method)).toEqual(["PUT", "PUT"]);
+        expect(bodies("/api/save-title")).toEqual([
+          {
+            type: "movie",
+            id: 228150,
+            title: "Fury",
+            status: "Planning to watch",
+          },
+          { type: "movie", id: 374720, title: "Dunkirk", status: null },
+        ]);
+        expect(pendingAtRequest).toEqual([undefined, undefined]);
+        expect(useRouter().refresh).toHaveBeenCalledOnce();
+        expect(undoBtn("Dunkirk")).toBeEnabled();
+
+        await send("p2");
+        await settled();
+        expect(bodies("/api/assistant")[0]).toMatchObject({
+          previousInteractionId: "i1",
+          listChanges: [FURY_KEY, DUNKIRK_KEY],
+        });
+      });
+
+      test("the rows are kept with the chat", async () => {
+        withPending();
+        routeFetch({
+          "/api/save-title": [
+            savedReply(),
+            savedReply({ id: 374720, title: "Dunkirk" }),
+          ],
+        });
+        const { unmount } = renderChat({ signedIn: true });
+        await screen.findAllByText(ADDED);
+        unmount();
+
+        const saved = loadChat();
+        expect(saved?.pendingSaves).toBeUndefined();
+        expect(saved?.listChanges).toEqual([FURY_KEY, DUNKIRK_KEY]);
+        expect(saved?.messages.at(-1)?.parts).toEqual([
+          listSavedPart(),
+          listSavedPart({ id: 374720, title: "Dunkirk" }),
+        ]);
+
+        // a later load doesn't save again
+        const { calls } = routeFetch({});
+        renderChat({ signedIn: true });
+        expect(await screen.findAllByText(ADDED)).toHaveLength(2);
+        expect(calls).toEqual([]);
+      });
+
+      test("strict mode: still one request per title", async () => {
+        withPending();
+        const { calls } = routeFetch({
+          "/api/save-title": [
+            savedReply(),
+            savedReply({ id: 374720, title: "Dunkirk" }),
+          ],
+        });
+        render(
+          <StrictMode>
+            <ChatAssistant
+              greeting={GREETING}
+              recaptchaEnabled={false}
+              signedIn
+            />
+          </StrictMode>,
+        );
+
+        expect(await screen.findAllByText(ADDED)).toHaveLength(2);
+        expect(calls.filter((c) => c.url === "/api/save-title")).toHaveLength(
+          2,
+        );
+      });
+
+      test("a failed save says so; the others are still saved", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        withPending();
+        routeFetch({
+          "/api/save-title": [
+            savedReply(),
+            Response.json({ error: "title_mismatch" }, { status: 422 }),
+          ],
+        });
+        renderChat({ signedIn: true });
+
+        expect(
+          await screen.findByText(
+            "Couldn't save Dunkirk to your list. Ask me to add it again.",
+          ),
+        ).toBeInTheDocument();
+        expect(screen.getAllByText(ADDED)).toHaveLength(1);
+        expect(useRouter().refresh).toHaveBeenCalledOnce();
+        await waitFor(() =>
+          expect(loadChat()?.listChanges).toEqual([FURY_KEY]),
+        );
+      });
+
+      test("every save failed: no refresh", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        withPending();
+        routeFetch({
+          "/api/save-title": [
+            Response.json({ error: "save_failed" }, { status: 502 }),
+            Response.json({ error: "save_failed" }, { status: 502 }),
+          ],
+        });
+        renderChat({ signedIn: true });
+
+        expect(
+          await screen.findByText(
+            "Couldn't save Fury, Dunkirk to your list. Ask me to add them again.",
+          ),
+        ).toBeInTheDocument();
+        expect(useRouter().refresh).not.toHaveBeenCalled();
+      });
+
+      test("at most 10 per sign-in: the rest are named as not saved", async () => {
+        const saves = Array.from({ length: 12 }, (_, i) =>
+          pendingSave({ id: i + 1, title: `Title ${i + 1}` }),
+        );
+        saveChat({
+          messages: [
+            { id: "m1", role: "user", parts: [{ type: "text", text: "add" }] },
+            {
+              id: "m2",
+              role: "assistant",
+              parts: [{ type: "sign_in", saves }],
+            },
+          ],
+          stoppedTurns: [],
+          pendingSaves: { saves, since: Date.now() },
+        });
+        const { calls } = routeFetch({
+          "/api/save-title": saves
+            .slice(0, 10)
+            .map(({ id, title }) => savedReply({ id, title })),
+        });
+        renderChat({ signedIn: true });
+
+        expect(
+          await screen.findByText(
+            "Couldn't save Title 11, Title 12 to your list. Ask me to add them again.",
+          ),
+        ).toBeInTheDocument();
+        expect(screen.getAllByText(ADDED)).toHaveLength(10);
+        expect(calls.filter((c) => c.url === "/api/save-title")).toHaveLength(
+          10,
+        );
+      });
+
+      test("still signed out (e.g. a cancelled sign-in): they stay pending", async () => {
+        withPending();
+        const { spy } = routeFetch({});
+        renderChat({ signedIn: false });
+
+        expect(await screen.findByText("Please sign in.")).toBeInTheDocument();
+        expect(spy).not.toHaveBeenCalled();
+        expect(loadChat()?.pendingSaves?.saves).toHaveLength(2);
+      });
+
+      test("too old: nothing is saved", async () => {
+        withPending(Date.now() - PENDING_SAVE_MAX_AGE_MS - 1000);
+        const { spy } = routeFetch({});
+        renderChat({ signedIn: true });
+
+        expect(await screen.findByText("Please sign in.")).toBeInTheDocument();
+        expect(spy).not.toHaveBeenCalled();
+        expect(screen.queryByText(ADDED)).toBeNull();
+      });
+
+      test("New chat drops them", async () => {
+        withPending();
+        renderChat({ signedIn: false });
+        await screen.findByText("Please sign in.");
+
+        await user.click(newChatBtn());
+
+        expect(loadChat()).toBeNull();
+      });
+    });
+  });
+
   describe("new chat", () => {
     test("is disabled while the chat is empty", async () => {
       routeFetch({ "/api/assistant": [answer("i1", "a1")] });
@@ -1084,6 +1887,387 @@ describe("ChatAssistant", () => {
 
       expect(screen.getByText("a1")).toBeInTheDocument();
       expect(screen.queryByText(ERROR_TEXT)).toBeNull();
+    });
+  });
+
+  describe("kept for the session", () => {
+    const KEY = "cineradar.chat.v1";
+    const text = (
+      id: string,
+      role: ChatMessage["role"],
+      value: string,
+    ): ChatMessage => ({ id, role, parts: [{ type: "text", text: value }] });
+    const SAVED: ChatSnapshot = {
+      messages: [
+        text("m1", "user", "war films"),
+        {
+          id: "m2",
+          role: "assistant",
+          parts: [
+            {
+              type: "tool",
+              name: "search_titles",
+              label: SEARCHING,
+              callIds: ["c1"],
+              runningIds: [],
+              elapsedMs: 2400,
+            },
+            { type: "text", text: "Watch Fury." },
+            { type: "cards", items: [FURY] },
+          ],
+        },
+        text("m3", "user", "older ones"),
+        { ...text("m4", "assistant", "Try"), stopped: true },
+      ],
+      interactionId: "i1",
+      stoppedTurns: [{ prompt: "older ones", partialText: "Try" }],
+    };
+    const stopBtn = () => screen.getByRole("button", { name: "Stop" });
+
+    test("a saved chat is restored on mount", async () => {
+      saveChat(SAVED);
+      renderChat();
+
+      expect(await screen.findByText("Watch Fury.")).toBeInTheDocument();
+      expect(screen.getByText("war films")).toBeInTheDocument();
+      expect(screen.getByText("Stopped")).toBeInTheDocument();
+      expect(
+        screen.getByRole("list", { name: "Recommendations" }),
+      ).toBeInTheDocument();
+      expect(newChatBtn()).toBeEnabled();
+    });
+
+    test("a restored tool line shows its final time and doesn't tick", async () => {
+      saveChat(SAVED);
+      renderChat();
+
+      expect(await screen.findByText(SEARCHING)).toHaveTextContent("2.4s");
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+
+    test("the next request continues the restored conversation", async () => {
+      saveChat(SAVED);
+      const { bodies } = routeFetch({ "/api/assistant": [answer("i2", "a2")] });
+      renderChat();
+      await screen.findByText("Watch Fury.");
+
+      await send("p2");
+      await settled();
+
+      expect(bodies("/api/assistant")).toEqual([
+        {
+          content: "p2",
+          previousInteractionId: "i1",
+          stoppedTurns: [{ prompt: "older ones", partialText: "Try" }],
+        },
+      ]);
+    });
+
+    test("the first render doesn't overwrite the saved chat", async () => {
+      saveChat(SAVED);
+      const before = sessionStorage.getItem(KEY);
+      renderChat();
+      await screen.findByText("Watch Fury.");
+
+      // not even its age: restoring isn't a change
+      expect(sessionStorage.getItem(KEY)).toBe(before);
+    });
+
+    test("new messages after a restore get unique ids", async () => {
+      const consoleError = vi.spyOn(console, "error");
+      saveChat(SAVED);
+      routeFetch({ "/api/assistant": [answer("i2", "a2")] });
+      renderChat();
+      await screen.findByText("Watch Fury.");
+
+      await send("p2");
+      await settled();
+
+      const ids = loadChat()!.messages.map((m) => m.id);
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(ids.slice(-2)).toEqual(["m5", "m6"]);
+      expect(consoleError).not.toHaveBeenCalled();
+    });
+
+    test("a completed turn survives a remount", async () => {
+      routeFetch({
+        "/api/assistant": [answer("i1", "a1"), answer("i2", "a2")],
+      });
+      const { unmount } = renderChat();
+      await send("p1");
+      await settled();
+      unmount();
+
+      const { bodies } = routeFetch({ "/api/assistant": [answer("i2", "a2")] });
+      renderChat();
+      expect(await screen.findByText("a1")).toBeInTheDocument();
+      expect(screen.getByText("p1")).toBeInTheDocument();
+
+      await send("p2");
+      await settled();
+      expect(bodies("/api/assistant")[0]).toEqual({
+        content: "p2",
+        previousInteractionId: "i1",
+      });
+    });
+
+    test("a stop is saved with its stopped turn", async () => {
+      const stream = controlledStream();
+      routeFetch({ "/api/assistant": [stream.response] });
+      renderChat();
+      await send("hi");
+      stream.push(ndjson(start("i1"), delta("part")));
+      await screen.findByText("part");
+
+      await user.click(stopBtn());
+
+      expect(loadChat()).toMatchObject({
+        messages: [
+          { role: "user", parts: [{ type: "text", text: "hi" }] },
+          { role: "assistant", stopped: true },
+        ],
+        stoppedTurns: [{ prompt: "hi", partialText: "part" }],
+      });
+    });
+
+    test("a failed turn drops the saved interaction id", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      saveChat(SAVED);
+      routeFetch({ "/api/assistant": [new Response("", { status: 500 })] });
+      renderChat();
+      await screen.findByText("Watch Fury.");
+
+      await send("p2");
+      await screen.findByText(ERROR_TEXT);
+
+      const saved = loadChat()!;
+      expect(saved).not.toHaveProperty("interactionId");
+      expect(saved.stoppedTurns).toEqual([]);
+      expect(saved.messages.at(-1)).toMatchObject({ role: "user" });
+    });
+
+    describe("expired", () => {
+      beforeEach(() => {
+        vi.spyOn(console, "info").mockImplementation(() => {});
+      });
+
+      test("a 409 keeps the messages and shows the notice, not the error", async () => {
+        saveChat(SAVED);
+        routeFetch({ "/api/assistant": [expiredResponse()] });
+        renderChat();
+        await screen.findByText("Watch Fury.");
+
+        await send("p2");
+
+        expect(await screen.findByText(EXPIRED_TEXT)).toBeInTheDocument();
+        expect(screen.queryByText(ERROR_TEXT)).toBeNull();
+        expect(screen.getByText("Watch Fury.")).toBeInTheDocument();
+        expect(screen.getByText("p2")).toBeInTheDocument();
+        await settled();
+        expect(newChatBtn()).toBeEnabled();
+      });
+
+      test("the next send starts a new conversation and clears the notice", async () => {
+        saveChat(SAVED);
+        const { bodies } = routeFetch({
+          "/api/assistant": [expiredResponse(), answer("i2", "a2")],
+        });
+        renderChat();
+        await screen.findByText("Watch Fury.");
+
+        await send("p2");
+        await screen.findByText(EXPIRED_TEXT);
+        await settled();
+        await send("p2");
+        await settled();
+
+        expect(bodies("/api/assistant")).toEqual([
+          {
+            content: "p2",
+            previousInteractionId: "i1",
+            stoppedTurns: [{ prompt: "older ones", partialText: "Try" }],
+          },
+          { content: "p2" },
+        ]);
+        expect(screen.getByText("a2")).toBeInTheDocument();
+        expect(screen.queryByText(EXPIRED_TEXT)).toBeNull();
+      });
+
+      test("the saved chat keeps the messages without the dead interaction", async () => {
+        saveChat(SAVED);
+        routeFetch({ "/api/assistant": [expiredResponse()] });
+        renderChat();
+        await screen.findByText("Watch Fury.");
+
+        await send("p2");
+        await screen.findByText(EXPIRED_TEXT);
+
+        const saved = loadChat()!;
+        expect(saved).not.toHaveProperty("interactionId");
+        expect(saved.stoppedTurns).toEqual([]);
+        expect(saved.messages.map((m) => m.id)).toEqual([
+          "m1",
+          "m2",
+          "m3",
+          "m4",
+          "m5",
+        ]);
+      });
+
+      it.each([
+        [
+          "another 409 error",
+          () => Response.json({ error: "x" }, { status: 409 }),
+        ],
+        ["a 409 without JSON", () => new Response("", { status: 409 })],
+      ])("%s is a plain error", async (_, reply) => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        routeFetch({ "/api/assistant": [reply()] });
+        renderChat();
+
+        await send("hi");
+
+        expect(await screen.findByText(ERROR_TEXT)).toBeInTheDocument();
+        expect(screen.queryByText(EXPIRED_TEXT)).toBeNull();
+      });
+
+      test("New chat clears the notice", async () => {
+        routeFetch({ "/api/assistant": [expiredResponse()] });
+        renderChat();
+        await send("hi");
+        await screen.findByText(EXPIRED_TEXT);
+
+        await user.click(newChatBtn());
+
+        expect(screen.queryByText(EXPIRED_TEXT)).toBeNull();
+      });
+    });
+
+    test("New chat clears it", async () => {
+      saveChat(SAVED);
+      renderChat();
+      await screen.findByText("Watch Fury.");
+
+      await user.click(newChatBtn());
+
+      expect(sessionStorage.getItem(KEY)).toBeNull();
+    });
+
+    describe.each([
+      ["pagehide", () => window.dispatchEvent(new Event("pagehide"))],
+      ["unmount", (unmount: () => void) => unmount()],
+    ])("leaving mid-answer (%s)", (_, leave) => {
+      // read before React renders again: there's no later render to save in
+      // when the page goes away
+      const savedOnLeave = (unmount: () => void) => {
+        const saved: ReturnType<typeof loadChat>[] = [];
+        act(() => {
+          leave(unmount);
+          saved.push(loadChat());
+        });
+        return saved[0];
+      };
+
+      test("saves the partial answer as a stopped message", async () => {
+        saveChat(SAVED);
+        const stream = controlledStream();
+        const { spy } = routeFetch({ "/api/assistant": [stream.response] });
+        const { unmount } = renderChat();
+        await screen.findByText("Watch Fury.");
+        await send("p2");
+        stream.push(ndjson(start("i2"), delta("Hal")));
+        await screen.findByText("Hal");
+
+        const saved = savedOnLeave(unmount);
+
+        expect(spy.mock.calls[0][1]?.signal?.aborted).toBe(true);
+        expect(saved).toMatchObject({
+          // stays on the last completed turn, as with Stop
+          interactionId: "i1",
+          stoppedTurns: [
+            { prompt: "older ones", partialText: "Try" },
+            { prompt: "p2", partialText: "Hal" },
+          ],
+        });
+        expect(saved!.messages.slice(-2)).toEqual([
+          text("m5", "user", "p2"),
+          { ...text("m6", "assistant", "Hal"), stopped: true },
+        ]);
+      });
+
+      test("while the tools run: their lines keep their time", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        const stream = controlledStream();
+        routeFetch({ "/api/assistant": [stream.response] });
+        const { unmount } = renderChat();
+        await send("hi");
+        stream.push(ndjson(start("i1"), toolStart("t1")));
+        await screen.findByText(SEARCHING);
+        vi.advanceTimersByTime(1500);
+
+        const [, answer] = savedOnLeave(unmount)!.messages;
+        expect(answer.parts).toEqual([
+          expect.objectContaining({
+            type: "tool",
+            runningIds: [],
+            elapsedMs: expect.toSatisfy((ms: number) => ms >= 1500),
+          }),
+        ]);
+        expect(answer.parts[0]).not.toHaveProperty("runningSince");
+      });
+
+      test("before the prompt was accepted: saves nothing", async () => {
+        mockRecaptcha(async () => "tok");
+        const verification = controlledStream();
+        const { calls } = routeFetch({
+          "/api/recaptcha": [verification.response],
+        });
+        const { unmount } = renderChat({ recaptchaEnabled: true });
+        await send("hi");
+        await waitFor(() => expect(calls).toHaveLength(1));
+
+        expect(savedOnLeave(unmount)).toBeNull();
+      });
+    });
+
+    test("pagehide after the answer changes nothing", async () => {
+      routeFetch({ "/api/assistant": [answer("i1", "a1")] });
+      renderChat();
+      await send("hi");
+      await settled();
+      const before = sessionStorage.getItem(KEY);
+
+      act(() => void window.dispatchEvent(new Event("pagehide")));
+
+      expect(sessionStorage.getItem(KEY)).toBe(before);
+      expect(screen.queryByText("Stopped")).toBeNull();
+    });
+
+    test("storage throwing: the chat still works", async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const failing = () => {
+        throw new DOMException("blocked", "SecurityError");
+      };
+      vi.spyOn(Storage.prototype, "getItem").mockImplementation(failing);
+      vi.spyOn(Storage.prototype, "setItem").mockImplementation(failing);
+      vi.spyOn(Storage.prototype, "removeItem").mockImplementation(failing);
+      const { bodies } = routeFetch({
+        "/api/assistant": [answer("i1", "a1"), answer("i2", "a2")],
+      });
+      renderChat();
+
+      await send("p1");
+      await settled();
+      await send("p2");
+      await settled();
+      await user.click(newChatBtn());
+
+      expect(bodies("/api/assistant")[1]).toEqual({
+        content: "p2",
+        previousInteractionId: "i1",
+      });
+      expect(screen.queryByText(ERROR_TEXT)).toBeNull();
+      expect(screen.queryByText("a2")).toBeNull();
     });
   });
 

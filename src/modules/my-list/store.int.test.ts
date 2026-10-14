@@ -2,7 +2,13 @@ import { describe, expect, test } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/infra/db";
 import { users } from "@/infra/db/schema/users";
-import { getEntries, removeEntry, saveEntry } from "./store";
+import {
+  getEntries,
+  getEntry,
+  removeEntry,
+  saveEntry,
+  saveEntryStatus,
+} from "./store";
 import { forceFailure, getMovies, seedList, seedUser } from "@test/helpers/db";
 import { makeMovie } from "@test/helpers/factories";
 
@@ -158,6 +164,131 @@ describe("saveEntry", () => {
       ).rejects.toThrow("forced failure");
       expect(await getMovies(user.id)).toEqual(existing);
     });
+  });
+});
+
+describe("getEntry", () => {
+  test("finds the entry by key", async () => {
+    const user = await seedUser();
+    const entry = makeMovie({ movieId: 550, rating: 8 });
+    await seedList(user.id, [makeMovie({ movieId: 1 }), entry]);
+
+    expect(await getEntry(user.id, { movieId: 550, type: "movie" })).toEqual(
+      entry,
+    );
+  });
+
+  test("[B4] keeps a movie and a TV show with the same id apart", async () => {
+    const user = await seedUser();
+    const movie = makeMovie({ movieId: 550, type: "movie", name: "Movie" });
+    const show = makeMovie({ movieId: 550, type: "tv", name: "Show" });
+    await seedList(user.id, [movie, show]);
+
+    expect(await getEntry(user.id, { movieId: 550, type: "tv" })).toEqual(show);
+    expect(await getEntry(user.id, { movieId: 550, type: "movie" })).toEqual(
+      movie,
+    );
+  });
+
+  test("returns undefined when the title isn't in the list", async () => {
+    const user = await seedUser();
+    await seedList(user.id, [makeMovie({ movieId: 550, type: "tv" })]);
+
+    expect(
+      await getEntry(user.id, { movieId: 550, type: "movie" }),
+    ).toBeUndefined();
+  });
+
+  test("doesn't find another user's entry", async () => {
+    const user = await seedUser();
+    const other = await seedUser();
+    await seedList(other.id, [makeMovie({ movieId: 550 })]);
+
+    expect(
+      await getEntry(user.id, { movieId: 550, type: "movie" }),
+    ).toBeUndefined();
+  });
+});
+
+describe("saveEntryStatus", () => {
+  const entry = {
+    movieId: 550,
+    type: "movie" as const,
+    name: "Fight Club",
+    image: "/new.jpg",
+    status: "Watching" as const,
+  };
+
+  test("adds a new entry unrated, at the end", async () => {
+    const user = await seedUser();
+    const existing = makeMovie({ movieId: 1 });
+    await seedList(user.id, [existing]);
+
+    await saveEntryStatus(user.id, entry);
+
+    expect(await getMovies(user.id)).toEqual([
+      existing,
+      { ...entry, rating: 0 },
+    ]);
+  });
+
+  test("changes only the status of an existing entry, in place", async () => {
+    const user = await seedUser();
+    const before = makeMovie({ movieId: 1 });
+    const after = makeMovie({ movieId: 2 });
+    const stored = makeMovie({
+      movieId: 550,
+      name: "Fight Club (1999)",
+      image: "/old.jpg",
+      status: "Planning to watch",
+      rating: 8,
+    });
+    await seedList(user.id, [before, stored, after]);
+
+    await saveEntryStatus(user.id, { ...entry, status: "Completed" });
+
+    expect(await getMovies(user.id)).toEqual([
+      before,
+      { ...stored, status: "Completed" },
+      after,
+    ]);
+  });
+
+  test("[B4] a TV show with the same id doesn't change a movie", async () => {
+    const user = await seedUser();
+    const movie = makeMovie({ movieId: 550, status: "Completed", rating: 7 });
+    await seedList(user.id, [movie]);
+
+    await saveEntryStatus(user.id, { ...entry, type: "tv" });
+
+    expect(await getMovies(user.id)).toEqual([
+      movie,
+      { ...entry, type: "tv", rating: 0 },
+    ]);
+  });
+
+  test("only touches the given user's list", async () => {
+    const user = await seedUser();
+    const other = await seedUser();
+    const otherEntries = [makeMovie({ movieId: 550, rating: 9 })];
+    await seedList(other.id, otherEntries);
+
+    await saveEntryStatus(user.id, entry);
+
+    expect(await getMovies(other.id)).toEqual(otherEntries);
+    expect(await getMovies(user.id)).toEqual([{ ...entry, rating: 0 }]);
+  });
+
+  test("throws and keeps the old values when the update fails", async () => {
+    const user = await seedUser();
+    const existing = [makeMovie({ movieId: 550, rating: 8 })];
+    await seedList(user.id, existing);
+    await forceFailure("UPDATE", "list_entries");
+
+    await expect(saveEntryStatus(user.id, entry)).rejects.toThrow(
+      "forced failure",
+    );
+    expect(await getMovies(user.id)).toEqual(existing);
   });
 });
 

@@ -10,6 +10,7 @@ import {
 } from "@/shared/ui/Modal";
 import { useState } from "react";
 import DeleteModalBtn from "./DeleteModalBtn";
+import { DELETE_CONFIRMATION } from "./deleteConfirmation";
 
 export default function DeleteModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -30,10 +31,12 @@ export default function DeleteModal() {
               </span>
             </DialogDescription>
           </DialogHeader>
+          {/* the saved chat is cleared once the deletion succeeded, see
+              DeleteResult */}
           <form action={DeleteUser}>
             <label htmlFor="check">
-              To permamently delete your account type &quot;Delete account&quot;
-              and click Delete.
+              To permamently delete your account type &quot;
+              {DELETE_CONFIRMATION}&quot; and click Delete.
             </label>
             <input
               id="check"

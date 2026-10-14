@@ -2,7 +2,12 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
-afterEach(() => cleanup()); // no `globals: true`, so RTL can't auto-register this
+// no `globals: true`, so RTL can't auto-register cleanup; storage is cleared
+// after it, since unmounting the chat can save to it
+afterEach(() => {
+  cleanup();
+  sessionStorage.clear();
+});
 
 vi.mock("next/navigation", () => {
   const router = {
@@ -35,7 +40,11 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 // server actions pull in next-auth and the DB
-vi.mock("@/modules/account/actions", () => ({ SignOut: vi.fn(), DeleteUser: vi.fn() }));
+vi.mock("@/modules/account/actions", () => ({
+  SignOut: vi.fn(),
+  DeleteUser: vi.fn(),
+  signInWithProvider: vi.fn(),
+}));
 vi.mock("react-google-recaptcha-v3", () => ({
   useGoogleReCaptcha: vi.fn(() => ({ executeRecaptcha: undefined })),
   GoogleReCaptchaProvider: ({ children }: { children: React.ReactNode }) =>

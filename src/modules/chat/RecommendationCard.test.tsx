@@ -118,6 +118,35 @@ describe("RecommendationCard", () => {
     expect(reason.previousElementSibling).toHaveTextContent("8.4 / 10");
   });
 
+  describe("list badge", () => {
+    const badge = () => screen.queryByText(/^In your list/);
+
+    test("a status from the chat -> badge; Add to list stays", () => {
+      render(
+        <RecommendationCard
+          title={makeTitle()}
+          signedIn
+          listStatus="Completed"
+        />,
+      );
+      expect(badge()).toHaveTextContent("In your list · Completed");
+      expect(
+        screen.getByRole("button", { name: /add to list/i }),
+      ).toBeInTheDocument();
+    });
+
+    test.each([null, undefined])("%s -> no badge", (listStatus) => {
+      render(
+        <RecommendationCard
+          title={makeTitle()}
+          signedIn
+          listStatus={listStatus}
+        />,
+      );
+      expect(badge()).toBeNull();
+    });
+  });
+
   describe("add to list", () => {
     const fetchSpy = () =>
       vi
@@ -191,6 +220,7 @@ describe("RecommendationCards", () => {
           makeTitle({ id: 3, title: "Third" }),
         ]}
         signedIn
+        listStatus={new Map()}
       />,
     );
 
@@ -200,5 +230,29 @@ describe("RecommendationCards", () => {
     expect(
       items.map((item) => within(item).getByRole("heading").textContent),
     ).toEqual(["First", "Second", "Third"]);
+  });
+
+  test("each card gets its own list status", () => {
+    render(
+      <RecommendationCards
+        items={[
+          makeTitle({ id: 1, title: "First" }),
+          makeTitle({ type: "tv", id: 1, title: "Second" }),
+          makeTitle({ id: 3, title: "Third" }),
+        ]}
+        signedIn
+        listStatus={
+          new Map([
+            ["tv-1", "Watching"],
+            ["movie-3", null],
+          ])
+        }
+      />,
+    );
+
+    const badges = screen
+      .getAllByRole("listitem")
+      .map((item) => within(item).queryByText(/^In your list/)?.textContent);
+    expect(badges).toEqual([undefined, "In your list · Watching", undefined]);
   });
 });

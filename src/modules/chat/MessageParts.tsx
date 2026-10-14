@@ -1,13 +1,25 @@
 import { memo } from "react";
 import Markdown, { Components } from "react-markdown";
 import Link from "next/link";
-import type { MessagePart } from "./protocol";
+import { ListSavedRow } from "./ListSavedRow";
+import { isListSaved, type ListStatuses } from "./messageParts";
+import type { ListSavedPart, MessagePart } from "./protocol";
 import { RecommendationCards } from "./RecommendationCards";
+import { SignInCard } from "./SignInCard";
 import { ToolCallLine } from "./ToolCallLine";
+import type { StartSignIn, UndoSave } from "./useChat";
 
 type MessagePartsProps = {
   parts: MessagePart[];
   signedIn: boolean;
+  // for the cards' list badges
+  listStatus: ListStatuses;
+  // the saves that offer Undo, from undoableSaves
+  undoable: ReadonlySet<ListSavedPart>;
+  // both set on finished messages only: the streaming answer has no Undo
+  messageId?: string;
+  onUndo?: UndoSave;
+  onSignIn: StartSignIn;
 };
 
 // has a scheme (https:, mailto:) or is protocol-relative (//host)
@@ -28,9 +40,17 @@ const markdownComponents: Components = {
 function MessagePartView({
   part,
   signedIn,
+  listStatus,
+  streaming,
+  onUndo,
+  onSignIn,
 }: {
   part: MessagePart;
   signedIn: boolean;
+  listStatus: ListStatuses;
+  streaming: boolean;
+  onUndo?: () => Promise<boolean>;
+  onSignIn: StartSignIn;
 }) {
   switch (part.type) {
     case "text":
@@ -42,25 +62,58 @@ function MessagePartView({
     case "tool":
       return <ToolCallLine part={part} />;
     case "cards":
-      return <RecommendationCards items={part.items} signedIn={signedIn} />;
+      return (
+        <RecommendationCards
+          items={part.items}
+          signedIn={signedIn}
+          listStatus={listStatus}
+        />
+      );
+    case "list_saved":
+      return <ListSavedRow part={part} live={streaming} onUndo={onUndo} />;
+    case "sign_in":
+      // back from signing in, the titles are saved in a later message
+      return signedIn ? null : (
+        <SignInCard saves={part.saves} onSignIn={onSignIn} />
+      );
     default:
       part satisfies never;
       return null;
   }
 }
 
-// text, tool lines and cards in the order they arrived; memo: a finished
-// message keeps its parts, so streaming the next answer doesn't re-parse its
-// markdown
+// text, tool lines, cards, saves and sign-in cards in the order they
+// arrived; memo: a finished message keeps its parts, so streaming the next
+// answer doesn't re-parse its markdown
 export const MessageParts = memo(function MessageParts({
   parts,
   signedIn,
+  listStatus,
+  undoable,
+  messageId,
+  onUndo,
+  onSignIn,
 }: MessagePartsProps) {
   return (
     <div className="flex flex-col gap-1">
       {parts.map((part, i) => (
         // parts are only appended, so the index is stable
-        <MessagePartView key={i} part={part} signedIn={signedIn} />
+        <MessagePartView
+          key={i}
+          part={part}
+          signedIn={signedIn}
+          listStatus={listStatus}
+          streaming={messageId === undefined}
+          onUndo={
+            messageId !== undefined &&
+            onUndo &&
+            isListSaved(part) &&
+            undoable.has(part)
+              ? () => onUndo(messageId, i)
+              : undefined
+          }
+          onSignIn={onSignIn}
+        />
       ))}
     </div>
   );

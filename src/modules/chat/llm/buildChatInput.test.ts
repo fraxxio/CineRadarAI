@@ -38,4 +38,21 @@ describe("buildChatInput", () => {
       ]),
     ).toEqual([user("p1"), model("A"), user("p2"), model("B"), user("p3")]);
   });
+
+  test("a note with no stopped turns: the note, then the prompt", () => {
+    expect(buildChatInput("p1", [], "[List update: x]")).toEqual([
+      user("[List update: x]"),
+      user("p1"),
+    ]);
+  });
+
+  test("a note goes after the stopped turns, before the prompt", () => {
+    expect(
+      buildChatInput("p2", [{ prompt: "p1", partialText: "A" }], "[N]"),
+    ).toEqual([user("p1"), model("A"), user("[N]"), user("p2")]);
+  });
+
+  test("no note: unchanged", () => {
+    expect(buildChatInput("p2", [], undefined)).toBe("p2");
+  });
 });

@@ -1,4 +1,12 @@
 import type { MediaType } from "@/infra/tmdb";
+import type {
+  EntryKey,
+  ListStatus,
+  PreviousEntry,
+  SavedEntry,
+} from "@/modules/my-list";
+
+export type { PreviousEntry, SavedEntry };
 
 // newline-delimited JSON events streamed by POST /api/assistant
 export type ChatStreamEvent =
@@ -12,6 +20,11 @@ export type ChatStreamEvent =
   // a show_recommendations call finished; only the titles TMDB confirmed, in
   // the model's order
   | { type: "cards"; items: RecommendedTitle[] }
+  // a save_to_list call saved a title (or found it unchanged); `previous` is
+  // the row before, for Undo, null when the title was new
+  | { type: "list_saved"; entry: SavedEntry; previous: PreviousEntry | null }
+  // a save_to_list call of a signed-out user
+  | { type: "sign_in_required"; save: PendingSave }
   | { type: "done"; interactionId: string }
   | { type: "error" };
 
@@ -32,6 +45,17 @@ export type RecommendedTitle = {
   reason: string;
 };
 
+// a save that needs the user to sign in first
+export type PendingSave = {
+  type: MediaType;
+  id: number;
+  // TMDB's
+  title: string;
+  posterPath: string | null;
+  // null: "Planning to watch" for a new title, unchanged otherwise
+  status: ListStatus | null;
+};
+
 // a turn the user stopped mid-answer; the model hasn't seen it yet
 export type StoppedTurn = { prompt: string; partialText: string };
 
@@ -41,7 +65,14 @@ export type ChatRequest = {
   previousInteractionId?: string;
   // oldest first
   stoppedTurns?: StoppedTurn[];
+  // entries changed outside the model since the last turn; the server tells
+  // the model their state from the DB
+  listChanges?: EntryKey[];
 };
+
+// JSON body of a POST /api/assistant that failed before streaming; 409
+// "conversation_expired": Gemini no longer has previousInteractionId
+export type ChatErrorResponse = { error: string };
 
 export type TextPart = { type: "text"; text: string };
 
@@ -62,7 +93,23 @@ export type ToolPart = {
 
 export type CardsPart = { type: "cards"; items: RecommendedTitle[] };
 
-export type MessagePart = TextPart | ToolPart | CardsPart;
+export type ListSavedPart = {
+  type: "list_saved";
+  entry: SavedEntry;
+  previous: PreviousEntry | null;
+  // the user undid it from the chat
+  undone?: boolean;
+};
+
+// one per message: every sign_in_required of the answer goes in it
+export type SignInPart = { type: "sign_in"; saves: PendingSave[] };
+
+export type MessagePart =
+  | TextPart
+  | ToolPart
+  | CardsPart
+  | ListSavedPart
+  | SignInPart;
 
 export type ChatMessage = {
   id: string;

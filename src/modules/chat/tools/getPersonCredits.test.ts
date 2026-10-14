@@ -6,6 +6,7 @@ import {
   rawMovie,
   rawShow,
 } from "../testing/tmdbData";
+import { toolContext } from "../testing/toolContext";
 
 // fresh module per test: the genre list is cached at module level
 let getPersonCredits: typeof import("./getPersonCredits").getPersonCredits;
@@ -21,9 +22,10 @@ type Items = { results: Record<string, unknown>[] };
 
 // args as the registry passes them: parsed, defaults applied
 const run = async (args: object, signal = new AbortController().signal) =>
-  (await getPersonCredits.run(getPersonCredits.args.parse(args), {
-    signal,
-  })) as Items;
+  (await getPersonCredits.run(
+    getPersonCredits.args.parse(args),
+    toolContext(signal),
+  )) as Items;
 
 const credits = (cast: object[], crew: object[] = []) => ({
   id: 287,
