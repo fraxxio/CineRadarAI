@@ -11,7 +11,13 @@ import type { ChatStreamEvent, StoppedTurn } from "../protocol";
 import { CHAT_TOOLS, runToolCalls } from "../tools/registry";
 import { SAVE_TO_LIST } from "../tools/saveToList";
 import { SHOW_RECOMMENDATIONS } from "../tools/showRecommendations";
-import type { ChatUser, ToolCall, ToolResult } from "../tools/types";
+import type {
+  ChatUser,
+  ToolCall,
+  ToolContext,
+  ToolResult,
+} from "../tools/types";
+import { userList } from "../tools/userList";
 import { toFunctionResults, toGeminiTools } from "./geminiTools";
 import { listChangeNote } from "./listChangeNote";
 import { readRound, type RoundOutcome } from "./readRound";
@@ -172,20 +178,24 @@ export async function streamChatReply({
       { signal },
     );
 
-  const note = await listChangeNote(user, listChanges);
+  // one per turn: the note and the tools share its read
+  const { list, invalidate } = userList(user);
+  const note = await listChangeNote(list, listChanges);
   const first = await openRound({
     input: buildChatInput(prompt, stoppedTurns, note),
     previousInteractionId,
     toolChoice: FIRST_TOOL_CHOICE,
   });
-  return runTurn(first, openRound, { signal, user });
+  return runTurn(first, openRound, { signal, user, list }, invalidate);
 }
 
 // reads rounds and runs the requested tools until the model answers
 async function* runTurn(
   first: GeminiStream,
   openRound: (request: RoundRequest) => Promise<GeminiStream>,
-  ctx: { signal: AbortSignal; user: ChatUser },
+  ctx: ToolContext,
+  // drops the turn's list read
+  invalidateList: () => void,
 ): AsyncGenerator<ChatStreamEvent> {
   let stream = first;
   // the choice the request of the current round was sent with
@@ -234,6 +244,12 @@ async function* runTurn(
       ? outcome.calls.map(refused)
       : await runToolCalls(outcome.calls, ctx);
     const errors = results.filter((result) => result.isError).length;
+    // the next round's tools must see the saved status
+    if (
+      results.some((result) => result.name === SAVE_TO_LIST && !result.isError)
+    ) {
+      invalidateList();
+    }
     console.info(
       `Tool round ${round + 1}: ${names} (${Date.now() - started} ms, ${errors} errors)`,
     );

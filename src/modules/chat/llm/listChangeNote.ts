@@ -1,17 +1,8 @@
 // what the model learns of list changes it didn't make (Undo, saves after
 // sign-in): the client sends only their keys, the state comes from the DB
 import type { EntryKey, StoredEntry } from "@/modules/my-list";
-import { MAX_TITLE_LENGTH } from "@/shared/lib/titleKey";
-import { listServer } from "../listServer";
-import type { ChatUser } from "../tools/types";
-
-// names come from the add-to-list route, so they can be any text: keep them
-// on one line and from closing the note
-const clean = (value: string) =>
-  value
-    .replace(/[[\]\s]+/g, " ")
-    .trim()
-    .slice(0, MAX_TITLE_LENGTH);
+import { clean } from "../tools/shared";
+import type { ToolContext } from "../tools/types";
 
 const sameKey = (a: EntryKey, b: EntryKey) =>
   a.movieId === b.movieId && a.type === b.type;
@@ -38,18 +29,19 @@ export function formatListChangeNote(
   return `[List update: ${states.join("; ")}]`;
 }
 
-// undefined when there's nothing to tell, or the list can't be read: the
-// chat works without the note
+// undefined when there's nothing to tell, the user isn't signed in, or the
+// list can't be read: the chat works without the note. Reads through the
+// turn's list, so the tools reuse the read
 export async function listChangeNote(
-  user: ChatUser,
+  list: ToolContext["list"],
   keys: EntryKey[],
 ): Promise<string | undefined> {
-  if (user.status !== "signed_in" || keys.length === 0) {
+  if (keys.length === 0) {
     return undefined;
   }
   try {
-    const { getEntries } = await listServer();
-    return formatListChangeNote(keys, await getEntries(user.id));
+    const entries = await list();
+    return entries ? formatListChangeNote(keys, entries) : undefined;
   } catch (error) {
     console.error("Couldn't read the list for the list-change note:", error);
     return undefined;

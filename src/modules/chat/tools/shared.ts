@@ -1,6 +1,7 @@
 // args and result fields shared by the TMDB tools
 import { z } from "zod/v4";
 import type { Genre, MediaType, TitleHit } from "@/infra/tmdb";
+import { MAX_TITLE_LENGTH } from "@/shared/lib/titleKey";
 import { today } from "../date";
 
 export const mediaTypeArg = z
@@ -15,6 +16,14 @@ export const personIdArg = z
   .int()
   .min(1)
   .describe("TMDB person id from search_person results");
+
+// list names and statuses come from the add-to-list route, so they can be
+// any text: keep them on one line and from closing a bracketed note
+export const clean = (value: string) =>
+  value
+    .replace(/[[\]\s]+/g, " ")
+    .trim()
+    .slice(0, MAX_TITLE_LENGTH);
 
 // "" (no date) counts as not released
 export const isReleased = (releaseDate: string, asOf: string) =>

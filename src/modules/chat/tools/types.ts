@@ -1,5 +1,6 @@
 // tools the model can call during a chat turn; our own types, no Gemini types
 import type { ZodType } from "zod/v4";
+import type { StoredEntry } from "@/modules/my-list";
 import type { ChatStreamEvent } from "../protocol";
 
 // who the chat is for, read from the session by the route; never from the
@@ -14,6 +15,8 @@ export type ToolContext = {
   // aborted when the turn is stopped or the call times out
   signal: AbortSignal;
   user: ChatUser;
+  // the user's list, shared by the turn's calls (see userList.ts)
+  list(): Promise<StoredEntry[] | null>;
 };
 
 export type ChatTool<Args = unknown> = {

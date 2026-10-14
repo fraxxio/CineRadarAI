@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import type { EntryKey } from "@/modules/my-list";
 import { makeMovie } from "@test/helpers/factories";
+import type { ChatUser } from "../tools/types";
+import { userList } from "../tools/userList";
 import { formatListChangeNote, listChangeNote } from "./listChangeNote";
 
 const { getEntries } = vi.hoisted(() => ({ getEntries: vi.fn() }));
@@ -73,10 +76,13 @@ describe("formatListChangeNote", () => {
 
 describe("listChangeNote", () => {
   const signedIn = { status: "signed_in", id: "u1" } as const;
+  // through the turn's loader, as the chat reads it
+  const note = (user: ChatUser, keys: EntryKey[]) =>
+    listChangeNote(userList(user).list, keys);
 
   test("signed in: reads the session user's list", async () => {
     getEntries.mockResolvedValue([makeMovie({ movieId: 228150 })]);
-    expect(await listChangeNote(signedIn, [fury])).toBe(
+    expect(await note(signedIn, [fury])).toBe(
       "[List update: Fury (movie 228150) is Completed]",
     );
     expect(getEntries).toHaveBeenCalledWith("u1");
@@ -86,19 +92,19 @@ describe("listChangeNote", () => {
     { status: "signed_out" } as const,
     { status: "unavailable" } as const,
   ])("$status: no note, no DB read", async (user) => {
-    expect(await listChangeNote(user, [fury])).toBeUndefined();
+    expect(await note(user, [fury])).toBeUndefined();
     expect(getEntries).not.toHaveBeenCalled();
   });
 
   test("no keys: no DB read", async () => {
-    expect(await listChangeNote(signedIn, [])).toBeUndefined();
+    expect(await note(signedIn, [])).toBeUndefined();
     expect(getEntries).not.toHaveBeenCalled();
   });
 
   test("a DB error: no note, logged", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     getEntries.mockRejectedValue(new Error("db down"));
-    expect(await listChangeNote(signedIn, [fury])).toBeUndefined();
+    expect(await note(signedIn, [fury])).toBeUndefined();
     expect(error).toHaveBeenCalledWith(
       "Couldn't read the list for the list-change note:",
       expect.objectContaining({ message: "db down" }),
