@@ -3,7 +3,7 @@ import type { StoredEntry } from "@/modules/my-list";
 import { clean } from "./shared";
 import { ToolError, defineTool } from "./types";
 
-export const GET_MY_LIST = "get_my_list";
+const GET_MY_LIST = "get_my_list";
 
 // keeps a long list's result small; the best signals of taste go first
 export const MAX_LIST_TITLES = 50;

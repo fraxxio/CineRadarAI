@@ -17,7 +17,7 @@ and skip titles they've already watched or saved.
 | 2     | `get_my_list` tool                      | 1          | done        |
 | 3     | Mark lookup results with `inList`       | 1          | done        |
 | 4     | System prompt and thinking level        | 2, 3       | done        |
-| 5     | Route test, live check and final review | 4          | not started |
+| 5     | Route test, live check and final review | 4          | in progress |
 
 Statuses: `not started`, `in progress`, `done`, `blocked (<reason>)`.
 
@@ -567,7 +567,32 @@ goals against the real model.
 **Checks:** all test projects, `npx tsc --noEmit`,
 `npm run typecheck:tests`, lint and `npm run check:chat-tools`.
 
-**Notes:** _(fill in when done)_
+**Notes:**
+
+- **Route tests:** a `the user's list` block in `assistant.route.int.test.ts`
+  (inside `tool loop`, after `save_to_list`):
+  - "based on my list": a seeded list (one rated 9, one rated 3, one unrated
+    `Completed`, one `Planning to watch`), then `get_my_list` →
+    `get_recommendations` for the 9 → `show_recommendations`. It asserts the
+    exact `get_my_list` result order, the `inList: "Completed"` mark on the
+    listed recommendation (and none on the other), the event stream with the
+    cards, and the tool choices `auto, auto, auto, none`.
+  - signed out: `get_my_list` gets `{ signedIn: false, reason }` without
+    `is_error`, and the events have no `sign_in_required`.
+  - a save in the turn is seen by the next read: `get_my_list` (empty) →
+    `save_to_list` → `get_my_list` (has Fury). This is the end-to-end test of
+    phase 1's reset. With `invalidateList()` commented out in `runTurn`, this
+    test fails.
+- **Review of phases 1–5:** the old prompt line is gone (only the test that
+  checks it's gone mentions it). No dead code or stale comments turned up.
+  `GET_MY_LIST` was exported but only its own file used it, so it's no longer
+  exported. `UserList` stays exported as the return type of `userList()`.
+- **Checks:** unit, integration, components, tsc, typecheck:tests, lint and the
+  live `check:chat-tools` (gemini-3.5-flash-lite, thinking level `high`, all
+  11 tools with both tool choices) pass.
+- **Live manual check (step 3):** pending. The user runs it on the dev
+  environment. Record the results and any prompt tweaks here, then set the
+  phase to `done`.
 
 ---
 
@@ -587,3 +612,4 @@ _(one dated line per session: date, phase, what was done or what blocked it)_
 - 2026-10-14, phase 2: added the `get_my_list` tool, int tests and the prompt line naming it. Unit, integration, tsc, typecheck:tests, lint and `check:chat-tools --dry-run` pass. The user's live `check:chat-tools` run passed. Done.
 - 2026-10-14, phase 3: added `listStatuses` and the `inList` mark to the six lookup tools, with tests. Unit, integration, tsc, typecheck:tests, lint and `check:chat-tools --dry-run` pass. The user's live `check:chat-tools` run passed. Done.
 - 2026-10-14, phase 4: thinking level set to `high` via env only (user's choice); prompt rules for listed titles, "based on my list", dislikes, own ratings, signed out and empty list, with tests. Unit, integration, tsc, typecheck:tests, lint and live `check:chat-tools` pass. Done.
+- 2026-10-14, phase 5: added the route tests (based on my list, signed out, save then re-read) and reviewed phases 1–5 (`GET_MY_LIST` no longer exported). All test projects, tsc, typecheck:tests, lint and live `check:chat-tools` pass. The live chat check is pending (user, on dev), so the phase stays `in progress`.

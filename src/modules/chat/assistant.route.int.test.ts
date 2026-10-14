@@ -1478,6 +1478,223 @@ describe("POST /api/assistant", () => {
       });
     });
 
+    describe("the user's list", () => {
+      const listCall = (id: string): Call => ({
+        id,
+        name: "get_my_list",
+        args: {},
+      });
+      const reading = (id: string) => ({
+        type: "tool_start",
+        id,
+        name: "get_my_list",
+        text: "Reading your list...",
+      });
+      // a search item for rawMovie(id, { title })
+      const item = (id: number, title: string, extra: object = {}) => ({
+        id,
+        type: "movie",
+        title,
+        year: 2014,
+        rating: 7.5,
+        votes: 1234,
+        genres: ["War", "Drama"],
+        ...extra,
+      });
+
+      test("based on my list: the ordered list, recommendations for its top title with listed ones marked, then the cards", async () => {
+        const user = await seedUser();
+        await seedList(user.id, [
+          makeMovie({
+            movieId: 1,
+            name: "Planned",
+            status: "Planning to watch",
+          }),
+          makeMovie({ movieId: 228150, name: "Fury", rating: 9 }),
+          makeMovie({ movieId: 2, name: "Meh", rating: 3 }),
+          makeMovie({ movieId: 550, name: "Fight Club" }),
+        ]);
+        asUser(user);
+        tmdb({
+          "/3/movie/228150/recommendations": page([
+            rawMovie(550, { title: "Fight Club" }),
+            rawMovie(10),
+          ]),
+          "/3/movie/10": rawDetails(10),
+        });
+        rounds(
+          toolRound("i1", listCall("c1")),
+          toolRound("i2", {
+            id: "c2",
+            name: "get_recommendations",
+            args: { type: "movie", id: 228150 },
+          }),
+          toolRound("i3", showCall("c3", 10)),
+          answerRound("i4", "Like Fury."),
+        );
+
+        const { events } = await readNdjson(
+          await post({ content: "recommend something based on my list" }),
+        );
+
+        expect(results(1)).toEqual([
+          {
+            type: "function_result",
+            call_id: "c1",
+            name: "get_my_list",
+            result: {
+              total: 4,
+              omitted: 0,
+              titles: [
+                {
+                  type: "movie",
+                  id: 228150,
+                  title: "Fury",
+                  status: "Completed",
+                  rating: 9,
+                },
+                {
+                  type: "movie",
+                  id: 2,
+                  title: "Meh",
+                  status: "Completed",
+                  rating: 3,
+                },
+                {
+                  type: "movie",
+                  id: 550,
+                  title: "Fight Club",
+                  status: "Completed",
+                  rating: null,
+                },
+                {
+                  type: "movie",
+                  id: 1,
+                  title: "Planned",
+                  status: "Planning to watch",
+                  rating: null,
+                },
+              ],
+            },
+          },
+        ]);
+        expect(results(2)).toEqual([
+          {
+            type: "function_result",
+            call_id: "c2",
+            name: "get_recommendations",
+            result: {
+              results: [
+                item(550, "Fight Club", { inList: "Completed" }),
+                item(10, "Movie 10"),
+              ],
+            },
+          },
+        ]);
+        expect(events).toEqual([
+          { type: "start", interactionId: "i1" },
+          reading("c1"),
+          ended("c1"),
+          {
+            type: "tool_start",
+            id: "c2",
+            name: "get_recommendations",
+            text: "Finding recommendations...",
+          },
+          ended("c2"),
+          preparing("c3"),
+          ended("c3"),
+          {
+            type: "cards",
+            items: [
+              {
+                type: "movie",
+                id: 10,
+                title: "Movie 10",
+                year: 2014,
+                rating: 7.5,
+                genres: ["War", "Drama"],
+                posterPath: "/p.jpg",
+                backdropPath: "/b.jpg",
+                reason: "Reason 10.",
+              },
+            ],
+          },
+          { type: "delta", text: "Like Fury." },
+          { type: "done", interactionId: "i4" },
+        ]);
+        expect(toolChoices()).toEqual(["auto", "auto", "auto", "none"]);
+      });
+
+      test("signed out: a non-error result and no sign_in_required", async () => {
+        tmdb();
+        rounds(
+          toolRound("i1", listCall("c1")),
+          answerRound("i2", "Sign in to use your list."),
+        );
+
+        const { events } = await readNdjson(
+          await post({ content: "recommend something based on my list" }),
+        );
+
+        expect(results(1)).toEqual([
+          {
+            type: "function_result",
+            call_id: "c1",
+            name: "get_my_list",
+            result: {
+              signedIn: false,
+              reason: "The user isn't signed in, so their list can't be read.",
+            },
+          },
+        ]);
+        expect(events).toEqual([
+          { type: "start", interactionId: "i1" },
+          reading("c1"),
+          ended("c1"),
+          { type: "delta", text: "Sign in to use your list." },
+          { type: "done", interactionId: "i2" },
+        ]);
+      });
+
+      test("a save in the turn is seen by the next read of the list", async () => {
+        const user = await seedUser();
+        asUser(user);
+        tmdb({ "/3/movie/228150": FURY_DETAILS });
+        rounds(
+          toolRound("i1", listCall("c1")),
+          toolRound("i2", {
+            id: "c2",
+            name: "save_to_list",
+            args: { type: "movie", id: 228150, title: "Fury" },
+          }),
+          toolRound("i3", listCall("c3")),
+          answerRound("i4", "."),
+        );
+
+        await readNdjson(await post({ content: "add Fury, then my list" }));
+
+        expect(results(1)[0].result).toEqual({
+          total: 0,
+          omitted: 0,
+          titles: [],
+        });
+        expect(results(3)[0].result).toEqual({
+          total: 1,
+          omitted: 0,
+          titles: [
+            {
+              type: "movie",
+              id: 228150,
+              title: "Fury",
+              status: "Planning to watch",
+              rating: null,
+            },
+          ],
+        });
+      });
+    });
+
     test("invalid calls get is_error results and the loop goes on", async () => {
       const spy = tmdb();
       rounds(
