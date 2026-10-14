@@ -16,7 +16,7 @@ and skip titles they've already watched or saved.
 | 1     | Per-turn list loader                    | -          | done        |
 | 2     | `get_my_list` tool                      | 1          | done        |
 | 3     | Mark lookup results with `inList`       | 1          | done        |
-| 4     | System prompt and thinking level        | 2, 3       | not started |
+| 4     | System prompt and thinking level        | 2, 3       | done        |
 | 5     | Route test, live check and final review | 4          | not started |
 
 Statuses: `not started`, `in progress`, `done`, `blocked (<reason>)`.
@@ -166,6 +166,9 @@ Statuses: `not started`, `in progress`, `done`, `blocked (<reason>)`.
      short and explicit.
    - The exact level (`low`, `medium` or `high`) and whether to change the code
      default or only the env var aren't decided yet. Phase 4 asks the user.
+   - **Decided in phase 4:** `high`, set only through the env var
+     (`GEMINI_THINKING_LEVEL="high"` in `.env`, done by the user).
+     `DEFAULT_THINKING_LEVEL` in code stays `"minimal"`.
 10. **`where_to_watch` is out of scope** (separate ticket). The prompt rule
     "Don't claim a title is available on a specific streaming service" stays.
 
@@ -490,7 +493,41 @@ itself" is gone.
 **Checks:** as phase 1, plus `npm run check:chat-tools` (the prompt and
 possibly the thinking level changed).
 
-**Notes for later phases:** _(fill in when done)_
+**Notes for later phases:**
+
+- **Thinking level:** `high`, env only (see Decision 9). No code change; the
+  code default and the `CHAT_THINKING_LEVEL` tests still say `"minimal"`.
+  `.env.example` wasn't touched.
+- **Prompt changes** (`buildSystemInstruction`), all under `# Tools` unless
+  noted:
+  - a "Pick the tools" entry: `"Based on my list", "for me", "my taste" or
+    "what I like": get_my_list, then get_recommendations and get_similar in
+    parallel for its 2-3 highest-rated titles, preferring Completed ones.`
+    Then the unrated fallback and "Each reason names the list title it
+    relates to (e.g. "Like Fury, which you rated highly, ...")".
+  - a `get_my_list gives the user's own ratings (1-10):` bullet with three
+    sub-bullets: avoid titles similar to ones rated 1-4; `signedIn: false` →
+    one line asking to sign in, still general picks; empty list / no usable
+    titles → one line, general picks, suggest rating titles.
+  - the ratings rule now reads "Don't write years, TMDB ratings or genres in
+    text: the cards show them. You may mention the user's own ratings from
+    get_my_list."
+  - under `# Rules`, after "Don't repeat titles already recommended":
+    "Titles with inList are already in the user's list: don't recommend them
+    unless the user asks for them (e.g. a rewatch or "something from my
+    watchlist")."
+  - The list-question bullet from phase 2 ("answer it with get_my_list.") was
+    left as is.
+- **Test gotcha:** `chatConfig.test.ts`'s "every camelCase arg it names
+  exists" treats camelCase words as `discover_titles` args. `inList` and
+  `signedIn` are result fields, so they're exempted through a
+  `resultFields` list, and a new test checks that each one is named in some
+  tool description. Add any new camelCase result field the prompt names to
+  that list.
+- **Checks:** unit, integration, tsc, typecheck:tests, lint passed. The live
+  `npm run check:chat-tools` ran locally this time (the key is now in
+  `.env`) and passed: gemini-3.5-flash-lite at thinking level `high` accepted
+  all 11 tools with both tool choices.
 
 ---
 
@@ -549,3 +586,4 @@ _(one dated line per session: date, phase, what was done or what blocked it)_
 - 2026-10-14, phase 1: done. Added `userList` loader and `ToolContext.list`, wired into `streamChatReply`/`runTurn` (reset after a successful save), `listChangeNote` reads through it, moved `clean()` to `tools/shared.ts`. Unit, integration, tsc, typecheck:tests and lint pass.
 - 2026-10-14, phase 2: added the `get_my_list` tool, int tests and the prompt line naming it. Unit, integration, tsc, typecheck:tests, lint and `check:chat-tools --dry-run` pass. The user's live `check:chat-tools` run passed. Done.
 - 2026-10-14, phase 3: added `listStatuses` and the `inList` mark to the six lookup tools, with tests. Unit, integration, tsc, typecheck:tests, lint and `check:chat-tools --dry-run` pass. The user's live `check:chat-tools` run passed. Done.
+- 2026-10-14, phase 4: thinking level set to `high` via env only (user's choice); prompt rules for listed titles, "based on my list", dislikes, own ratings, signed out and empty list, with tests. Unit, integration, tsc, typecheck:tests, lint and live `check:chat-tools` pass. Done.

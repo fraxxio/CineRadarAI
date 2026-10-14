@@ -165,6 +165,46 @@ describe("list rules", () => {
     expect(prompt).not.toContain("You can't read the list itself");
   });
 
+  test("skips listed titles unless the user asks for them", () => {
+    expect(prompt).toContain(
+      "Titles with inList are already in the user's list: don't recommend them unless the user asks for them",
+    );
+  });
+
+  test('"based on my list" seeds from the top-rated titles', () => {
+    expect(prompt).toContain(
+      '"Based on my list", "for me", "my taste" or "what I like": get_my_list, then get_recommendations and get_similar in parallel for its 2-3 highest-rated titles, preferring Completed ones.',
+    );
+    expect(prompt).toContain(
+      "If none is rated, use Completed and Watching ones.",
+    );
+    expect(prompt).toContain("Each reason names the list title it relates to");
+  });
+
+  // the no-ratings rule is about TMDB's, which the cards show
+  test("allows the user's own ratings, not TMDB's", () => {
+    expect(prompt).toContain(
+      "Don't write years, TMDB ratings or genres in text: the cards show them.",
+    );
+    expect(prompt).toContain(
+      "You may mention the user's own ratings from get_my_list.",
+    );
+  });
+
+  test("avoids titles like the user's dislikes", () => {
+    expect(prompt).toContain("Avoid titles similar to ones they rated 1-4.");
+  });
+
+  test("signed out or empty list: one line, then general picks", () => {
+    expect(prompt).toContain(
+      "If it returns signedIn: false, ask the user in one short line to sign in to use their list, and still give general picks.",
+    );
+    expect(prompt).toContain(
+      "If the list is empty or has no rated, Completed or Watching titles, say so in one short line, give general picks",
+    );
+    expect(prompt).toContain("suggest rating titles");
+  });
+
   test("explains the list-change note", () => {
     expect(prompt).toContain(
       'Lines in brackets that start with "[List update:" are added by the app',
@@ -202,7 +242,17 @@ describe("prompt and tools stay in sync", () => {
   };
 
   // camelCase words in the prompt are arg names, unlike "sort" or "genres",
-  // which are also plain words
+  // which are also plain words, or these result fields
+  const resultFields = ["inList", "signedIn"];
+
+  test("every result field it names is in a tool description", () => {
+    const descriptions = CHAT_TOOLS.map((tool) => tool.description).join("\n");
+    for (const field of resultFields) {
+      expect(prompt).toContain(field);
+      expect(descriptions).toContain(field);
+    }
+  });
+
   test("every camelCase arg it names exists", () => {
     const named = new Set(prompt.match(/\b[a-z]+[A-Z]\w*\b/g));
     // guards the pattern: it must find the args the prompt names today
@@ -216,7 +266,9 @@ describe("prompt and tools stay in sync", () => {
       ]),
     );
     for (const arg of named) {
-      expect(discoverArgs).toHaveProperty(arg);
+      if (!resultFields.includes(arg)) {
+        expect(discoverArgs).toHaveProperty(arg);
+      }
     }
   });
 
