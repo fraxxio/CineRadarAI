@@ -14,7 +14,7 @@ and skip titles they've already watched or saved.
 | Phase | Title                                   | Depends on | Status      |
 | ----- | --------------------------------------- | ---------- | ----------- |
 | 1     | Per-turn list loader                    | -          | done        |
-| 2     | `get_my_list` tool                      | 1          | in progress |
+| 2     | `get_my_list` tool                      | 1          | done        |
 | 3     | Mark lookup results with `inList`       | 1          | not started |
 | 4     | System prompt and thinking level        | 2, 3       | not started |
 | 5     | Route test, live check and final review | 4          | not started |
@@ -338,8 +338,9 @@ especially whether Gemini accepted the empty `properties` object.
   rank `Completed`, `Watching`, `Planning to watch`, then any other status.
 - **Schema:** `toolParameters` gives `{ type: "object", properties: {} }`
   (snapshot in `registry.test.ts`), and the allowlist passes.
-  `check:chat-tools --dry-run` passes. The live run is still waiting on the
-  user, because `GEMINI_API_KEY` isn't set locally.
+  The live `check:chat-tools` run passed: gemini-3.5-flash-lite accepted all
+  11 schemas, including the empty `properties`, with both tool choices. The
+  user ran it, because `GEMINI_API_KEY` isn't set locally.
 - **Brought forward from phase 4:** `chatConfig.test.ts` ("names every tool")
   requires the prompt to name every tool, and the old line contradicted the
   new tool. So the list-question bullet now ends "answer it with
@@ -509,4 +510,4 @@ goals against the real model.
 _(one dated line per session: date, phase, what was done or what blocked it)_
 
 - 2026-10-14, phase 1: done. Added `userList` loader and `ToolContext.list`, wired into `streamChatReply`/`runTurn` (reset after a successful save), `listChangeNote` reads through it, moved `clean()` to `tools/shared.ts`. Unit, integration, tsc, typecheck:tests and lint pass.
-- 2026-10-14, phase 2: added the `get_my_list` tool, int tests and the prompt line naming it. Unit, integration, tsc, typecheck:tests, lint and `check:chat-tools --dry-run` pass. Waiting for the user's live `check:chat-tools` run before marking it done.
+- 2026-10-14, phase 2: added the `get_my_list` tool, int tests and the prompt line naming it. Unit, integration, tsc, typecheck:tests, lint and `check:chat-tools --dry-run` pass. The user's live `check:chat-tools` run passed. Done.
