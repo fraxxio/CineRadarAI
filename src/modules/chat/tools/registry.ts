@@ -12,7 +12,7 @@ import {
   SHOW_RECOMMENDATIONS,
   showRecommendations,
 } from "./showRecommendations";
-import { saveToList } from "./saveToList";
+import { SAVE_TO_LIST, saveToList } from "./saveToList";
 import {
   DisplayOutput,
   ToolError,
@@ -69,6 +69,7 @@ export async function runToolCalls(
   const firstShow = calls.findIndex(
     (call) => call.name === SHOW_RECOMMENDATIONS,
   );
+  const repeatedSaves = repeatedSaveIndexes(calls);
   const settled = await Promise.allSettled(
     calls.map((call, i) => {
       if (i >= MAX_CALLS_PER_ROUND) {
@@ -81,6 +82,12 @@ export async function runToolCalls(
         return rejected(
           call,
           `Call ${SHOW_RECOMMENDATIONS} once per answer, with every title`,
+        );
+      }
+      if (repeatedSaves.has(i)) {
+        return rejected(
+          call,
+          `This title is already saved by another ${SAVE_TO_LIST} call in this round: one call per title`,
         );
       }
       return runToolCall(call, ctx);
@@ -99,6 +106,30 @@ export async function runToolCalls(
     console.error(`Tool ${calls[i].name} failed:`, outcome.reason);
     return errorResult(calls[i], "Tool failed");
   });
+}
+
+// the save_to_list calls of a title that an earlier call of the round saves
+// too: the calls run in parallel, so each would read the row before the other
+// writes it, and both rows in the chat would offer an Undo of the same state
+function repeatedSaveIndexes(calls: ToolCall[]): Set<number> {
+  const titles = new Set<string>();
+  const repeated = new Set<number>();
+  calls.forEach((call, i) => {
+    if (call.name !== SAVE_TO_LIST) {
+      return;
+    }
+    // invalid args: the call is rejected when it runs
+    const args = parseArgs(saveToList, call.rawArgs);
+    if (!args.ok) {
+      return;
+    }
+    const title = `${args.value.type}-${args.value.id}`;
+    if (titles.has(title)) {
+      repeated.add(i);
+    }
+    titles.add(title);
+  });
+  return repeated;
 }
 
 async function runToolCall(
@@ -144,9 +175,14 @@ async function runToolCall(
   }
 }
 
-type ParsedArgs = { ok: true; value: unknown } | { ok: false; error: string };
+type ParsedArgs<Args> =
+  | { ok: true; value: Args }
+  | { ok: false; error: string };
 
-function parseArgs(tool: ChatTool, rawArgs: string | object): ParsedArgs {
+function parseArgs<Args>(
+  tool: ChatTool<Args>,
+  rawArgs: string | object,
+): ParsedArgs<Args> {
   let json: unknown = rawArgs;
   if (typeof rawArgs === "string") {
     try {
@@ -157,9 +193,11 @@ function parseArgs(tool: ChatTool, rawArgs: string | object): ParsedArgs {
   }
   // z.object drops unknown keys: a model repeating an old arg (e.g. the
   // former discover_titles `year`) would get an unfiltered list. Strict only
-  // here, so the schema the model sees stays the same.
-  const schema =
-    tool.args instanceof z.ZodObject ? tool.args.strict() : tool.args;
+  // here, so the schema the model sees stays the same; strict() doesn't
+  // change what the args parse to
+  const schema = (
+    tool.args instanceof z.ZodObject ? tool.args.strict() : tool.args
+  ) as z.ZodType<Args>;
   const parsed = schema.safeParse(json);
   if (parsed.success) {
     return { ok: true, value: parsed.data };

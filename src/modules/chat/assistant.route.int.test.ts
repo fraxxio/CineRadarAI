@@ -271,14 +271,14 @@ describe("POST /api/assistant", () => {
       expect(instruction()).toContain("The user is signed out.");
     });
 
-    test("an unreadable session counts as signed out", async () => {
+    test("an unreadable session: the prompt says neither", async () => {
       vi.spyOn(console, "error").mockImplementation(() => {});
       vi.mocked(auth as unknown as () => Promise<unknown>).mockRejectedValue(
         new Error("db down"),
       );
       create.mockResolvedValue(geminiEvents([]));
       await post({ content: "hi" });
-      expect(instruction()).toContain("The user is signed out.");
+      expect(instruction()).not.toMatch(/The user is signed (in|out)\./);
     });
   });
 

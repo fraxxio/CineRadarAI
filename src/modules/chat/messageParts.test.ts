@@ -11,6 +11,7 @@ import {
   partsToText,
   startTool,
   stopTools,
+  undoableSaves,
 } from "./messageParts";
 import type { MessagePart, RecommendedTitle, ToolPart } from "./protocol";
 import {
@@ -455,6 +456,61 @@ describe("listStatuses", () => {
 
   test("no saves: empty", () => {
     expect(listStatuses([[text("x")], []]).size).toBe(0);
+  });
+});
+
+describe("undoableSaves", () => {
+  const added = listSavedPart();
+  const moved = listSavedPart({ status: "Completed" }, previousEntry());
+
+  test("an add and a status change, of different titles", () => {
+    const dune = listSavedPart({ id: 438631, title: "Dune" });
+    expect(undoableSaves([[moved, text("x")], [dune]])).toEqual(
+      new Set([moved, dune]),
+    );
+  });
+
+  // undoing the add would delete the row the newer save changed, and the
+  // newer save's Undo would bring it back
+  test("only the newest save of a title, also across answers", () => {
+    const newer = listSavedPart(
+      { status: "Completed" },
+      previousEntry({ status: "Planning to watch" }),
+    );
+    expect(undoableSaves([[added], [text("x"), newer]])).toEqual(
+      new Set([newer]),
+    );
+  });
+
+  test("a TV show with the same id is another title", () => {
+    const show = listSavedPart({ type: "tv", title: "Fury (TV)" });
+    expect(undoableSaves([[added, show]])).toEqual(new Set([added, show]));
+  });
+
+  test("once the newest is undone, the one before it", () => {
+    const newer = listSavedPart(
+      { status: "Completed" },
+      previousEntry({ status: "Planning to watch" }),
+      true,
+    );
+    expect(undoableSaves([[added], [newer]])).toEqual(new Set([added]));
+  });
+
+  test("a newer save that changed nothing: none, it's the newest", () => {
+    const unchanged = listSavedPart(
+      { status: "Watching" },
+      previousEntry({ status: "Watching" }),
+    );
+    expect(undoableSaves([[added], [unchanged]]).size).toBe(0);
+  });
+
+  test("a change from a legacy status: none, the list doesn't take it", () => {
+    const fromLegacy = listSavedPart({}, previousEntry({ status: "Dropped" }));
+    expect(undoableSaves([[fromLegacy]]).size).toBe(0);
+  });
+
+  test("an undone save: none", () => {
+    expect(undoableSaves([[listSavedPart({}, null, true)]]).size).toBe(0);
   });
 });
 

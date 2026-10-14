@@ -12,17 +12,19 @@ import {
   loadChat,
   saveChat,
   type ChatSnapshot,
-  type PendingSaves,
 } from "./chatStorage";
+import { saveTitleRequest, undoRequest } from "./listApi";
 import {
   addCards,
   addListSaved,
   addSignIn,
   appendText,
   endTool,
+  isListSaved,
   partsToText,
   startTool,
   stopTools,
+  undoableSaves,
 } from "./messageParts";
 import type {
   ChatErrorResponse,
@@ -32,16 +34,10 @@ import type {
   ListSavedPart,
   MessagePart,
   PendingSave,
-  StoppedTurn,
 } from "./protocol";
 
 // expired: Gemini no longer has the conversation, the next send starts fresh
-export type ChatStatus =
-  | "idle"
-  | "loading"
-  | "streaming"
-  | "error"
-  | "expired";
+export type ChatStatus = "idle" | "loading" | "streaming" | "error" | "expired";
 
 type UseChatOptions = {
   // runs before each send (e.g. reCAPTCHA); resolve false to cancel the send
@@ -72,6 +68,17 @@ type Turn = {
   listSaved: boolean;
 };
 
+// everything kept with the messages (see SavedChat), in one object so a save
+// can't leave a field out
+type Conversation = Omit<ChatSnapshot, "messages"> & {
+  // entries changed outside the model (Undo, saves after sign-in, saves of a
+  // failed turn) since the last completed turn; the server tells the model
+  // their state
+  listChanges: EntryKey[];
+};
+
+const NEW_CONVERSATION: Conversation = { stoppedTurns: [], listChanges: [] };
+
 const MAX_MESSAGES = 10;
 // saves resumed after one sign-in
 const MAX_PENDING_SAVES = 10;
@@ -93,139 +100,113 @@ async function isExpiredResponse(response: Response): Promise<boolean> {
   }
 }
 
-type SaveResult = Pick<ListSavedPart, "entry" | "previous">;
-
-// saves a title the user asked for while signed out
-async function saveTitleRequest({
-  type,
-  id,
-  title,
-  status,
-}: PendingSave): Promise<SaveResult> {
-  const response = await fetch("/api/save-title", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type, id, title, status }),
-  });
-  if (!response.ok) {
-    throw new Error(`Save failed. (Status: ${response.status})`);
-  }
-  return response.json();
-}
-
 // the number in an "m12" id, 0 for any other id
 const idNumber = (id: string) => Number(/^m(\d+)$/.exec(id)?.[1] ?? 0);
 
 // a key changed again moves to the end as a new object: a completed turn
 // clears only the very objects it sent, so a change made while it ran stays
-function addListChange(changes: EntryKey[], key: EntryKey): EntryKey[] {
-  return [
-    ...changes.filter((c) => c.movieId !== key.movieId || c.type !== key.type),
-    { ...key },
-  ].slice(-MAX_LIST_CHANGES);
-}
-
-// puts the row back as it was before the save, through the list's own routes
-async function undoRequest({ entry, previous }: ListSavedPart) {
-  const response =
-    previous === null
-      ? await fetch("/api/remove-from-list", {
-          method: "DELETE",
-          headers: { movieId: String(entry.id), type: entry.type },
-        })
-      : await fetch("/api/add-to-list", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            movieId: entry.id,
-            title: previous.name,
-            image: previous.image,
-            status: previous.status,
-            // 0 is "not rated", which the route takes as ""
-            rating: previous.rating || "",
-            type: entry.type,
-          }),
-        });
-  // a DB error is a 200 with "fail"
-  const data = await response.json().catch(() => null);
-  if (!response.ok || data?.addToListResult !== "success") {
-    throw new Error(`Undo failed. (Status: ${response.status})`);
-  }
+function addListChanges(
+  changes: EntryKey[],
+  saves: Pick<ListSavedPart, "entry">[],
+): EntryKey[] {
+  return saves
+    .reduce(
+      (all, { entry }) => [
+        ...all.filter((c) => c.movieId !== entry.id || c.type !== entry.type),
+        { movieId: entry.id, type: entry.type },
+      ],
+      changes,
+    )
+    .slice(-MAX_LIST_CHANGES);
 }
 
 export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // the answer in flight: text, tool lines and cards in order
   const [streamingParts, setStreamingParts] = useState<MessagePart[]>([]);
+  // its saves: a new array only when one arrives, not on every delta
+  const [streamingSaves, setStreamingSaves] = useState<ListSavedPart[]>([]);
   const [status, setStatus] = useState<ChatStatus>("idle");
+  const [conversation, setConversation] = useState(NEW_CONVERSATION);
+  // the same, for the requests and for the saves that can't wait for a render
+  const conversationRef = useRef(conversation);
   const turnRef = useRef<Turn | null>(null);
-  // last completed turn, the next request continues from it
-  const interactionIdRef = useRef<string>();
-  // stopped since the last completed turn, the model hasn't seen them yet
-  const stoppedTurnsRef = useRef<StoppedTurn[]>([]);
-  // entries changed outside the model (Undo) since the last completed turn;
-  // the server tells the model their state
-  const listChangesRef = useRef<EntryKey[]>([]);
-  // the titles to save once the user is back from signing in
-  const pendingSavesRef = useRef<PendingSaves>();
   // the pending saves have been sent; strict mode runs effects twice
   const resumedRef = useRef(false);
   const messageCount = useRef(0);
   // the saved chat has been read; state, not a ref, so the effects of the
   // first render (run twice in strict mode) can't save over it
   const [restored, setRestored] = useState(false);
-  // the messages the restore set, already saved as they are
-  const restoredMessagesRef = useRef<ChatMessage[]>();
+  // what the restore set, already saved as it is
+  const restoredRef = useRef<{
+    messages: ChatMessage[];
+    conversation: Conversation;
+  }>();
   // the latest messages, for saving when the page goes away
   const messagesRef = useRef<ChatMessage[]>([]);
   const router = useRouter();
 
   const nextId = () => `m${++messageCount.current}`;
 
-  // what's saved besides the messages, read from the refs
-  const snapshot = (messages: ChatMessage[]): ChatSnapshot => ({
-    messages,
-    interactionId: interactionIdRef.current,
-    stoppedTurns: stoppedTurnsRef.current,
-    listChanges: listChangesRef.current,
-    pendingSaves: pendingSavesRef.current,
-  });
+  // the ref right away, the state (and so the saved chat) with the next render
+  const updateConversation = useCallback(
+    (update: (current: Conversation) => Conversation) => {
+      conversationRef.current = update(conversationRef.current);
+      setConversation(conversationRef.current);
+    },
+    [],
+  );
+
+  // for when no render follows (the page is going away), or the save can't
+  // wait for one
+  const saveChatNow = useCallback(
+    (messages: ChatMessage[]) =>
+      saveChat({ messages, ...conversationRef.current }),
+    [],
+  );
 
   // after mount, not during render: the server has no saved chat to render
   useEffect(() => {
     const saved = loadChat();
     if (saved) {
-      interactionIdRef.current = saved.interactionId;
-      stoppedTurnsRef.current = saved.stoppedTurns;
-      listChangesRef.current = saved.listChanges ?? [];
-      pendingSavesRef.current = saved.pendingSaves;
+      const { version: _, savedAt: __, messages: _messages, ...rest } = saved;
+      const restoredConversation = {
+        ...rest,
+        listChanges: rest.listChanges ?? [],
+      };
+      updateConversation(() => restoredConversation);
       // new ids continue after the restored ones, so keys don't collide
       messageCount.current = Math.max(
         0,
         ...saved.messages.map((m) => idNumber(m.id)),
       );
-      restoredMessagesRef.current = saved.messages;
+      restoredRef.current = {
+        messages: saved.messages,
+        conversation: restoredConversation,
+      };
       setMessages(saved.messages);
     }
     setRestored(true);
-  }, []);
+  }, [updateConversation]);
 
-  // the refs are written before the setMessages (or setStatus) of the same
-  // update, so this sees them; the answer in flight isn't saved
+  // saves every change; the answer in flight isn't saved
   useEffect(() => {
     messagesRef.current = messages;
+    const restoredChat = restoredRef.current;
     // saving the restored chat again would only extend its age
-    if (!restored || messages === restoredMessagesRef.current) {
+    if (
+      !restored ||
+      (messages === restoredChat?.messages &&
+        conversation === restoredChat.conversation)
+    ) {
       return;
     }
     if (messages.length === 0) {
       clearSavedChat();
       return;
     }
-    saveChat(snapshot(messages));
-    // snapshot only reads refs
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, status, restored]);
+    saveChat({ messages, ...conversation });
+  }, [messages, conversation, restored]);
 
   // leaving mid-answer counts as Stop; there's no later render to save it in,
   // so it's saved right away. pagehide: refresh, closing the tab, leaving the
@@ -244,63 +225,71 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
   // back from signing in with saves pending: run them once. Signed out, they
   // stay until they're too old (loadChat drops them): the user may have
   // cancelled the sign-in and try again
+  const pending = conversation.pendingSaves;
   useEffect(() => {
-    const pending = pendingSavesRef.current;
     if (!restored || !signedIn || !pending || resumedRef.current) {
       return;
     }
     resumedRef.current = true;
-    // gone from storage before any request, so a refresh can't save twice;
-    // the save effect above has set messagesRef
-    pendingSavesRef.current = undefined;
-    saveChat(snapshot(messagesRef.current));
+    // gone from storage before any request, so a refresh can't save twice
+    updateConversation((current) => ({ ...current, pendingSaves: undefined }));
+    saveChatNow(messages);
     void resumeSaves(pending.saves);
-    // snapshot and resumeSaves only use refs and state setters
+    // resumeSaves only uses refs and state setters
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restored, signedIn]);
+  }, [restored, signedIn, pending, messages, updateConversation, saveChatNow]);
 
   async function resumeSaves(saves: PendingSave[]) {
-    const results = await Promise.allSettled(saves.map(saveTitleRequest));
+    const sent = saves.slice(0, MAX_PENDING_SAVES);
+    const results = await Promise.allSettled(sent.map(saveTitleRequest));
     let parts: MessagePart[] = [];
     const failed: string[] = [];
     results.forEach((result, i) => {
       if (result.status === "fulfilled") {
         parts = addListSaved(parts, result.value);
-        // before setMessages, so the save effect stores it
-        listChangesRef.current = addListChange(listChangesRef.current, {
-          movieId: result.value.entry.id,
-          type: result.value.entry.type,
-        });
       } else {
         console.error("Couldn't save a title after sign-in:", result.reason);
-        failed.push(saves[i].title);
+        failed.push(sent[i].title);
       }
     });
+    // the rest aren't sent, so one sign-in makes a bounded number of requests
+    failed.push(...saves.slice(MAX_PENDING_SAVES).map((save) => save.title));
+    const saved = parts.filter(isListSaved);
     if (failed.length) {
       parts = appendText(
         parts,
         `Couldn't save ${failed.join(", ")} to your list. Ask me to add ${failed.length === 1 ? "it" : "them"} again.`,
       );
     }
+    updateConversation((current) => ({
+      ...current,
+      listChanges: addListChanges(current.listChanges, saved),
+    }));
     setMessages((prev) =>
       capped([...prev, { id: nextId(), role: "assistant", parts }]),
     );
-    if (failed.length < saves.length) {
+    if (saved.length) {
       router.refresh();
     }
   }
 
   // a sign-in button was clicked: the page is about to leave for the
   // provider, so it's saved right away
-  const startSignIn = useCallback<StartSignIn>((saves) => {
-    pendingSavesRef.current = {
-      saves: saves.slice(0, MAX_PENDING_SAVES),
-      since: Date.now(),
-    };
-    saveChat(snapshot(messagesRef.current));
-    // snapshot only reads refs
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const startSignIn = useCallback<StartSignIn>(
+    (saves) => {
+      updateConversation((current) => ({
+        ...current,
+        pendingSaves: { saves, since: Date.now() },
+      }));
+      saveChatNow(messagesRef.current);
+    },
+    [updateConversation, saveChatNow],
+  );
+
+  function clearStreaming() {
+    setStreamingParts([]);
+    setStreamingSaves([]);
+  }
 
   // resolves once the prompt is accepted (true) or cancelled before sending
   // (false); the answer keeps streaming after that
@@ -322,7 +311,7 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
     turnRef.current = turn;
 
     // set before beforeSend so the loader shows during verification
-    setStreamingParts([]);
+    clearStreaming();
     setStatus("loading");
 
     if (beforeSend) {
@@ -351,16 +340,15 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
   async function streamReply(turn: Turn, isCurrent: () => boolean) {
     const { signal } = turn.controller;
     let newInteractionId = "";
-    const sentListChanges = listChangesRef.current;
+    const { interactionId, stoppedTurns, listChanges } =
+      conversationRef.current;
 
     try {
       const request: ChatRequest = {
         content: turn.prompt,
-        previousInteractionId: interactionIdRef.current,
-        stoppedTurns: stoppedTurnsRef.current.length
-          ? stoppedTurnsRef.current
-          : undefined,
-        listChanges: sentListChanges.length ? sentListChanges : undefined,
+        previousInteractionId: interactionId,
+        stoppedTurns: stoppedTurns.length ? stoppedTurns : undefined,
+        listChanges: listChanges.length ? listChanges : undefined,
       };
       // post new message to server and stream Gemini response
       const response = await fetch("/api/assistant", {
@@ -415,6 +403,7 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
             turn.parts = addListSaved(turn.parts, serverEvent);
             turn.listSaved = true;
             setStreamingParts(turn.parts);
+            setStreamingSaves(turn.parts.filter(isListSaved));
             break;
           case "sign_in_required":
             turn.parts = addSignIn(turn.parts, serverEvent.save);
@@ -463,13 +452,16 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
         throw new Error("Chat stream ended unexpectedly.");
       }
 
-      interactionIdRef.current = newInteractionId;
       // the model has now seen the stopped turns and the list changes as part
       // of this interaction
-      stoppedTurnsRef.current = [];
-      listChangesRef.current = listChangesRef.current.filter(
-        (change) => !sentListChanges.includes(change),
-      );
+      updateConversation((current) => ({
+        ...current,
+        interactionId: newInteractionId,
+        stoppedTurns: [],
+        listChanges: current.listChanges.filter(
+          (change) => !listChanges.includes(change),
+        ),
+      }));
       // every call has ended by now; stopTools only guards against a line
       // that would spin forever in the history
       const parts = stopTools(turn.parts, Date.now());
@@ -492,13 +484,29 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
       // turn was never created (e.g. expired interaction or rejected stopped
       // turns), start a new conversation next time
       if (!newInteractionId) {
-        interactionIdRef.current = undefined;
-        stoppedTurnsRef.current = [];
+        updateConversation((current) => ({
+          ...current,
+          interactionId: undefined,
+          stoppedTurns: [],
+        }));
+      }
+      // the rest of the answer is dropped, but its saves were made: they stay
+      // with their Undo, and the next request tells the model, which never
+      // saw this turn
+      const saves = turn.parts.filter(isListSaved);
+      if (saves.length) {
+        updateConversation((current) => ({
+          ...current,
+          listChanges: addListChanges(current.listChanges, saves),
+        }));
+        setMessages((prev) =>
+          capped([...prev, { id: nextId(), role: "assistant", parts: saves }]),
+        );
       }
     }
 
     turnRef.current = null;
-    setStreamingParts([]);
+    clearStreaming();
     refreshIfSaved(turn);
   }
 
@@ -530,13 +538,16 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
       // don't continue from the stopped interaction: its state on Google's side
       // is unreliable, so interactionId stays on the last completed turn
       // keep the newest ones so the request stays within the server limit
-      stoppedTurnsRef.current = [
-        ...stoppedTurnsRef.current,
-        {
-          prompt: turn.prompt,
-          partialText: partsToText(parts).slice(0, MAX_STOPPED_TEXT_LENGTH),
-        },
-      ].slice(-MAX_STOPPED_TURNS);
+      updateConversation((current) => ({
+        ...current,
+        stoppedTurns: [
+          ...current.stoppedTurns,
+          {
+            prompt: turn.prompt,
+            partialText: partsToText(parts).slice(0, MAX_STOPPED_TEXT_LENGTH),
+          },
+        ].slice(-MAX_STOPPED_TURNS),
+      }));
       const message: ChatMessage = {
         id: nextId(),
         role: "assistant",
@@ -545,10 +556,10 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
       };
       setMessages((prev) => capped([...prev, message]));
       if (saveNow) {
-        saveChat(snapshot(capped([...messagesRef.current, message])));
+        saveChatNow(capped([...messagesRef.current, message]));
       }
     }
-    setStreamingParts([]);
+    clearStreaming();
     setStatus("idle");
     // the page is going away, the next one loads fresh data
     if (!saveNow) {
@@ -569,17 +580,25 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
       if (part.undone) {
         return true;
       }
+      // a newer save of the title, also one in the answer in flight, would be
+      // overwritten
+      const answers = [
+        ...messagesRef.current.map((m) => m.parts),
+        turnRef.current?.parts ?? [],
+      ];
+      if (!undoableSaves(answers).has(part)) {
+        return false;
+      }
       try {
         await undoRequest(part);
       } catch (error) {
         console.error("Couldn't undo the list save:", error);
         return false;
       }
-      // before setMessages, so the save effect stores it
-      listChangesRef.current = addListChange(listChangesRef.current, {
-        movieId: part.entry.id,
-        type: part.entry.type,
-      });
+      updateConversation((current) => ({
+        ...current,
+        listChanges: addListChanges(current.listChanges, [part]),
+      }));
       setMessages((prev) =>
         prev.map((m) =>
           m.id === messageId
@@ -597,7 +616,7 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
       router.refresh();
       return true;
     },
-    [router],
+    [router, updateConversation],
   );
 
   // starts a fresh conversation
@@ -605,13 +624,10 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
     const turn = turnRef.current;
     turn?.controller.abort();
     turnRef.current = null;
-    interactionIdRef.current = undefined;
-    stoppedTurnsRef.current = [];
-    listChangesRef.current = [];
-    pendingSavesRef.current = undefined;
+    updateConversation(() => NEW_CONVERSATION);
     clearSavedChat();
     setMessages([]);
-    setStreamingParts([]);
+    clearStreaming();
     setStatus("idle");
     if (turn) {
       refreshIfSaved(turn);
@@ -621,6 +637,7 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
   return {
     messages,
     streamingParts,
+    streamingSaves,
     status,
     send,
     stop,

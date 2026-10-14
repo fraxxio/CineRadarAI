@@ -1,13 +1,9 @@
 // what the model learns of list changes it didn't make (Undo, saves after
 // sign-in): the client sends only their keys, the state comes from the DB
 import type { EntryKey, StoredEntry } from "@/modules/my-list";
+import { MAX_TITLE_LENGTH } from "@/shared/lib/titleKey";
+import { listServer } from "../listServer";
 import type { ChatUser } from "../tools/types";
-
-// loaded only when there are changes: the list's server code needs the DB
-// client and React's cache, which scripts/check-chat-tools.ts can't load
-const listServer = () => import("@/modules/my-list/server");
-
-const MAX_NAME_LENGTH = 300;
 
 // names come from the add-to-list route, so they can be any text: keep them
 // on one line and from closing the note
@@ -15,7 +11,7 @@ const clean = (value: string) =>
   value
     .replace(/[[\]\s]+/g, " ")
     .trim()
-    .slice(0, MAX_NAME_LENGTH);
+    .slice(0, MAX_TITLE_LENGTH);
 
 const sameKey = (a: EntryKey, b: EntryKey) =>
   a.movieId === b.movieId && a.type === b.type;

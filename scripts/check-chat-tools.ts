@@ -51,7 +51,7 @@ async function main(): Promise<number> {
   console.log(`Model: ${CHAT_MODEL}, thinking level: ${CHAT_THINKING_LEVEL}`);
   console.log(`Tools (${CHAT_TOOLS.length}): ${names}`);
   // the prompts differ in one line, the schemas not at all
-  const request = baseRequest({ signedIn: false });
+  const request = baseRequest({ userStatus: "signed_out" });
 
   if (dryRun) {
     console.log("Dry run: no request sent");

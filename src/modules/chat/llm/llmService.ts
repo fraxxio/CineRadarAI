@@ -61,12 +61,16 @@ export function buildChatInput(
 
 // the fields every round sends; scripts/check-chat-tools.ts sends them too,
 // so the live check can't drift from the app's request
-export function baseRequest({ signedIn }: { signedIn: boolean }) {
+export function baseRequest({
+  userStatus,
+}: {
+  userStatus: ChatUser["status"];
+}) {
   return {
     model: CHAT_MODEL,
     // interaction-scoped: must be resent every round
     tools: toGeminiTools(CHAT_TOOLS),
-    system_instruction: buildSystemInstruction(new Date(), { signedIn }),
+    system_instruction: buildSystemInstruction(new Date(), { userStatus }),
     generation_config: { thinking_level: CHAT_THINKING_LEVEL },
   };
 }
@@ -150,8 +154,7 @@ export async function streamChatReply({
   listChanges,
 }: ChatReplyParams): Promise<AsyncIterable<ChatStreamEvent>> {
   const ai = geminiClient();
-  // unavailable counts as signed out; the tools answer it with their own error
-  const base = baseRequest({ signedIn: user.status === "signed_in" });
+  const base = baseRequest({ userStatus: user.status });
 
   // every round is a new interaction continuing the previous one
   const openRound = (request: RoundRequest): Promise<GeminiStream> =>

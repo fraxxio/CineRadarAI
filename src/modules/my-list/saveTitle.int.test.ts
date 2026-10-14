@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { db } from "@/infra/db";
 import { TmdbError } from "@/infra/tmdb/server";
 import { SaveTitleError, saveTitle } from "./saveTitle";
 import { getMovies, seedList, seedUser } from "@test/helpers/db";
@@ -127,13 +126,12 @@ describe("saveTitle", () => {
       rating: 9,
     });
     await seedList(user.id, [stored]);
-    const insert = vi.spyOn(db, "insert");
 
     const result = await saveTitle(user.id, dune());
 
-    expect(insert).not.toHaveBeenCalled();
     expect(result.entry.status).toBe("Watching");
     expect(result.previous).toMatchObject({ status: "Watching", rating: 9 });
+    // a write would have set Planning to watch
     expect(await getMovies(user.id)).toEqual([stored]);
   });
 

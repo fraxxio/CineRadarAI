@@ -30,6 +30,7 @@ let user: Awaited<ReturnType<typeof seedUser>>;
 let base: Record<string, unknown>;
 
 beforeEach(async () => {
+  vi.stubEnv("AI_CHAT_ENABLED", "true");
   user = await seedUser();
   asUser(user);
   mockTmdb({ "/3/movie/228150": FURY });
@@ -38,6 +39,20 @@ beforeEach(async () => {
 
 // what a save writes is covered by saveTitle.int.test.ts
 describe("PUT /api/save-title", () => {
+  it.each(["", "false", "TRUE"])(
+    "returns 503 when AI_CHAT_ENABLED is %j, without TMDB",
+    async (value) => {
+      vi.stubEnv("AI_CHAT_ENABLED", value);
+      const tmdb = mockTmdb({ "/3/movie/228150": FURY });
+
+      const res = await put(base);
+
+      expect(res.status).toBe(503);
+      expect(tmdb).not.toHaveBeenCalled();
+      expect(await getMovies(user.id)).toEqual([]);
+    },
+  );
+
   test("saves a new title and answers like the chat's list_saved event", async () => {
     const res = await put(base);
 

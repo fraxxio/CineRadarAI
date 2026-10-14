@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { MediaType } from "@/infra/tmdb";
+import { MAX_TITLE_LENGTH } from "@/shared/lib/titleKey";
 import { LIST_STATUSES, type ListEntry, type ListStatus } from "./entry";
 
 // apart from entry.ts, so client components that need LIST_STATUSES don't ship zod
@@ -22,7 +23,7 @@ export const titleToSaveInput = z
   .object({
     type: z.enum(MEDIA_TYPES),
     id: z.number().int().positive(),
-    title: z.string().min(1).max(300),
+    title: z.string().min(1).max(MAX_TITLE_LENGTH),
     status: z.enum(statusValues).nullable(),
   })
   .transform(({ status, ...title }) => ({

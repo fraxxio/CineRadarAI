@@ -94,13 +94,27 @@ describe("ListSavedRow", () => {
     expect(undoBtn()).toBeNull();
   });
 
-  test("nothing changed: no Undo", () => {
-    renderRow(listSavedPart({ status: "Watching" }, previousEntry()));
+  // which saves offer Undo is undoableSaves' call
+  test("without onUndo: no button", () => {
+    render(<ListSavedRow part={listSavedPart()} />);
     expect(undoBtn()).toBeNull();
+    expect(screen.queryByText("Undone")).toBeNull();
   });
 
-  test("streaming: no Undo yet, and the row is announced", () => {
-    const { container } = render(<ListSavedRow part={listSavedPart()} />);
+  test("nothing changed: no check mark", () => {
+    const { container, rerender } = render(
+      <ListSavedRow
+        part={listSavedPart({ status: "Watching" }, previousEntry())}
+      />,
+    );
+    expect(container.querySelector("svg")).toBeNull();
+
+    rerender(<ListSavedRow part={listSavedPart()} />);
+    expect(container.querySelector("svg")).not.toBeNull();
+  });
+
+  test("streaming: the row is announced", () => {
+    const { container } = render(<ListSavedRow part={listSavedPart()} live />);
     expect(undoBtn()).toBeNull();
     expect(container.firstChild).toHaveAttribute("aria-live", "polite");
   });

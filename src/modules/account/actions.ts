@@ -6,6 +6,7 @@ import { users } from "@/infra/db/schema/users";
 import { safeRedirect } from "@/shared/lib/safeRedirect";
 import { eq } from "drizzle-orm/sqlite-core/expressions";
 import { redirect } from "next/navigation";
+import { DELETE_CONFIRMATION } from "./deleteConfirmation";
 
 const PROVIDERS = ["google", "github"];
 
@@ -33,7 +34,7 @@ export async function DeleteUser(formData: FormData) {
     return null;
   }
 
-  if (formData.get("verifyInput") === "Delete account") {
+  if (formData.get("verifyInput") === DELETE_CONFIRMATION) {
     try {
       // one statement, so it's atomic: their accounts, sessions and list
       // entries go with the user row (on delete cascade)

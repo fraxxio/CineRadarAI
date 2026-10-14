@@ -8,11 +8,7 @@ import { useChat } from "./useChat";
 import { useRecaptchaCheck } from "@/infra/recaptcha/useRecaptchaCheck";
 import { MAX_PROMPT_LENGTH } from "./chatLimits";
 import { LOADER_WORDS } from "./loaderWords";
-import {
-  isWaitingForModel,
-  listStatuses,
-  type ListStatuses,
-} from "./messageParts";
+import { isWaitingForModel, listStatuses, undoableSaves } from "./messageParts";
 import type { ChatMessage } from "./protocol";
 import { shuffle } from "@/shared/lib/shuffle";
 
@@ -31,6 +27,7 @@ export default function ChatAssistant({
   const {
     messages,
     streamingParts,
+    streamingSaves,
     status,
     send,
     stop,
@@ -48,15 +45,16 @@ export default function ChatAssistant({
   // nothing has arrived yet, or the model is working on its next round after
   // the tools or the cards; a running tool line has its own spinner
   const showLoader = isWaitingForModel(streamingParts);
-  // the cards' list badges; a new map only when a save or Undo changes it,
-  // not on every streamed delta, so the memoized messages don't re-render
-  const listStatusKey = JSON.stringify(
-    Array.from(listStatuses([...messages.map((m) => m.parts), streamingParts])),
+  // the saves of every answer, the streaming one's too; recomputed when a
+  // message, a save or an Undo arrives, not on every streamed delta, so the
+  // memoized messages don't re-render
+  const answers = useMemo(
+    () => [...messages.map((m) => m.parts), streamingSaves],
+    [messages, streamingSaves],
   );
-  const listStatus = useMemo<ListStatuses>(
-    () => new Map(JSON.parse(listStatusKey)),
-    [listStatusKey],
-  );
+  // the cards' list badges
+  const listStatus = useMemo(() => listStatuses(answers), [answers]);
+  const undoable = useMemo(() => undoableSaves(answers), [answers]);
 
   const assistantText = (text: string): Omit<ChatMessage, "id"> => ({
     role: "assistant",
@@ -104,6 +102,7 @@ export default function ChatAssistant({
               message={m}
               signedIn={signedIn}
               listStatus={listStatus}
+              undoable={undoable}
               onUndo={undoSave}
               onSignIn={startSignIn}
             />

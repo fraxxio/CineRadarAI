@@ -1,19 +1,15 @@
 import { z } from "zod/v4";
 import type { ListStatus } from "@/modules/my-list";
+import { MAX_TITLE_LENGTH } from "@/shared/lib/titleKey";
+import { listServer, type ListServer } from "../listServer";
 import { mediaTypeArg } from "./shared";
 import { DisplayOutput, ToolError, defineTool } from "./types";
 
 export const SAVE_TO_LIST = "save_to_list";
-const MAX_TITLE_LENGTH = 300;
 
-// loaded when a save runs, not with the schema: the list's server code needs
-// the DB client and React's cache, which scripts/check-chat-tools.ts can't
-// load (and LIST_STATUSES comes only through it or the components)
-const listServer = () => import("@/modules/my-list/server");
-type ListServer = Awaited<ReturnType<typeof listServer>>;
-
-// LIST_STATUSES' values, in its order; an extra value fails `satisfies`, a
-// missing one the check below
+// LIST_STATUSES' values, in its order: it comes only through the list's
+// barrel, whose components scripts/check-chat-tools.ts can't load. An extra
+// value fails `satisfies`, a missing one the check below
 const STATUSES = [
   "Planning to watch",
   "Completed",

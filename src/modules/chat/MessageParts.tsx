@@ -2,8 +2,8 @@ import { memo } from "react";
 import Markdown, { Components } from "react-markdown";
 import Link from "next/link";
 import { ListSavedRow } from "./ListSavedRow";
-import type { ListStatuses } from "./messageParts";
-import type { MessagePart } from "./protocol";
+import { isListSaved, type ListStatuses } from "./messageParts";
+import type { ListSavedPart, MessagePart } from "./protocol";
 import { RecommendationCards } from "./RecommendationCards";
 import { SignInCard } from "./SignInCard";
 import { ToolCallLine } from "./ToolCallLine";
@@ -14,6 +14,8 @@ type MessagePartsProps = {
   signedIn: boolean;
   // for the cards' list badges
   listStatus: ListStatuses;
+  // the saves that offer Undo, from undoableSaves
+  undoable: ReadonlySet<ListSavedPart>;
   // both set on finished messages only: the streaming answer has no Undo
   messageId?: string;
   onUndo?: UndoSave;
@@ -39,12 +41,14 @@ function MessagePartView({
   part,
   signedIn,
   listStatus,
+  streaming,
   onUndo,
   onSignIn,
 }: {
   part: MessagePart;
   signedIn: boolean;
   listStatus: ListStatuses;
+  streaming: boolean;
   onUndo?: () => Promise<boolean>;
   onSignIn: StartSignIn;
 }) {
@@ -66,7 +70,7 @@ function MessagePartView({
         />
       );
     case "list_saved":
-      return <ListSavedRow part={part} onUndo={onUndo} />;
+      return <ListSavedRow part={part} live={streaming} onUndo={onUndo} />;
     case "sign_in":
       // back from signing in, the titles are saved in a later message
       return signedIn ? null : (
@@ -85,6 +89,7 @@ export const MessageParts = memo(function MessageParts({
   parts,
   signedIn,
   listStatus,
+  undoable,
   messageId,
   onUndo,
   onSignIn,
@@ -98,8 +103,12 @@ export const MessageParts = memo(function MessageParts({
           part={part}
           signedIn={signedIn}
           listStatus={listStatus}
+          streaming={messageId === undefined}
           onUndo={
-            messageId !== undefined && onUndo
+            messageId !== undefined &&
+            onUndo &&
+            isListSaved(part) &&
+            undoable.has(part)
               ? () => onUndo(messageId, i)
               : undefined
           }

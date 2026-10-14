@@ -1138,7 +1138,7 @@ describe("ChatAssistant", () => {
 
     it.each([
       [
-        "a legacy status (400)",
+        "a rejected request (400)",
         () => Response.json({ addToListResult: "fail" }, { status: 400 }),
       ],
       [
@@ -1147,7 +1147,7 @@ describe("ChatAssistant", () => {
       ],
     ])("a failed Undo: %s -> toast, the save stays", async (_, reply) => {
       vi.spyOn(console, "error").mockImplementation(() => {});
-      const part = listSavedPart({}, previousEntry({ status: "Dropped" }));
+      const part = listSavedPart({ status: "Completed" }, previousEntry());
       const { bodies } = routeFetch({
         "/api/assistant": [saveTurn("i1", saved(part)), answer("i2", "a2")],
         "/api/add-to-list": [reply()],
@@ -1172,6 +1172,132 @@ describe("ChatAssistant", () => {
       await send("p2");
       await settled();
       expect(bodies("/api/assistant")[1]).not.toHaveProperty("listChanges");
+    });
+
+    // the list no longer takes a legacy status, so Undo couldn't put it back
+    test("a save over a legacy status offers no Undo", async () => {
+      const part = listSavedPart({}, previousEntry({ status: "Dropped" }));
+      routeFetch({ "/api/assistant": [saveTurn("i1", saved(part))] });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+      await settled();
+
+      expect(
+        screen.getByText("Moved to Planning to watch (was Dropped)"),
+      ).toBeInTheDocument();
+      expect(undoBtn()).toBeNull();
+    });
+
+    describe("two saves of a title", () => {
+      const completed = listSavedPart(
+        { status: "Completed" },
+        previousEntry({ status: "Planning to watch" }),
+      );
+      const MOVED = "Moved to Completed (was Planning to watch)";
+
+      // undoing the add first would delete the row, and the newer save's Undo
+      // would bring it back
+      test("only the newest offers Undo, then the one before it", async () => {
+        const { calls, bodies } = routeFetch({
+          "/api/assistant": [
+            saveTurn("i1", saved(listSavedPart())),
+            saveTurn("i2", saved(completed)),
+          ],
+          "/api/add-to-list": [success()],
+          "/api/remove-from-list": [success()],
+        });
+        const listCalls = () =>
+          calls.map((c) => c.url).filter((url) => url !== "/api/assistant");
+        renderChat({ signedIn: true });
+        await send("add Fury");
+        await settled();
+        await send("mark it completed");
+        await settled();
+
+        // one button (queryByRole throws on more), the newer save's
+        await user.click(undoBtn()!);
+        await screen.findByText("Undone");
+        expect(listCalls()).toEqual(["/api/add-to-list"]);
+        expect(bodies("/api/add-to-list")[0]).toMatchObject({
+          status: "Planning to watch",
+        });
+
+        await user.click(undoBtn()!);
+        await waitFor(() =>
+          expect(screen.getAllByText("Undone")).toHaveLength(2),
+        );
+        expect(listCalls()).toEqual([
+          "/api/add-to-list",
+          "/api/remove-from-list",
+        ]);
+        expect(undoBtn()).toBeNull();
+      });
+
+      test("a newer save streaming in hides the older one's Undo", async () => {
+        const second = controlledStream();
+        routeFetch({
+          "/api/assistant": [
+            saveTurn("i1", saved(listSavedPart())),
+            second.response,
+          ],
+        });
+        renderChat({ signedIn: true });
+        await send("add Fury");
+        await settled();
+        expect(undoBtn()).toBeEnabled();
+
+        await send("mark it completed");
+        second.push(
+          ndjson(start("i2"), saveStart("t1"), toolEnd("t1"), saved(completed)),
+        );
+        await screen.findByText(MOVED);
+        expect(undoBtn()).toBeNull();
+
+        second.push(ndjson(delta("Done."), done("i2")));
+        second.close();
+        await settled();
+        expect(undoBtn()).toBeEnabled();
+      });
+    });
+
+    test("an error after a save keeps the save with its Undo and tells the model", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const { bodies } = routeFetch({
+        "/api/assistant": [
+          streamResponse([
+            ndjson(
+              start("i1"),
+              saveStart("t1"),
+              toolEnd("t1"),
+              saved(listSavedPart()),
+              delta("Lost line."),
+              { type: "error" },
+            ),
+          ]),
+          answer("i2", "a2"),
+        ],
+      });
+      renderChat({ signedIn: true });
+      await send("add Fury");
+
+      const error = await screen.findByText(ERROR_TEXT);
+      await settled();
+      const row = screen.getByText("Added to your list · Planning to watch");
+      expect(
+        row.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(undoBtn()).toBeEnabled();
+      expect(screen.queryByText("Lost line.")).toBeNull();
+      expect(useRouter().refresh).toHaveBeenCalledOnce();
+      await waitFor(() => expect(loadChat()?.listChanges).toEqual([FURY_KEY]));
+
+      // the failed turn never completed: the model only learns of it this way
+      await send("is it in my list?");
+      await settled();
+      expect(bodies("/api/assistant")[1]).toEqual({
+        content: "is it in my list?",
+        listChanges: [FURY_KEY],
+      });
     });
 
     test("list changes are kept after a failed turn", async () => {
@@ -1551,6 +1677,40 @@ describe("ChatAssistant", () => {
           ),
         ).toBeInTheDocument();
         expect(useRouter().refresh).not.toHaveBeenCalled();
+      });
+
+      test("at most 10 per sign-in: the rest are named as not saved", async () => {
+        const saves = Array.from({ length: 12 }, (_, i) =>
+          pendingSave({ id: i + 1, title: `Title ${i + 1}` }),
+        );
+        saveChat({
+          messages: [
+            { id: "m1", role: "user", parts: [{ type: "text", text: "add" }] },
+            {
+              id: "m2",
+              role: "assistant",
+              parts: [{ type: "sign_in", saves }],
+            },
+          ],
+          stoppedTurns: [],
+          pendingSaves: { saves, since: Date.now() },
+        });
+        const { calls } = routeFetch({
+          "/api/save-title": saves
+            .slice(0, 10)
+            .map(({ id, title }) => savedReply({ id, title })),
+        });
+        renderChat({ signedIn: true });
+
+        expect(
+          await screen.findByText(
+            "Couldn't save Title 11, Title 12 to your list. Ask me to add them again.",
+          ),
+        ).toBeInTheDocument();
+        expect(screen.getAllByText(ADDED)).toHaveLength(10);
+        expect(calls.filter((c) => c.url === "/api/save-title")).toHaveLength(
+          10,
+        );
       });
 
       test("still signed out (e.g. a cancelled sign-in): they stay pending", async () => {

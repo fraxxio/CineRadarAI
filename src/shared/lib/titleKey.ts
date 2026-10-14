@@ -1,3 +1,6 @@
+// the longest title a save or the list-change note takes
+export const MAX_TITLE_LENGTH = 300;
+
 // anything but letters and digits, in any script; a literal /u regex fails
 // tsc's default ES5 target, the runtimes support it
 const NOT_LETTER_OR_DIGIT = new RegExp("[^\\p{L}\\p{N}]", "gu");

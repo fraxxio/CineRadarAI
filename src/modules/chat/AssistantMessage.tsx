@@ -1,10 +1,11 @@
 import Image from "next/image";
 import type { ListStatuses } from "./messageParts";
 import { MessageParts } from "./MessageParts";
-import type { ChatMessage } from "./protocol";
+import type { ChatMessage, ListSavedPart } from "./protocol";
 import type { StartSignIn, UndoSave } from "./useChat";
 
 const NO_LIST_STATUS: ListStatuses = new Map();
+const NO_UNDO: ReadonlySet<ListSavedPart> = new Set();
 // the greeting and notices have no sign-in cards
 const NO_SIGN_IN: StartSignIn = () => {};
 
@@ -20,7 +21,8 @@ type AssistantMessageProps = {
   signedIn: boolean;
   // the cards' list badges; the greeting and notices have no cards
   listStatus?: ListStatuses;
-  // Undo on the saves of a finished message, which has an id
+  // Undo on these saves of a finished message, which has an id
+  undoable?: ReadonlySet<ListSavedPart>;
   onUndo?: UndoSave;
   // the sign-in cards' buttons keep their titles for after the sign-in
   onSignIn?: StartSignIn;
@@ -32,6 +34,7 @@ export function AssistantMessage({
   message,
   signedIn,
   listStatus = NO_LIST_STATUS,
+  undoable = NO_UNDO,
   onUndo,
   onSignIn = NO_SIGN_IN,
   children,
@@ -66,6 +69,7 @@ export function AssistantMessage({
           parts={message.parts}
           signedIn={signedIn}
           listStatus={listStatus}
+          undoable={undoable}
           messageId={message.id}
           onUndo={onUndo}
           onSignIn={onSignIn}

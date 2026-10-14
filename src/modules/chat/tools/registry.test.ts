@@ -1064,6 +1064,41 @@ describe("runToolCalls", () => {
       );
       expect(tmdbUrls(spy, "/3/movie/2")).toHaveLength(0);
     });
+
+    // parallel saves of a title would both read the row before either writes
+    test("a title saved twice in a round: only the first call runs", async () => {
+      const save = (id: string, args: object): ToolCall => ({
+        id,
+        name: "save_to_list",
+        rawArgs: { title: "Fury", ...args },
+      });
+      // the session can't be read: a save that runs fails without TMDB or DB
+      const runs = "Can't save right now, try again later";
+      const repeated =
+        "This title is already saved by another save_to_list call in this round: one call per title";
+
+      const results = await runToolCalls(
+        [
+          save("c1", { type: "movie", id: 228150 }),
+          save("c2", { type: "movie", id: 228150, status: "Completed" }),
+          // a TV show with the same id is another title
+          save("c3", { type: "tv", id: 228150 }),
+          // invalid args don't count as a save of the title
+          save("c4", { type: "movie", id: 1, status: "Dropped" }),
+          save("c5", { type: "movie", id: 1 }),
+        ],
+        toolContext(undefined, { status: "unavailable" }),
+      );
+
+      expect(results.map((r) => r.output)).toEqual([
+        runs,
+        repeated,
+        runs,
+        expect.stringMatching(/^Invalid arguments: status/),
+        runs,
+      ]);
+      expect(results.every((r) => r.isError)).toBe(true);
+    });
   });
 
   describe("abort", () => {

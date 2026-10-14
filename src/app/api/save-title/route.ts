@@ -7,6 +7,11 @@ import { SaveTitleError, saveTitle } from "@/modules/my-list/server";
 // the chat's saves that waited for the user to sign in; answers with the
 // same payload as the chat's list_saved event
 export async function PUT(request: Request) {
+  // only the chat saves through it, and each save is a TMDB request
+  if (process.env.AI_CHAT_ENABLED !== "true") {
+    return Response.json({ error: "AI chat is disabled" }, { status: 503 });
+  }
+
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {

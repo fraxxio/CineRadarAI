@@ -29,6 +29,9 @@ export function addCards(
   return [...parts, { type: "cards", items }];
 }
 
+export const isListSaved = (part: MessagePart): part is ListSavedPart =>
+  part.type === "list_saved";
+
 // each save is a row of its own
 export function addListSaved(
   parts: MessagePart[],
@@ -192,6 +195,32 @@ export function listStatuses(answers: MessagePart[][]): ListStatuses {
     }
   }
   return statuses;
+}
+
+// the save changed the row: added it or moved it to another status
+export const changedRow = ({ entry, previous }: ListSavedPart) =>
+  previous === null || previous.status !== entry.status;
+
+// the saves Undo can reverse: per title only the newest save that isn't
+// undone, as undoing an older one would overwrite the newer save; and only if
+// it changed the row from something Undo can put back (not a legacy status,
+// which the list no longer takes)
+export function undoableSaves(
+  answers: MessagePart[][],
+): ReadonlySet<ListSavedPart> {
+  const newest = new Map<string, ListSavedPart>();
+  for (const part of answers.flat()) {
+    if (isListSaved(part) && !part.undone) {
+      newest.set(listKey(part.entry.type, part.entry.id), part);
+    }
+  }
+  return new Set(
+    Array.from(newest.values()).filter(
+      (part) =>
+        changedRow(part) &&
+        (part.previous === null || isListStatus(part.previous.status)),
+    ),
+  );
 }
 
 // rounds down, so a time never shows a unit it hasn't reached ("9.9s", not

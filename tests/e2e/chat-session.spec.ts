@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import { BASE_URL } from "./env";
 import { expect, test } from "./fixtures";
 import {
@@ -91,11 +92,52 @@ test("signing out clears the saved chat", async ({ page, loginAs }) => {
   await nav.getByRole("button", { name: "Account menu" }).click();
   await nav.getByRole("button", { name: "Sign Out" }).click();
   await expect(nav.getByRole("link", { name: "Sign In" })).toBeVisible();
+  // gone from the screen, not only from storage
+  await expect(page.getByText("war movies")).toHaveCount(0);
   await page.reload();
 
   await expect(page.getByText(/Ask me for movie or TV show/)).toBeVisible();
   await expect(page.getByText("war movies")).toHaveCount(0);
   await expect(cards(page)).toHaveCount(0);
+});
+
+async function deleteAccount(page: Page, confirmation: string) {
+  const nav = page.locator("nav#top");
+  await nav.getByRole("button", { name: "Account menu" }).click();
+  await nav.getByRole("button", { name: "Delete my account" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("textbox").fill(confirmation);
+  await dialog.getByRole("button", { name: "Delete" }).click();
+}
+
+test("deleting the account clears the chat", async ({ page, loginAs }) => {
+  await loginAs();
+  await page.goto("/");
+  await stubAssistant(page, () => ({ events: WAR }));
+  await send(page, "war movies");
+  await expect(card(page, "Fury")).toBeVisible();
+
+  await deleteAccount(page, "Delete account");
+
+  await expect(page.getByText("Account deleted succesfully.")).toBeVisible();
+  await expect(page.getByText("war movies")).toHaveCount(0);
+  await page.goto("/");
+  await expect(page.getByText(/Ask me for movie or TV show/)).toBeVisible();
+  await expect(page.getByText("war movies")).toHaveCount(0);
+});
+
+test("a failed account deletion keeps the chat", async ({ page, loginAs }) => {
+  await loginAs();
+  await page.goto("/");
+  await stubAssistant(page, () => ({ events: WAR }));
+  await send(page, "war movies");
+  await expect(card(page, "Fury")).toBeVisible();
+
+  await deleteAccount(page, "delete");
+
+  await expect(page.getByText("Failed to delete account.")).toBeVisible();
+  await page.goto("/");
+  await expect(card(page, "Fury")).toBeVisible();
 });
 
 test("a refresh during an answer keeps it as stopped", async ({ page }) => {

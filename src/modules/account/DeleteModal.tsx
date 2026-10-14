@@ -10,9 +10,7 @@ import {
 } from "@/shared/ui/Modal";
 import { useState } from "react";
 import DeleteModalBtn from "./DeleteModalBtn";
-import { clearSavedChat } from "@/modules/chat";
-
-const CONFIRMATION = "Delete account";
+import { DELETE_CONFIRMATION } from "./deleteConfirmation";
 
 export default function DeleteModal() {
   const [isOpen, setIsOpen] = useState(false);
@@ -33,22 +31,12 @@ export default function DeleteModal() {
               </span>
             </DialogDescription>
           </DialogHeader>
-          <form
-            action={DeleteUser}
-            onSubmit={(e) => {
-              // not on a blocked submit or a wrong confirmation: the account
-              // stays, so does the chat
-              const confirmation = new FormData(e.currentTarget).get(
-                "verifyInput",
-              );
-              if (confirmation === CONFIRMATION) {
-                clearSavedChat();
-              }
-            }}
-          >
+          {/* the saved chat is cleared once the deletion succeeded, see
+              DeleteResult */}
+          <form action={DeleteUser}>
             <label htmlFor="check">
-              To permamently delete your account type &quot;Delete account&quot;
-              and click Delete.
+              To permamently delete your account type &quot;
+              {DELETE_CONFIRMATION}&quot; and click Delete.
             </label>
             <input
               id="check"

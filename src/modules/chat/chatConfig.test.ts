@@ -96,9 +96,21 @@ describe("list rules", () => {
   test("says whether the user is signed in, signed out by default", () => {
     expect(prompt).toContain("The user is signed out.");
     expect(prompt).not.toContain("The user is signed in.");
-    const signedIn = buildSystemInstruction(new Date(), { signedIn: true });
+    const signedIn = buildSystemInstruction(new Date(), {
+      userStatus: "signed_in",
+    });
     expect(signedIn).toContain("The user is signed in.");
     expect(signedIn).not.toContain("The user is signed out.");
+  });
+
+  test("an unreadable session: says neither, the rules stay", () => {
+    const unavailable = buildSystemInstruction(new Date(), {
+      userStatus: "unavailable",
+    });
+    expect(unavailable).not.toMatch(/The user is signed (in|out)\./);
+    expect(unavailable).toContain(
+      "this year's.\n- Don't claim a title is available",
+    );
   });
 
   test("maps the user's words to the list statuses", () => {

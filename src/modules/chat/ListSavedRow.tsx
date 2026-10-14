@@ -2,13 +2,16 @@ import { Check } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
+import { changedRow } from "./messageParts";
 import type { ListSavedPart } from "./protocol";
 import { SmallPoster } from "./SmallPoster";
 
 type ListSavedRowProps = {
   part: ListSavedPart;
-  // undefined while the answer streams: Undo waits until it's finished, and
-  // only the streaming row is announced, not the restored history
+  // the answer is streaming: the row is announced, the restored history isn't
+  live?: boolean;
+  // set when the row offers Undo: once the answer is finished, on the newest
+  // save of the title (see undoableSaves)
   onUndo?: () => Promise<boolean>;
 };
 
@@ -24,11 +27,13 @@ function savedLine({ entry, previous }: ListSavedPart) {
   return `Moved to ${entry.status} (was ${previous.status})`;
 }
 
-export function ListSavedRow({ part, onUndo }: ListSavedRowProps) {
+export function ListSavedRow({
+  part,
+  live = false,
+  onUndo,
+}: ListSavedRowProps) {
   const [undoing, setUndoing] = useState(false);
-  const { entry, previous, undone } = part;
-  // nothing to undo when the save changed nothing
-  const changed = previous === null || previous.status !== entry.status;
+  const { entry, undone } = part;
 
   async function handleUndo() {
     if (!onUndo) {
@@ -45,7 +50,7 @@ export function ListSavedRow({ part, onUndo }: ListSavedRowProps) {
 
   return (
     <div
-      aria-live={onUndo ? undefined : "polite"}
+      aria-live={live ? "polite" : undefined}
       className="flex items-center gap-3 py-1"
     >
       <SmallPoster path={entry.posterPath || entry.image || null} />
@@ -61,14 +66,15 @@ export function ListSavedRow({ part, onUndo }: ListSavedRowProps) {
           <p
             className={`flex items-center gap-1 text-sm text-secondary-text ${undone ? "line-through" : ""}`}
           >
-            {changed && <Check size={14} className="shrink-0" aria-hidden />}
+            {changedRow(part) && (
+              <Check size={14} className="shrink-0" aria-hidden />
+            )}
             {savedLine(part)}
           </p>
         </div>
         {undone ? (
           <span className="text-sm text-secondary-text">Undone</span>
         ) : (
-          changed &&
           onUndo && (
             <button
               type="button"
