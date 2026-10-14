@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, test, vi } from "vitest";
 import { deferred } from "@test/helpers/deferred";
+import { makeMovie } from "@test/helpers/factories";
 import { mockTmdb, tmdbUrls } from "@test/helpers/tmdb";
 import {
   FULL_MOVIE_GENRES,
@@ -8,7 +9,8 @@ import {
   rawMovie,
   rawShow,
 } from "../testing/tmdbData";
-import { toolContext } from "../testing/toolContext";
+import type { StoredEntry } from "@/modules/my-list";
+import { listContext, toolContext } from "../testing/toolContext";
 
 // fresh modules per test: the genre list is cached at module level
 let discoverTitles: typeof import("./discoverTitles").discoverTitles;
@@ -396,5 +398,37 @@ describe("discover_titles", () => {
       const isGenres = String(input).includes("/genre/");
       expect(init?.signal === signal).toBe(!isGenres);
     }
+  });
+});
+
+describe("discover_titles: inList", () => {
+  test("a listed title gets inList, an unlisted one no key", async () => {
+    mockDiscover([rawMovie(1), rawMovie(2)]);
+
+    const { results } = (await discoverTitles.run(
+      discoverTitles.args.parse({ type: "movie" }),
+      listContext([makeMovie({ movieId: 2, status: "Completed" })]),
+    )) as Items;
+
+    expect(results[0]).not.toHaveProperty("inList");
+    expect(results[1]).toHaveProperty("inList", "Completed");
+  });
+
+  // the read runs alongside TMDB: no extra round trip per lookup, even when
+  // discover waits for the genre ids first
+  test("the genre list and discover don't wait for the list read", async () => {
+    const list = deferred<StoredEntry[]>();
+    const spy = mockDiscover([rawMovie(1)]);
+
+    const running = discoverTitles.run(
+      discoverTitles.args.parse({ type: "movie", genres: ["Drama"] }),
+      listContext(() => list.promise),
+    );
+    await vi.waitFor(() => expect(discoverUrl(spy)).toBeDefined());
+    list.resolve([makeMovie({ movieId: 1, status: "Watching" })]);
+
+    expect(((await running) as Items).results).toEqual([
+      expect.objectContaining({ id: 1, inList: "Watching" }),
+    ]);
   });
 });

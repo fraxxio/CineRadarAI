@@ -2,6 +2,7 @@ import { z } from "zod/v4";
 import { getGenres, searchTitlesByYear } from "@/infra/tmdb/server";
 import {
   TITLE_ITEM_FIELDS,
+  listStatuses,
   mediaTypeArg,
   toTitleItem,
   yearArg,
@@ -27,16 +28,18 @@ export const searchTitles = defineTool({
         "Release year (first air year for TV). Leave out when unsure: a wrong year finds nothing.",
       ),
   }),
-  async run({ query, type, year }, { signal }) {
-    const [page, genres] = await Promise.all([
+  async run({ query, type, year }, ctx) {
+    const { signal } = ctx;
+    const [page, genres, listed] = await Promise.all([
       searchTitlesByYear({ type, query, year }, { signal }),
       // genres are extra detail: a found title still counts without them
       getGenres(type, { signal }).catch(() => []),
+      listStatuses(ctx),
     ]);
     return {
       results: page.results
         .slice(0, MAX_RESULTS)
-        .map((hit) => toTitleItem(type, hit, genres)),
+        .map((hit) => toTitleItem(type, hit, genres, listed)),
     };
   },
 });

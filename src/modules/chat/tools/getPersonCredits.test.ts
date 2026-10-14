@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { makeMovie } from "@test/helpers/factories";
 import { mockTmdb, tmdbUrls } from "@test/helpers/tmdb";
 import {
   MOVIE_GENRES,
@@ -6,7 +7,7 @@ import {
   rawMovie,
   rawShow,
 } from "../testing/tmdbData";
-import { toolContext } from "../testing/toolContext";
+import { listContext, toolContext } from "../testing/toolContext";
 
 // fresh module per test: the genre list is cached at module level
 let getPersonCredits: typeof import("./getPersonCredits").getPersonCredits;
@@ -350,5 +351,78 @@ describe("get_person_credits", () => {
       parse({ id: 287, type: "movie", role: "crew", department: "Director" }),
     ).toBe(false);
     expect(parse({ type: "movie" })).toBe(false);
+  });
+});
+
+describe("get_person_credits: inList", () => {
+  const runAs = async (args: object, ctx: ReturnType<typeof toolContext>) =>
+    (await getPersonCredits.run(
+      getPersonCredits.args.parse(args),
+      ctx,
+    )) as Items;
+
+  const listed = () =>
+    listContext([
+      makeMovie({ movieId: 1, status: "Watching" }),
+      // the same id as TV: not this movie
+      makeMovie({ movieId: 2, type: "tv" }),
+    ]);
+
+  test("cast: a listed title gets its status next to the character", async () => {
+    mockCredits(
+      credits([
+        rawMovie(1, { character: "Don", vote_count: 20 }),
+        rawMovie(2, { character: "Norman", vote_count: 10 }),
+      ]),
+    );
+
+    const { results } = await runAs({ id: 287, type: "movie" }, listed());
+
+    expect(results[0]).toMatchObject({ inList: "Watching", character: "Don" });
+    expect(results[1]).not.toHaveProperty("inList");
+  });
+
+  test("crew: a listed title gets its status next to the jobs", async () => {
+    mockCredits(
+      credits(
+        [],
+        [
+          rawMovie(1, { job: "Director", vote_count: 20 }),
+          rawMovie(2, { job: "Writer", vote_count: 10 }),
+        ],
+      ),
+    );
+
+    const { results } = await runAs(
+      { id: 287, type: "movie", role: "crew" },
+      listed(),
+    );
+
+    expect(results[0]).toMatchObject({
+      inList: "Watching",
+      jobs: ["Director"],
+    });
+    expect(results[1]).not.toHaveProperty("inList");
+  });
+
+  test("signed out: no marks", async () => {
+    mockCredits(credits([rawMovie(1, { character: "Don" })]));
+
+    const { results } = await runAs({ id: 287, type: "movie" }, toolContext());
+
+    expect(results[0]).not.toHaveProperty("inList");
+  });
+
+  test("a failed list read still returns the credits, without marks", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockCredits(credits([rawMovie(1, { character: "Don" })]));
+
+    const { results } = await runAs(
+      { id: 287, type: "movie" },
+      listContext(() => Promise.reject(new Error("db down"))),
+    );
+
+    expect(results).toEqual([expect.objectContaining({ id: 1 })]);
+    expect(results[0]).not.toHaveProperty("inList");
   });
 });

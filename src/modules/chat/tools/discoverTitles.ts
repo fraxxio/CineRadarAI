@@ -9,6 +9,7 @@ import {
 import { today } from "../date";
 import {
   TITLE_ITEM_FIELDS,
+  listStatuses,
   mediaTypeArg,
   personIdArg,
   toTitleItem,
@@ -78,7 +79,8 @@ export const discoverTitles = defineTool({
         "popular: most popular first, top_rated: best rated first, newest: latest release first",
       ),
   }),
-  async run(args, { signal }) {
+  async run(args, ctx) {
+    const { signal } = ctx;
     const { type, yearFrom, yearTo, withCast, withCrew } = args;
     // checked before any request: the model can fix these
     if (yearFrom !== undefined && yearTo !== undefined && yearFrom > yearTo) {
@@ -92,6 +94,8 @@ export const discoverTitles = defineTool({
       );
     }
 
+    // started first so it runs alongside both requests; it never rejects
+    const listing = listStatuses(ctx);
     const filtersGenres = Boolean(args.genres || args.excludeGenres);
     const loading = getGenres(type, { signal });
     // a genre filter needs the ids before discover; otherwise the list is
@@ -103,7 +107,7 @@ export const discoverTitles = defineTool({
       genreList,
     );
 
-    const [page, genres] = await Promise.all([
+    const [page, genres, listed] = await Promise.all([
       discover(
         {
           type,
@@ -120,6 +124,7 @@ export const discoverTitles = defineTool({
         { signal },
       ),
       filtersGenres ? genreList : loading.catch(() => []),
+      listing,
     ]);
     return {
       results: page.results
@@ -133,7 +138,7 @@ export const discoverTitles = defineTool({
             !hit.genreIds.some((id) => withoutGenreIds.includes(id)),
         )
         .slice(0, MAX_RESULTS)
-        .map((hit) => toTitleItem(type, hit, genres)),
+        .map((hit) => toTitleItem(type, hit, genres, listed)),
     };
   },
 });

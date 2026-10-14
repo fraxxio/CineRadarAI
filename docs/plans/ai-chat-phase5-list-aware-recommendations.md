@@ -15,7 +15,7 @@ and skip titles they've already watched or saved.
 | ----- | --------------------------------------- | ---------- | ----------- |
 | 1     | Per-turn list loader                    | -          | done        |
 | 2     | `get_my_list` tool                      | 1          | done        |
-| 3     | Mark lookup results with `inList`       | 1          | not started |
+| 3     | Mark lookup results with `inList`       | 1          | done        |
 | 4     | System prompt and thinking level        | 2, 3       | not started |
 | 5     | Route test, live check and final review | 4          | not started |
 
@@ -400,7 +400,44 @@ tests.
 **Checks:** as phase 1. If any tool description changed, also run
 `npm run check:chat-tools`.
 
-**Notes for later phases:** _(fill in when done)_
+**Notes for later phases:**
+
+- **Helper:** `listStatuses(ctx): Promise<ListStatuses>` in `tools/shared.ts`,
+  where `ListStatuses = ReadonlyMap<string, string>` maps a private
+  `${type}-${id}` key to the `clean()`ed status. It never rejects: if
+  `ctx.list()` fails it logs `console.error("Can't read the list:", error)`
+  (the same message as `get_my_list`) and returns an empty map. Signed out →
+  empty map, no DB read.
+- **Mark:** `toTitleItem(type, hit, genres, listed)` and
+  `toTitleItems(type, hits, genres, listed, limit)` now take the map as a
+  **required** argument, so a new lookup tool can't forget it (pass
+  `new Map()` for no marks). An item gets `inList: "<status>"` as its last
+  title field only when listed; otherwise there's no key at all. In
+  `get_person_credits` the role fields (`character`, `episodes`, `jobs`) come
+  after it.
+- **Parallel read:** each tool adds `listStatuses(ctx)` to its existing
+  `Promise.all` with the TMDB request and `getGenres`. `discover_titles`
+  starts it before awaiting the genre ids (needed for a genre filter), so the
+  read overlaps that wait too; a test with a deferred loader checks that
+  discover is requested before the list resolves. Since every lookup in a
+  round shares the turn's memoized `ctx.list()`, a round of N lookups makes
+  one DB read.
+- **Descriptions:** `TITLE_ITEM_FIELDS` now ends "genres and, when the title
+  is already in the user's list, inList with its status". `get_person_credits`
+  uses the constant too (followed by ", plus the character (cast) or jobs
+  (crew)"), so it needed no change of its own. The schemas are unchanged.
+  The user's live `check:chat-tools` run passed (gemini-3.5-flash-lite
+  accepted all 11 tools with both tool choices).
+- **Test helper:** `listContext(list)` in `testing/toolContext.ts` is a
+  signed-in context (`user-1`) whose list is the given entries or loader.
+  The tool tests cover a listed/unlisted title, a movie/TV id clash, signed
+  out and a rejecting loader for `search_titles`, both related-title tools and
+  `get_person_credits` (cast and crew), plus a wiring test for `get_trending`
+  and `discover_titles`. The existing expected objects didn't change.
+- **Pre-existing:** `prettier --check src/modules/chat` flags
+  `SignInCard.test.tsx`, `messageParts.test.ts` and `tools/genres.test.ts`.
+  They were already unformatted before this phase and were left alone (lint
+  passes).
 
 ---
 
@@ -511,3 +548,4 @@ _(one dated line per session: date, phase, what was done or what blocked it)_
 
 - 2026-10-14, phase 1: done. Added `userList` loader and `ToolContext.list`, wired into `streamChatReply`/`runTurn` (reset after a successful save), `listChangeNote` reads through it, moved `clean()` to `tools/shared.ts`. Unit, integration, tsc, typecheck:tests and lint pass.
 - 2026-10-14, phase 2: added the `get_my_list` tool, int tests and the prompt line naming it. Unit, integration, tsc, typecheck:tests, lint and `check:chat-tools --dry-run` pass. The user's live `check:chat-tools` run passed. Done.
+- 2026-10-14, phase 3: added `listStatuses` and the `inList` mark to the six lookup tools, with tests. Unit, integration, tsc, typecheck:tests, lint and `check:chat-tools --dry-run` pass. The user's live `check:chat-tools` run passed. Done.

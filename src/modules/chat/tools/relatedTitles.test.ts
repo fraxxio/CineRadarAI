@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { makeMovie } from "@test/helpers/factories";
 import { mockTmdb, tmdbUrls } from "@test/helpers/tmdb";
 import {
   MOVIE_GENRES,
@@ -7,7 +8,7 @@ import {
   rawMovie,
   rawShow,
 } from "../testing/tmdbData";
-import { toolContext } from "../testing/toolContext";
+import { listContext, toolContext } from "../testing/toolContext";
 
 // handlers return plain JSON for the model
 type Items = { results: Record<string, unknown>[] };
@@ -152,6 +153,47 @@ describe.each([
       const isGenres = String(input).includes("/genre/");
       expect(init?.signal === signal).toBe(!isGenres);
     }
+  });
+
+  describe("inList", () => {
+    const runAs = async (ctx: ReturnType<typeof toolContext>) =>
+      (await tool.run({ type: "movie", id: 1399 }, ctx)) as Items;
+
+    test("a listed title gets its status, an unlisted one no key", async () => {
+      mockList([rawMovie(550), rawMovie(551), rawMovie(552)]);
+
+      const { results } = await runAs(
+        listContext([
+          makeMovie({ movieId: 550, status: "Completed" }),
+          // the same id as TV: not this movie
+          makeMovie({ movieId: 551, type: "tv" }),
+        ]),
+      );
+
+      expect(results[0]).toHaveProperty("inList", "Completed");
+      expect(results[1]).not.toHaveProperty("inList");
+      expect(results[2]).not.toHaveProperty("inList");
+    });
+
+    test("signed out: no marks", async () => {
+      mockList([rawMovie(550)]);
+
+      const { results } = await runAs(toolContext());
+
+      expect(results[0]).not.toHaveProperty("inList");
+    });
+
+    test("a failed list read still returns the titles, without marks", async () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      mockList([rawMovie(550)]);
+
+      const { results } = await runAs(
+        listContext(() => Promise.reject(new Error("db down"))),
+      );
+
+      expect(results).toEqual([expect.objectContaining({ id: 550 })]);
+      expect(results[0]).not.toHaveProperty("inList");
+    });
   });
 
   test("args: a movie/tv type and a positive integer id", () => {

@@ -14,3 +14,7 @@ export const toolContext = (
   user,
   list: Array.isArray(list) ? () => Promise.resolve(list) : list,
 });
+
+// a signed-in user whose list is these entries, or comes from this loader
+export const listContext = (list: StoredEntry[] | ToolContext["list"]) =>
+  toolContext(undefined, { status: "signed_in", id: "user-1" }, list);

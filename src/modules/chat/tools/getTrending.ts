@@ -1,7 +1,12 @@
 import { z } from "zod/v4";
 import { getGenres, getTrending as fetchTrending } from "@/infra/tmdb/server";
 import { isTalkOrNews } from "./genres";
-import { TITLE_ITEM_FIELDS, mediaTypeArg, toTitleItems } from "./shared";
+import {
+  TITLE_ITEM_FIELDS,
+  listStatuses,
+  mediaTypeArg,
+  toTitleItems,
+} from "./shared";
 import { defineTool } from "./types";
 
 const MAX_RESULTS = 10;
@@ -17,11 +22,13 @@ export const getTrending = defineTool({
       .default("week")
       .describe("day: trending today, week: trending this week"),
   }),
-  async run({ type, window }, { signal }) {
-    const [page, genres] = await Promise.all([
+  async run({ type, window }, ctx) {
+    const { signal } = ctx;
+    const [page, genres, listed] = await Promise.all([
       fetchTrending(type, window, { signal }),
       // genres are extra detail: a trending title still counts without them
       getGenres(type, { signal }).catch(() => []),
+      listStatuses(ctx),
     ]);
     return {
       results: toTitleItems(
@@ -29,6 +36,7 @@ export const getTrending = defineTool({
         // the limit counts after this filter too
         page.results.filter((hit) => !isTalkOrNews(hit)),
         genres,
+        listed,
         MAX_RESULTS,
       ),
     };

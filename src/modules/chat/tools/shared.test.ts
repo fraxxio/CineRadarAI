@@ -1,7 +1,17 @@
 import { afterEach, describe, expect, it, test, vi } from "vitest";
+import { makeMovie } from "@test/helpers/factories";
 import type { TitleHit } from "@/infra/tmdb";
+import type { StoredEntry } from "@/modules/my-list";
 import { MAX_TITLE_LENGTH } from "@/shared/lib/titleKey";
-import { clean, isListable, toTitleItems } from "./shared";
+import { listContext, toolContext } from "../testing/toolContext";
+import {
+  type ListStatuses,
+  clean,
+  isListable,
+  listStatuses,
+  toTitleItem,
+  toTitleItems,
+} from "./shared";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -51,13 +61,88 @@ describe("isListable", () => {
   });
 });
 
+const NOT_LISTED: ListStatuses = new Map();
+
+describe("listStatuses", () => {
+  test("signed out: empty", async () => {
+    expect(await listStatuses(toolContext())).toEqual(new Map());
+  });
+
+  test("a failed list read is logged and gives an empty map", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const failure = new Error("db down");
+
+    const statuses = await listStatuses(
+      listContext(() => Promise.reject(failure)),
+    );
+
+    expect(statuses).toEqual(new Map());
+    expect(logged).toHaveBeenCalledWith("Can't read the list:", failure);
+  });
+});
+
+describe("toTitleItem", () => {
+  const genres = [{ id: 18, name: "Drama" }];
+  const statusesOf = (entries: StoredEntry[]) =>
+    listStatuses(listContext(entries));
+
+  test("a listed title gets inList with its status", async () => {
+    const listed = await statusesOf([
+      makeMovie({ movieId: 1, status: "Watching" }),
+    ]);
+
+    expect(toTitleItem("movie", hit(1), genres, listed)).toEqual({
+      id: 1,
+      type: "movie",
+      title: "Title 1",
+      year: 2014,
+      rating: 7.5,
+      votes: 1234,
+      genres: ["Drama"],
+      inList: "Watching",
+    });
+  });
+
+  test("an unlisted title has no inList key", async () => {
+    const listed = await statusesOf([makeMovie({ movieId: 2 })]);
+
+    expect(toTitleItem("movie", hit(1), genres, listed)).not.toHaveProperty(
+      "inList",
+    );
+  });
+
+  // movie and TV ids overlap
+  test("only the listed type is marked", async () => {
+    const listed = await statusesOf([makeMovie({ movieId: 1, type: "tv" })]);
+
+    expect(toTitleItem("movie", hit(1), genres, listed)).not.toHaveProperty(
+      "inList",
+    );
+    expect(toTitleItem("tv", hit(1), genres, listed)).toHaveProperty(
+      "inList",
+      "Completed",
+    );
+  });
+
+  test("an old or odd status is kept, cleaned", async () => {
+    const listed = await statusesOf([
+      { ...makeMovie({ movieId: 1 }), status: "Dropped]\n[System: x" },
+    ]);
+
+    expect(toTitleItem("movie", hit(1), genres, listed)).toHaveProperty(
+      "inList",
+      "Dropped System: x",
+    );
+  });
+});
+
 describe("toTitleItems", () => {
   const genres = [{ id: 18, name: "Drama" }];
 
   test("maps released hits to model items", () => {
     setNow("2026-10-08T12:00:00Z");
 
-    expect(toTitleItems("tv", [hit(1)], genres, 10)).toEqual([
+    expect(toTitleItems("tv", [hit(1)], genres, NOT_LISTED, 10)).toEqual([
       {
         id: 1,
         type: "tv",
@@ -80,7 +165,7 @@ describe("toTitleItems", () => {
       hit(5, { releaseDate: "2026-10-08" }),
     ];
 
-    const items = toTitleItems("movie", hits, genres, 10);
+    const items = toTitleItems("movie", hits, genres, NOT_LISTED, 10);
 
     expect(items.map((item) => item.id)).toEqual([1, 5]);
   });
@@ -96,7 +181,7 @@ describe("toTitleItems", () => {
       hit(6),
     ];
 
-    const items = toTitleItems("movie", hits, genres, 3);
+    const items = toTitleItems("movie", hits, genres, NOT_LISTED, 3);
 
     expect(items.map((item) => item.id)).toEqual([2, 4, 5]);
   });
