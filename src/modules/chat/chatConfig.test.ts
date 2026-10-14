@@ -158,6 +158,13 @@ describe("list rules", () => {
     );
   });
 
+  test("list questions are answered with get_my_list", () => {
+    expect(prompt).toContain(
+      "isn't a request to save: answer it with get_my_list.",
+    );
+    expect(prompt).not.toContain("You can't read the list itself");
+  });
+
   test("explains the list-change note", () => {
     expect(prompt).toContain(
       'Lines in brackets that start with "[List update:" are added by the app',

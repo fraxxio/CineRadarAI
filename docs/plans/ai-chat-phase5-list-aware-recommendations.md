@@ -14,7 +14,7 @@ and skip titles they've already watched or saved.
 | Phase | Title                                   | Depends on | Status      |
 | ----- | --------------------------------------- | ---------- | ----------- |
 | 1     | Per-turn list loader                    | -          | done        |
-| 2     | `get_my_list` tool                      | 1          | not started |
+| 2     | `get_my_list` tool                      | 1          | in progress |
 | 3     | Mark lookup results with `inList`       | 1          | not started |
 | 4     | System prompt and thinking level        | 2, 3       | not started |
 | 5     | Route test, live check and final review | 4          | not started |
@@ -44,8 +44,8 @@ Statuses: `not started`, `in progress`, `done`, `blocked (<reason>)`.
    - Set the phase's status to `done`.
 6. **Commits:** a single title line in the repo's style (e.g.
    `feat(chat): add get_my_list tool`). No body, no `Co-Authored-By` or other
-   attribution line. Commit only if the user asks, and include this plan file's
-   updates in the phase's commit.
+   attribution line. Commit the phase's changes once its checks pass, without
+   waiting to be asked, and include this plan file's updates in that commit.
 7. **Code style:** match the surrounding code. Comments are short and lowercase,
    and they say *why*, not what. Tools import `z` from `zod/v4`. Reach the list's
    server code only through `listServer()` in
@@ -319,7 +319,38 @@ without the DB).
 it if `GEMINI_API_KEY` isn't available). Record the result in the notes,
 especially whether Gemini accepted the empty `properties` object.
 
-**Notes for later phases:** _(fill in when done)_
+**Notes for later phases:**
+
+- **Tool:** `getMyList` in `tools/getMyList.ts`, exporting `GET_MY_LIST`
+  (`"get_my_list"`) and `MAX_LIST_TITLES = 50`. It's in `CHAT_TOOLS` between
+  `get_title_details` and `show_recommendations`.
+- **Results:** signed in →
+  `{ total, omitted, titles: [{ type, id, title, status, rating }] }`, where
+  `rating` is `null` when it's 0. Signed out →
+  `{ signedIn: false, reason: "The user isn't signed in, so their list can't be read." }`,
+  without calling `ctx.list()`. Unavailable, or `ctx.list()` rejects →
+  `ToolError("Can't read the list right now, try again later")`. A rejection
+  is logged as `console.error("Can't read the list:", error)`. A `null` from
+  `list()` while signed in can't really happen; it's treated as an empty
+  list.
+- **Order:** sorted on the raw (uncleaned) status. The entries are reversed and
+  then given a stable `sort`, which makes ties newest first. Unrated titles
+  rank `Completed`, `Watching`, `Planning to watch`, then any other status.
+- **Schema:** `toolParameters` gives `{ type: "object", properties: {} }`
+  (snapshot in `registry.test.ts`), and the allowlist passes.
+  `check:chat-tools --dry-run` passes. The live run is still waiting on the
+  user, because `GEMINI_API_KEY` isn't set locally.
+- **Brought forward from phase 4:** `chatConfig.test.ts` ("names every tool")
+  requires the prompt to name every tool, and the old line contradicted the
+  new tool. So the list-question bullet now ends "answer it with
+  get_my_list." instead of "answer it from this conversation, without
+  calling a tool. You can't read the list itself." A new test checks this and
+  that the old line is gone. Phase 4 still has to add everything else, such as
+  the "Pick the tools" entry.
+- **Tests:** `tools/getMyList.int.test.ts`. A failed read is tested with a
+  rejecting loader, because `forceFailure` only covers writes. The test file's
+  long-list case uses 120 rows with ratings 9 and 2, the three statuses and
+  `"Dropped"`.
 
 ---
 
@@ -478,3 +509,4 @@ goals against the real model.
 _(one dated line per session: date, phase, what was done or what blocked it)_
 
 - 2026-10-14, phase 1: done. Added `userList` loader and `ToolContext.list`, wired into `streamChatReply`/`runTurn` (reset after a successful save), `listChangeNote` reads through it, moved `clean()` to `tools/shared.ts`. Unit, integration, tsc, typecheck:tests and lint pass.
+- 2026-10-14, phase 2: added the `get_my_list` tool, int tests and the prompt line naming it. Unit, integration, tsc, typecheck:tests, lint and `check:chat-tools --dry-run` pass. Waiting for the user's live `check:chat-tools` run before marking it done.

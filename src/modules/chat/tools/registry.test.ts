@@ -122,7 +122,7 @@ afterEach(() => {
 });
 
 describe("CHAT_TOOLS", () => {
-  test("the TMDB tools, then the display tool, then the list tool", () => {
+  test("the TMDB tools, the list reader, then the display and save tools", () => {
     expect(CHAT_TOOLS.map((tool) => tool.name)).toEqual([
       "search_titles",
       "search_person",
@@ -132,6 +132,7 @@ describe("CHAT_TOOLS", () => {
       "get_similar",
       "get_person_credits",
       "get_title_details",
+      "get_my_list",
       "show_recommendations",
       "save_to_list",
     ]);
@@ -300,6 +301,10 @@ describe("CHAT_TOOLS", () => {
           "required": [
             "type",
           ],
+          "type": "object",
+        },
+        "get_my_list": {
+          "properties": {},
           "type": "object",
         },
         "get_person_credits": {
@@ -658,6 +663,7 @@ describe("statusFor", () => {
     ["get_similar", "Finding similar titles..."],
     ["get_person_credits", "Checking filmography..."],
     ["get_title_details", "Checking title details..."],
+    ["get_my_list", "Reading your list..."],
     ["show_recommendations", "Preparing recommendations..."],
     ["save_to_list", "Saving to your list..."],
     // the model's mistake
