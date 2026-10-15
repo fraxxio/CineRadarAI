@@ -11,14 +11,16 @@ import type { EntryKey, ListEntry, StoredEntry } from "./entry";
 // The functions stay async so a synchronous throw from the query builder
 // becomes a rejection (B8).
 
-// in insertion order: a replaced entry keeps its id, so it keeps its place
-export const getEntries = cache(async (userId: string) =>
+// in insertion order: a replaced entry keeps its id, so it keeps its place.
+// Uncached: the chat rereads the list after a save in the same request
+export const readEntries = async (userId: string) =>
   db
     .select(entryColumns)
     .from(listEntries)
     .where(eq(listEntries.userId, userId))
-    .orderBy(asc(listEntries.id)),
-);
+    .orderBy(asc(listEntries.id));
+
+export const getEntries = cache(readEntries);
 
 // adds the entry, or replaces the one with the same key
 export async function saveEntry(userId: string, entry: ListEntry) {

@@ -77,7 +77,7 @@ describe("search_person", () => {
     const spy = mockPeople([rawPerson(1)]);
     const { signal } = new AbortController();
 
-    await searchPerson.run({ query: "Brad Pitt" }, toolContext(signal));
+    await searchPerson.run({ query: "Brad Pitt" }, toolContext({ signal }));
 
     expect(spy).toHaveBeenCalledOnce();
     expect(spy.mock.calls[0][1]?.signal).toBe(signal);

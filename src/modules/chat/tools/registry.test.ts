@@ -9,7 +9,7 @@ import {
   rawDetails,
   rawMovie,
 } from "../testing/tmdbData";
-import { toolContext } from "../testing/toolContext";
+import { listContext, toolContext } from "../testing/toolContext";
 import {
   CHAT_TOOLS,
   MAX_CALLS_PER_ROUND,
@@ -18,6 +18,7 @@ import {
   toolParameters,
 } from "./registry";
 import { defineTool, type ToolCall } from "./types";
+import { LIST_MARKS_TIMEOUT_MS } from "./userList";
 
 // Gemini's JSON Schema subset:
 // https://ai.google.dev/gemini-api/docs/structured-output#json-schema-support
@@ -122,7 +123,7 @@ afterEach(() => {
 });
 
 describe("CHAT_TOOLS", () => {
-  test("the TMDB tools, then the display tool, then the list tool", () => {
+  test("the TMDB tools, the list reader, then the display and save tools", () => {
     expect(CHAT_TOOLS.map((tool) => tool.name)).toEqual([
       "search_titles",
       "search_person",
@@ -132,6 +133,7 @@ describe("CHAT_TOOLS", () => {
       "get_similar",
       "get_person_credits",
       "get_title_details",
+      "get_my_list",
       "show_recommendations",
       "save_to_list",
     ]);
@@ -300,6 +302,10 @@ describe("CHAT_TOOLS", () => {
           "required": [
             "type",
           ],
+          "type": "object",
+        },
+        "get_my_list": {
+          "properties": {},
           "type": "object",
         },
         "get_person_credits": {
@@ -658,6 +664,7 @@ describe("statusFor", () => {
     ["get_similar", "Finding similar titles..."],
     ["get_person_credits", "Checking filmography..."],
     ["get_title_details", "Checking title details..."],
+    ["get_my_list", "Reading your list..."],
     ["show_recommendations", "Preparing recommendations..."],
     ["save_to_list", "Saving to your list..."],
     // the model's mistake
@@ -780,7 +787,7 @@ describe("runToolCalls", () => {
           rawArgs: { type: "movie", id: 1, title: "Movie 1" },
         },
       ],
-      toolContext(undefined, { status: "unavailable" }),
+      toolContext({ user: { status: "unavailable" } }),
     );
 
     expect(result).toEqual({
@@ -1087,7 +1094,7 @@ describe("runToolCalls", () => {
           save("c4", { type: "movie", id: 1, status: "Dropped" }),
           save("c5", { type: "movie", id: 1 }),
         ],
-        toolContext(undefined, { status: "unavailable" }),
+        toolContext({ user: { status: "unavailable" } }),
       );
 
       expect(results.map((r) => r.output)).toEqual([
@@ -1111,7 +1118,7 @@ describe("runToolCalls", () => {
           search("c1", { query: "Fury", type: "movie" }),
           { id: "c2", name: "get_weather", rawArgs: "{}" },
         ],
-        toolContext(controller.signal),
+        toolContext({ signal: controller.signal }),
       );
       await vi.waitFor(() =>
         expect(tmdbUrls(spy, "/3/search/movie")).toHaveLength(1),
@@ -1130,7 +1137,7 @@ describe("runToolCalls", () => {
       await expect(
         runToolCalls(
           [search("c1", { query: "Fury", type: "movie" })],
-          toolContext(controller.signal),
+          toolContext({ signal: controller.signal }),
         ),
       ).rejects.toBe(controller.signal.reason);
       // fetch is called with the aborted signal; a real fetch rejects at once
@@ -1138,6 +1145,79 @@ describe("runToolCalls", () => {
       for (const [, init] of spy.mock.calls) {
         expect(init?.signal?.aborted).toBe(true);
       }
+    });
+  });
+
+  // the shared list read takes no signal, so each call must stop waiting for
+  // it: TMDB has answered, only the DB hangs
+  describe("a hung list read", () => {
+    const hangs = () => new Promise<never>(() => {});
+    const getMyList: ToolCall = {
+      id: "c2",
+      name: "get_my_list",
+      rawArgs: "{}",
+    };
+
+    test(`a lookup answers without inList marks after ${LIST_MARKS_TIMEOUT_MS} ms`, async () => {
+      vi.useFakeTimers();
+      mockTmdb({ ...GENRES, "/3/search/movie": page([rawMovie(1)]) });
+      let settled = false;
+
+      const running = runToolCalls(
+        [search("c1", { query: "Fury", type: "movie" })],
+        listContext(hangs),
+      ).finally(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(LIST_MARKS_TIMEOUT_MS - 1);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+
+      const [result] = await running;
+      expect(result.isError).toBe(false);
+      const { results } = result.output as { results: object[] };
+      expect(results).toHaveLength(1);
+      expect(results[0]).not.toHaveProperty("inList");
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    test("get_my_list: an error result when the call times out", async () => {
+      vi.useFakeTimers();
+      let settled = false;
+
+      const running = runToolCalls([getMyList], listContext(hangs)).finally(
+        () => (settled = true),
+      );
+      await vi.advanceTimersByTimeAsync(7999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(await running).toEqual([
+        {
+          callId: "c2",
+          name: "get_my_list",
+          output: "Can't read the list right now, try again later",
+          isError: true,
+        },
+      ]);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    test("a Stop ends the round", async () => {
+      const spy = mockTmdb({
+        ...GENRES,
+        "/3/search/movie": page([rawMovie(1)]),
+      });
+      const controller = new AbortController();
+
+      const running = runToolCalls(
+        [search("c1", { query: "Fury", type: "movie" }), getMyList],
+        listContext(hangs, { signal: controller.signal }),
+      );
+      await vi.waitFor(() =>
+        expect(tmdbUrls(spy, "/3/search/movie")).toHaveLength(1),
+      );
+      controller.abort();
+
+      await expect(running).rejects.toBe(controller.signal.reason);
     });
   });
 });

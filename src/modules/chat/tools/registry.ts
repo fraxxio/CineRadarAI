@@ -1,6 +1,7 @@
 import { z } from "zod/v4";
 import { TmdbError } from "@/infra/tmdb/server";
 import { discoverTitles } from "./discoverTitles";
+import { getMyList } from "./getMyList";
 import { getPersonCredits } from "./getPersonCredits";
 import { getRecommendations } from "./getRecommendations";
 import { getSimilar } from "./getSimilar";
@@ -31,6 +32,7 @@ export const CHAT_TOOLS: ChatTool[] = [
   getSimilar,
   getPersonCredits,
   getTitleDetails,
+  getMyList,
   showRecommendations,
   saveToList,
 ];

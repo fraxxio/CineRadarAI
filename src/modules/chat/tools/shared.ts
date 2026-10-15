@@ -2,6 +2,7 @@
 import { z } from "zod/v4";
 import type { Genre, MediaType, TitleHit } from "@/infra/tmdb";
 import { today } from "../date";
+import { type ListStatuses, listedKey } from "./userList";
 
 export const mediaTypeArg = z
   .enum(["movie", "tv"])
@@ -37,22 +38,28 @@ export const genreNames = (ids: number[], genres: Genre[]) =>
 
 // the fields of toTitleItem, for the tool descriptions
 export const TITLE_ITEM_FIELDS =
-  "their TMDB id, title, release year, rating, vote count and genres";
+  "their TMDB id, title, release year, rating, vote count, genres and, when the title is already in the user's list, inList with its status";
 
-// one search / discover result as the model sees it
+// one search / discover result as the model sees it; inList only when
+// listed, to keep the result small
 export const toTitleItem = (
   type: MediaType,
   hit: TitleHit,
   genres: Genre[],
-) => ({
-  id: hit.id,
-  type,
-  title: hit.title,
-  year: yearOf(hit.releaseDate),
-  rating: roundRating(hit.voteAverage),
-  votes: hit.voteCount,
-  genres: genreNames(hit.genreIds, genres),
-});
+  listed: ListStatuses,
+) => {
+  const inList = listed.get(listedKey(type, hit.id));
+  return {
+    id: hit.id,
+    type,
+    title: hit.title,
+    year: yearOf(hit.releaseDate),
+    rating: roundRating(hit.voteAverage),
+    votes: hit.voteCount,
+    genres: genreNames(hit.genreIds, genres),
+    ...(inList === undefined ? {} : { inList }),
+  };
+};
 
 // the listable ones of a TMDB list, as model items; the limit counts after
 // filtering
@@ -60,11 +67,12 @@ export const toTitleItems = (
   type: MediaType,
   hits: TitleHit[],
   genres: Genre[],
+  listed: ListStatuses,
   limit: number,
 ) => {
   const asOf = today();
   return hits
     .filter((hit) => isListable(hit, asOf))
     .slice(0, limit)
-    .map((hit) => toTitleItem(type, hit, genres));
+    .map((hit) => toTitleItem(type, hit, genres, listed));
 };

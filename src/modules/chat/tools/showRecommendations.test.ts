@@ -21,7 +21,7 @@ const item = (id: number, extra: Partial<Item> = {}): Item => ({
 const run = async (items: Item[], signal = new AbortController().signal) => {
   const value = await showRecommendations.run(
     showRecommendations.args.parse({ items }),
-    toolContext(signal),
+    toolContext({ signal }),
   );
   expect(value).toBeInstanceOf(DisplayOutput);
   const { output, events } = value as DisplayOutput;
@@ -300,7 +300,7 @@ describe("show_recommendations", () => {
 
     const running = showRecommendations.run(
       { items: [item(1), item(2)] },
-      toolContext(controller.signal),
+      toolContext({ signal: controller.signal }),
     );
     await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
     controller.abort();

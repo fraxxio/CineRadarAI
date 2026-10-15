@@ -16,6 +16,7 @@ import {
   personIdArg,
   toTitleItem,
 } from "./shared";
+import { type ListStatuses, listStatuses } from "./userList";
 import { ToolError, defineTool } from "./types";
 
 const MAX_RESULTS = 20;
@@ -63,20 +64,22 @@ export const getPersonCredits = defineTool({
         "Crew only: only the jobs in this department, e.g. Directing for directors, Writing for writers",
       ),
   }),
-  async run({ id, type, role, department }, { signal }) {
+  async run({ id, type, role, department }, ctx) {
+    const { signal } = ctx;
     if (role === "cast" && department) {
       throw new ToolError('department works with role "crew" only.');
     }
-    const [credits, genres] = await Promise.all([
+    const [credits, genres, listed] = await Promise.all([
       getCredits(type, id, { signal }),
       // genres are extra detail: a credit still counts without them
       getGenres(type, { signal }).catch(() => []),
+      listStatuses(ctx),
     ]);
     const asOf = today();
     return {
       results:
         role === "cast"
-          ? toItems(type, castEntries(type, credits.cast, asOf), genres)
+          ? toItems(type, castEntries(type, credits.cast, asOf), genres, listed)
           : toItems(
               type,
               crewEntries(
@@ -86,6 +89,7 @@ export const getPersonCredits = defineTool({
                 asOf,
               ),
               genres,
+              listed,
             ),
     };
   },
@@ -96,6 +100,7 @@ function toItems<Extra extends object>(
   type: MediaType,
   entries: Entry<Extra>[],
   genres: Genre[],
+  listed: ListStatuses,
 ) {
   return (
     entries
@@ -103,7 +108,7 @@ function toItems<Extra extends object>(
       .sort((a, b) => b.hit.voteCount - a.hit.voteCount)
       .slice(0, MAX_RESULTS)
       .map(({ hit, extra }) => ({
-        ...toTitleItem(type, hit, genres),
+        ...toTitleItem(type, hit, genres, listed),
         ...extra,
       }))
   );

@@ -144,7 +144,10 @@ describe("get_title_details", () => {
     const spy = mockTmdb({ "/3/movie/550": movie() });
     const { signal } = new AbortController();
 
-    await getTitleDetails.run({ type: "movie", id: 550 }, toolContext(signal));
+    await getTitleDetails.run(
+      { type: "movie", id: 550 },
+      toolContext({ signal }),
+    );
 
     expect(spy.mock.lastCall?.[1]?.signal).toBe(signal);
   });

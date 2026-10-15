@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { makeMovie } from "@test/helpers/factories";
 import { mockTmdb, tmdbUrls } from "@test/helpers/tmdb";
 import {
   MOVIE_GENRES,
@@ -7,7 +8,7 @@ import {
   rawMovie,
   rawShow,
 } from "../testing/tmdbData";
-import { toolContext } from "../testing/toolContext";
+import { listContext, toolContext } from "../testing/toolContext";
 
 // fresh module per test: the genre list is cached at module level
 let getTrending: typeof import("./getTrending").getTrending;
@@ -23,7 +24,7 @@ type Items = { results: Record<string, unknown>[] };
 const run = async (args: object, signal = new AbortController().signal) =>
   (await getTrending.run(
     getTrending.args.parse(args),
-    toolContext(signal),
+    toolContext({ signal }),
   )) as Items;
 
 // trending items carry media_type, like TMDB sends them
@@ -184,4 +185,16 @@ describe("get_trending", () => {
     expect(parse({ type: "film" })).toBe(false);
     expect(parse({})).toBe(false);
   });
+});
+
+test("get_trending: a listed title gets inList, an unlisted one no key", async () => {
+  mockTrending([], [show(1399), show(1400)]);
+
+  const { results } = (await getTrending.run(
+    getTrending.args.parse({ type: "tv" }),
+    listContext([makeMovie({ movieId: 1399, type: "tv", status: "Watching" })]),
+  )) as Items;
+
+  expect(results[0]).toHaveProperty("inList", "Watching");
+  expect(results[1]).not.toHaveProperty("inList");
 });

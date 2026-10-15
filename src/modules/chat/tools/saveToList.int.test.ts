@@ -8,9 +8,11 @@ import { saveToList } from "./saveToList";
 import { DisplayOutput, ToolError, type ChatUser } from "./types";
 
 let user: Awaited<ReturnType<typeof seedUser>>;
+const invalidateList = vi.fn();
 
 beforeEach(async () => {
   user = await seedUser();
+  invalidateList.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -22,7 +24,10 @@ const FURY = rawDetails(228150, {
 
 // args as the registry passes them: parsed
 const run = (args: object, chatUser: ChatUser) =>
-  saveToList.run(saveToList.args.parse(args), toolContext(undefined, chatUser));
+  saveToList.run(
+    saveToList.args.parse(args),
+    toolContext({ user: chatUser, invalidateList }),
+  );
 
 const signedIn = (): ChatUser => ({ status: "signed_in", id: user.id });
 const fury = { type: "movie", id: 228150, title: "Fury" };
@@ -70,6 +75,19 @@ describe("save_to_list", () => {
           status: "Watching",
           rating: 0,
         },
+      ]);
+      expect(invalidateList).toHaveBeenCalledTimes(1);
+    });
+
+    test("the turn's list is read again after the save", async () => {
+      mockTmdb({ "/3/movie/228150": FURY });
+      const ctx = toolContext({ user: signedIn() });
+      expect(await ctx.list()).toEqual([]);
+
+      await saveToList.run(saveToList.args.parse(fury), ctx);
+
+      expect(await ctx.list()).toEqual([
+        expect.objectContaining({ movieId: 228150, type: "movie" }),
       ]);
     });
 
@@ -131,6 +149,7 @@ describe("save_to_list", () => {
         new ToolError(message),
       );
       expect(await getMovies(user.id)).toEqual([]);
+      expect(invalidateList).not.toHaveBeenCalled();
     });
 
     test("a failed TMDB request isn't a ToolError", async () => {
@@ -141,6 +160,7 @@ describe("save_to_list", () => {
         status: 503,
       });
       expect(await getMovies(user.id)).toEqual([]);
+      expect(invalidateList).not.toHaveBeenCalled();
     });
   });
 
@@ -175,6 +195,7 @@ describe("save_to_list", () => {
         ),
       );
       expect(await getMovies(user.id)).toEqual([]);
+      expect(invalidateList).not.toHaveBeenCalled();
     });
 
     test("no status: null in the pending save", async () => {

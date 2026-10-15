@@ -76,7 +76,7 @@ export const saveToList = defineTool({
         "Omit to add a new title as Planning to watch, or to leave a title already in the list as it is",
       ),
   }),
-  async run(args, { signal, user }) {
+  async run(args, { signal, user, invalidateList }) {
     const { type, id, status } = args;
     switch (user.status) {
       // no TMDB request: nothing could be saved anyway
@@ -116,6 +116,7 @@ export const saveToList = defineTool({
           (list) => list.saveTitle(user.id, args, { signal }),
           args.title,
         );
+        invalidateList();
         return new DisplayOutput(
           {
             saved: { id, type, title: entry.title, status: entry.status },

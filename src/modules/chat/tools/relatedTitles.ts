@@ -3,6 +3,7 @@ import { z } from "zod/v4";
 import type { MediaType, Paged, TitleHit } from "@/infra/tmdb";
 import { getGenres, type FetchOptions } from "@/infra/tmdb/server";
 import { TITLE_ITEM_FIELDS, mediaTypeArg, toTitleItems } from "./shared";
+import { listStatuses } from "./userList";
 import { defineTool } from "./types";
 
 const MAX_RESULTS = 10;
@@ -40,11 +41,13 @@ export const relatedTitlesTool = ({
         .min(1)
         .describe("TMDB id of the title, from the same result as its type"),
     }),
-    async run({ type, id }, { signal }) {
-      const [page, genres] = await Promise.all([
+    async run({ type, id }, ctx) {
+      const { signal } = ctx;
+      const [page, genres, listed] = await Promise.all([
         fetch(type, id, { signal }),
         // genres are extra detail: a title still counts without them
         getGenres(type, { signal }).catch(() => []),
+        listStatuses(ctx),
       ]);
       return {
         results: toTitleItems(
@@ -52,6 +55,7 @@ export const relatedTitlesTool = ({
           // the title itself isn't a suggestion
           page.results.filter((hit) => hit.id !== id),
           genres,
+          listed,
           MAX_RESULTS,
         ),
       };

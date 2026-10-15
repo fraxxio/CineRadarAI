@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { makeMovie } from "@test/helpers/factories";
 import { mockTmdb, tmdbUrls } from "@test/helpers/tmdb";
 import {
   MOVIE_GENRES,
@@ -7,7 +8,7 @@ import {
   rawMovie,
   rawShow,
 } from "../testing/tmdbData";
-import { toolContext } from "../testing/toolContext";
+import { listContext, toolContext } from "../testing/toolContext";
 
 // fresh module per test: the genre list is cached at module level
 let searchTitles: typeof import("./searchTitles").searchTitles;
@@ -121,7 +122,7 @@ describe("search_titles", () => {
 
     await searchTitles.run(
       { query: "Fury", type: "movie" },
-      toolContext(signal),
+      toolContext({ signal }),
     );
 
     expect(spy).toHaveBeenCalledTimes(2);
@@ -143,5 +144,45 @@ describe("search_titles", () => {
     expect(parse({ query: "Fury", type: "film" })).toBe(false);
     expect(parse({ query: "Fury", type: "movie", year: 2014.5 })).toBe(false);
     expect(parse({ type: "movie" })).toBe(false);
+  });
+});
+
+describe("search_titles: inList", () => {
+  const searchAs = async (ctx: ReturnType<typeof toolContext>) =>
+    (await searchTitles.run({ query: "Fury", type: "movie" }, ctx)) as Items;
+
+  test("a listed title gets its status, an unlisted one no key", async () => {
+    mockSearch([rawMovie(1), rawMovie(2)]);
+
+    const { results } = await searchAs(
+      listContext([
+        makeMovie({ movieId: 1, status: "Planning to watch" }),
+        // the same id as TV: not this movie
+        makeMovie({ movieId: 2, type: "tv" }),
+      ]),
+    );
+
+    expect(results[0]).toHaveProperty("inList", "Planning to watch");
+    expect(results[1]).not.toHaveProperty("inList");
+  });
+
+  test("signed out: no marks", async () => {
+    mockSearch([rawMovie(1)]);
+
+    const { results } = await searchAs(toolContext());
+
+    expect(results[0]).not.toHaveProperty("inList");
+  });
+
+  test("a failed list read still returns the hits, without marks", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    mockSearch([rawMovie(1)]);
+
+    const { results } = await searchAs(
+      listContext(() => Promise.reject(new Error("db down"))),
+    );
+
+    expect(results).toEqual([expect.objectContaining({ id: 1 })]);
+    expect(results[0]).not.toHaveProperty("inList");
   });
 });

@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import type { EntryKey } from "@/modules/my-list";
 import { makeMovie } from "@test/helpers/factories";
+import type { ChatUser } from "../tools/types";
+import { userList } from "../tools/userList";
 import { formatListChangeNote, listChangeNote } from "./listChangeNote";
 
-const { getEntries } = vi.hoisted(() => ({ getEntries: vi.fn() }));
-vi.mock("@/modules/my-list/server", () => ({ getEntries }));
+const { readEntries } = vi.hoisted(() => ({ readEntries: vi.fn() }));
+vi.mock("@/modules/my-list/server", () => ({ readEntries }));
 
 beforeEach(() => {
-  getEntries.mockReset();
+  readEntries.mockReset();
 });
 
 const fury = { movieId: 228150, type: "movie" } as const;
@@ -73,34 +76,38 @@ describe("formatListChangeNote", () => {
 
 describe("listChangeNote", () => {
   const signedIn = { status: "signed_in", id: "u1" } as const;
+  // through the turn's loader, as the chat reads it
+  const note = (user: ChatUser, keys: EntryKey[]) =>
+    listChangeNote(userList(user).list, keys);
 
   test("signed in: reads the session user's list", async () => {
-    getEntries.mockResolvedValue([makeMovie({ movieId: 228150 })]);
-    expect(await listChangeNote(signedIn, [fury])).toBe(
+    readEntries.mockResolvedValue([makeMovie({ movieId: 228150 })]);
+    expect(await note(signedIn, [fury])).toBe(
       "[List update: Fury (movie 228150) is Completed]",
     );
-    expect(getEntries).toHaveBeenCalledWith("u1");
+    expect(readEntries).toHaveBeenCalledWith("u1");
   });
 
   test.each([
     { status: "signed_out" } as const,
     { status: "unavailable" } as const,
   ])("$status: no note, no DB read", async (user) => {
-    expect(await listChangeNote(user, [fury])).toBeUndefined();
-    expect(getEntries).not.toHaveBeenCalled();
+    expect(await note(user, [fury])).toBeUndefined();
+    expect(readEntries).not.toHaveBeenCalled();
   });
 
   test("no keys: no DB read", async () => {
-    expect(await listChangeNote(signedIn, [])).toBeUndefined();
-    expect(getEntries).not.toHaveBeenCalled();
+    expect(await note(signedIn, [])).toBeUndefined();
+    expect(readEntries).not.toHaveBeenCalled();
   });
 
-  test("a DB error: no note, logged", async () => {
+  test("a DB error: no note, logged once by the turn's list", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    getEntries.mockRejectedValue(new Error("db down"));
-    expect(await listChangeNote(signedIn, [fury])).toBeUndefined();
+    readEntries.mockRejectedValue(new Error("db down"));
+    expect(await note(signedIn, [fury])).toBeUndefined();
+    expect(error).toHaveBeenCalledTimes(1);
     expect(error).toHaveBeenCalledWith(
-      "Couldn't read the list for the list-change note:",
+      "Can't read the user's list:",
       expect.objectContaining({ message: "db down" }),
     );
   });
