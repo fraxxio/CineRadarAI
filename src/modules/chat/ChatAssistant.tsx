@@ -24,6 +24,7 @@ export default function ChatAssistant({
   signedIn,
 }: ChatAssistantProps) {
   const recaptcha = useRecaptchaCheck(recaptchaEnabled);
+  const [prompt, setPrompt] = useState("");
   const {
     messages,
     streamingParts,
@@ -34,8 +35,15 @@ export default function ChatAssistant({
     reset,
     undoSave,
     startSignIn,
-  } = useChat({ beforeSend: recaptcha.verify, signedIn });
-  const [prompt, setPrompt] = useState("");
+  } = useChat({
+    getRecaptchaToken: recaptcha.getToken,
+    // the prompt goes back to the input for a retry
+    onRecaptchaFailed: (rejected) => {
+      setPrompt(rejected);
+      recaptcha.showFailed();
+    },
+    signedIn,
+  });
   // safe to shuffle during render: the loader never renders on the server
   const [loaderWords] = useState(() => shuffle(LOADER_WORDS));
   const loaderTurn = useRef(0);
@@ -61,11 +69,10 @@ export default function ChatAssistant({
     parts: [{ type: "text", text }],
   });
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     loaderTurn.current += 1;
-    // the prompt stays in the input for a retry if the send is cancelled
-    if (await send(prompt)) {
+    if (send(prompt)) {
       setPrompt("");
     }
   }

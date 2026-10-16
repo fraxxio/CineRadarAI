@@ -40,8 +40,12 @@ import type {
 export type ChatStatus = "idle" | "loading" | "streaming" | "error" | "expired";
 
 type UseChatOptions = {
-  // runs before each send (e.g. reCAPTCHA); resolve false to cancel the send
-  beforeSend?: (signal: AbortSignal) => Promise<boolean>;
+  // the reCAPTCHA token sent with each prompt, null when there is none; unset
+  // when reCAPTCHA is disabled
+  getRecaptchaToken?: () => Promise<string | null>;
+  // reCAPTCHA turned the prompt down: it's out of the chat again, for the
+  // input to take back
+  onRecaptchaFailed?: (prompt: string) => void;
   // the pending saves of a sign-in run once this is true
   signedIn?: boolean;
 };
@@ -60,10 +64,10 @@ export type StartSignIn = (saves: PendingSave[]) => void;
 type Turn = {
   controller: AbortController;
   prompt: string;
+  // the prompt's message, shown in the chat as soon as it's sent
+  promptMessage: ChatMessage;
   // the answer so far
   parts: MessagePart[];
-  // beforeSend passed and the prompt is shown in the chat
-  accepted: boolean;
   // a save_to_list call saved a title, /my-list needs a refresh
   listSaved: boolean;
 };
@@ -86,15 +90,21 @@ const MAX_PENDING_SAVES = 10;
 const capped = (messages: ChatMessage[]) => messages.slice(-MAX_MESSAGES);
 
 class ConversationExpiredError extends Error {}
+class RecaptchaFailedError extends Error {}
 
-// the server's 409 for a previous interaction Gemini no longer has
-async function isExpiredResponse(response: Response): Promise<boolean> {
-  if (response.status !== 409) {
+// the server's error for a response with this status, e.g. 409
+// "conversation_expired" for a previous interaction Gemini no longer has
+async function isErrorResponse(
+  response: Response,
+  status: number,
+  error: string,
+): Promise<boolean> {
+  if (response.status !== status) {
     return false;
   }
   try {
     const body: ChatErrorResponse = await response.json();
-    return body.error === "conversation_expired";
+    return body.error === error;
   } catch {
     return false;
   }
@@ -120,7 +130,11 @@ function addListChanges(
     .slice(-MAX_LIST_CHANGES);
 }
 
-export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
+export function useChat({
+  getRecaptchaToken,
+  onRecaptchaFailed,
+  signedIn = false,
+}: UseChatOptions = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // the answer in flight: text, tool lines and cards in order
   const [streamingParts, setStreamingParts] = useState<MessagePart[]>([]);
@@ -291,9 +305,9 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
     setStreamingSaves([]);
   }
 
-  // resolves once the prompt is accepted (true) or cancelled before sending
-  // (false); the answer keeps streaming after that
-  async function send(prompt: string): Promise<boolean> {
+  // shows the prompt right away and streams the answer; false when a turn is
+  // already running
+  function send(prompt: string): boolean {
     if (turnRef.current) {
       return false;
     }
@@ -301,38 +315,21 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
     const turn: Turn = {
       controller: new AbortController(),
       prompt,
+      promptMessage: {
+        id: nextId(),
+        role: "user",
+        parts: [{ type: "text", text: prompt }],
+      },
       parts: [],
-      accepted: false,
       listSaved: false,
     };
-    const { signal } = turn.controller;
     // false once the turn was stopped or the chat was reset
     const isCurrent = () => turnRef.current === turn;
     turnRef.current = turn;
 
-    // set before beforeSend so the loader shows during verification
     clearStreaming();
     setStatus("loading");
-
-    if (beforeSend) {
-      const allowed = await beforeSend(signal);
-      if (!isCurrent()) {
-        return false;
-      }
-      if (!allowed) {
-        turnRef.current = null;
-        setStatus("idle");
-        return false;
-      }
-    }
-
-    turn.accepted = true;
-    setMessages((prev) =>
-      capped([
-        ...prev,
-        { id: nextId(), role: "user", parts: [{ type: "text", text: prompt }] },
-      ]),
-    );
+    setMessages((prev) => capped([...prev, turn.promptMessage]));
     void streamReply(turn, isCurrent);
     return true;
   }
@@ -344,11 +341,24 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
       conversationRef.current;
 
     try {
+      let recaptchaToken: string | undefined;
+      if (getRecaptchaToken) {
+        const token = await getRecaptchaToken();
+        if (!isCurrent()) {
+          return;
+        }
+        if (!token) {
+          throw new RecaptchaFailedError();
+        }
+        recaptchaToken = token;
+      }
+
       const request: ChatRequest = {
         content: turn.prompt,
         previousInteractionId: interactionId,
         stoppedTurns: stoppedTurns.length ? stoppedTurns : undefined,
         listChanges: listChanges.length ? listChanges : undefined,
+        recaptchaToken,
       };
       // post new message to server and stream Gemini response
       const response = await fetch("/api/assistant", {
@@ -360,8 +370,11 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
         signal,
       });
 
-      if (await isExpiredResponse(response)) {
+      if (await isErrorResponse(response, 409, "conversation_expired")) {
         throw new ConversationExpiredError();
+      }
+      if (await isErrorResponse(response, 403, "recaptcha_failed")) {
+        throw new RecaptchaFailedError();
       }
       if (!response.ok) {
         throw new Error(
@@ -474,6 +487,15 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
       if (!isCurrent()) {
         return;
       }
+      // nothing reached the model, the conversation stays as it was
+      if (error instanceof RecaptchaFailedError) {
+        turnRef.current = null;
+        clearStreaming();
+        setStatus("idle");
+        setMessages((prev) => prev.filter((m) => m !== turn.promptMessage));
+        onRecaptchaFailed?.(turn.prompt);
+        return;
+      }
       const expired = error instanceof ConversationExpiredError;
       if (expired) {
         console.info("AI chat conversation expired, starting a new one");
@@ -532,32 +554,30 @@ export function useChat({ beforeSend, signedIn = false }: UseChatOptions = {}) {
     turnRef.current = null;
     turn.controller.abort();
 
-    if (turn.accepted) {
-      // running tool lines keep the time they had at the stop
-      const parts = stopTools(turn.parts, Date.now());
-      // don't continue from the stopped interaction: its state on Google's side
-      // is unreliable, so interactionId stays on the last completed turn
-      // keep the newest ones so the request stays within the server limit
-      updateConversation((current) => ({
-        ...current,
-        stoppedTurns: [
-          ...current.stoppedTurns,
-          {
-            prompt: turn.prompt,
-            partialText: partsToText(parts).slice(0, MAX_STOPPED_TEXT_LENGTH),
-          },
-        ].slice(-MAX_STOPPED_TURNS),
-      }));
-      const message: ChatMessage = {
-        id: nextId(),
-        role: "assistant",
-        parts,
-        stopped: true,
-      };
-      setMessages((prev) => capped([...prev, message]));
-      if (saveNow) {
-        saveChatNow(capped([...messagesRef.current, message]));
-      }
+    // running tool lines keep the time they had at the stop
+    const parts = stopTools(turn.parts, Date.now());
+    // don't continue from the stopped interaction: its state on Google's side
+    // is unreliable, so interactionId stays on the last completed turn
+    // keep the newest ones so the request stays within the server limit
+    updateConversation((current) => ({
+      ...current,
+      stoppedTurns: [
+        ...current.stoppedTurns,
+        {
+          prompt: turn.prompt,
+          partialText: partsToText(parts).slice(0, MAX_STOPPED_TEXT_LENGTH),
+        },
+      ].slice(-MAX_STOPPED_TURNS),
+    }));
+    const message: ChatMessage = {
+      id: nextId(),
+      role: "assistant",
+      parts,
+      stopped: true,
+    };
+    setMessages((prev) => capped([...prev, message]));
+    if (saveNow) {
+      saveChatNow(capped([...messagesRef.current, message]));
     }
     clearStreaming();
     setStatus("idle");

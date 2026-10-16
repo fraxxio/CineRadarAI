@@ -375,6 +375,66 @@ describe("POST /api/assistant", () => {
     });
   });
 
+  describe("reCAPTCHA", () => {
+    let siteverify: ReturnType<typeof mockTmdb>;
+    const verdict = (body: object) =>
+      siteverify.mockResolvedValue(Response.json(body));
+
+    beforeEach(() => {
+      vi.stubEnv("NEXT_PUBLIC_RECAPTCHA_SITE_KEY", "site");
+      vi.stubEnv("RECAPTCHA_SECRET_KEY", "secret");
+      siteverify = vi.spyOn(globalThis, "fetch");
+      create.mockResolvedValue(geminiEvents([]));
+    });
+
+    test("a passing token: verified with Google, then Gemini is called", async () => {
+      verdict({ success: true, score: 0.9 });
+
+      const res = await post({ content: "hi", recaptchaToken: "tok" });
+
+      expect(res.status).toBe(200);
+      const [input, init] = siteverify.mock.calls[0];
+      expect(String(input)).toBe(
+        "https://www.google.com/recaptcha/api/siteverify",
+      );
+      expect((init?.body as URLSearchParams).get("response")).toBe("tok");
+      expect(create).toHaveBeenCalledOnce();
+    });
+
+    test("a failing token: 403 recaptcha_failed, Gemini isn't called", async () => {
+      verdict({ success: true, score: 0.1 });
+
+      const res = await post({ content: "hi", recaptchaToken: "tok" });
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "recaptcha_failed" });
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    test("no token: 403 without asking Google", async () => {
+      const res = await post({ content: "hi" });
+
+      expect(res.status).toBe(403);
+      expect(siteverify).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    test("returns 400 for a token that isn't a string", async () => {
+      const res = await post({ content: "hi", recaptchaToken: 42 });
+      expect(res.status).toBe(400);
+      expect(siteverify).not.toHaveBeenCalled();
+    });
+
+    test("disabled: a token is ignored and Google isn't asked", async () => {
+      vi.stubEnv("RECAPTCHA_SECRET_KEY", "");
+
+      const res = await post({ content: "hi", recaptchaToken: "tok" });
+
+      expect(res.status).toBe(200);
+      expect(siteverify).not.toHaveBeenCalled();
+    });
+  });
+
   test("returns 502 when interactions.create throws", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     create.mockRejectedValue(new Error("quota"));

@@ -11,16 +11,10 @@ const GRECAPTCHA_STUB = `window.grecaptcha = {
   execute: () => Promise.resolve("e2e-token"),
 };`;
 
-async function stubRecaptcha(page: Page, verdict: object) {
+async function stubRecaptcha(page: Page) {
   await page.route("https://www.google.com/recaptcha/**", (r) =>
     r.fulfill({ contentType: "text/javascript", body: GRECAPTCHA_STUB }),
   );
-  const verifyBodies: unknown[] = [];
-  await page.route("**/api/recaptcha", (r) => {
-    verifyBodies.push(r.request().postDataJSON());
-    return r.fulfill({ json: verdict });
-  });
-  return verifyBodies;
 }
 
 async function openChat(page: Page) {
@@ -33,10 +27,13 @@ async function send(page: Page, text: string) {
   await page.getByRole("button", { name: "Submit" }).click();
 }
 
-test("a failed verification blocks the chat request", async ({ page }) => {
-  const verifyBodies = await stubRecaptcha(page, { success: false });
-  const calls = await stubAssistant(page, () => ({
-    events: answer("i1", "unused"),
+test("a rejected token takes the prompt back to the input", async ({
+  page,
+}) => {
+  await stubRecaptcha(page);
+  await stubAssistant(page, () => ({
+    status: 403,
+    json: { error: "recaptcha_failed" },
   }));
   await openChat(page);
 
@@ -45,16 +42,15 @@ test("a failed verification blocks the chat request", async ({ page }) => {
 
   const failed = page.getByText("Recaptcha failed to verify!");
   await expect(failed).toBeVisible();
+  await expect(page.getByPlaceholder(/Suggest me movies/)).toHaveValue(
+    "war movies",
+  );
+  await expect(page.getByText("war movies")).toBeHidden();
   await expect(failed).toBeHidden({ timeout: 5_000 });
-  expect(verifyBodies).toHaveLength(1);
-  expect(calls).toHaveLength(0);
 });
 
-test("a passed verification sends the chat request", async ({ page }) => {
-  const verifyBodies = await stubRecaptcha(page, {
-    success: true,
-    score: 0.9,
-  });
+test("the token goes with the chat request", async ({ page }) => {
+  await stubRecaptcha(page);
   const calls = await stubAssistant(page, () => ({
     events: answer("i1", "Try **Fury** (2014)."),
   }));
@@ -63,6 +59,7 @@ test("a passed verification sends the chat request", async ({ page }) => {
   await send(page, "war movies");
 
   await expect(page.getByText("Try Fury (2014).")).toBeVisible();
-  expect(verifyBodies).toEqual([{ recaptchaToken: "e2e-token" }]);
-  expect(calls).toEqual([{ content: "war movies" }]);
+  expect(calls).toEqual([
+    { content: "war movies", recaptchaToken: "e2e-token" },
+  ]);
 });
