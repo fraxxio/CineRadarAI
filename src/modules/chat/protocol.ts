@@ -68,10 +68,13 @@ export type ChatRequest = {
   // entries changed outside the model since the last turn; the server tells
   // the model their state from the DB
   listChanges?: EntryKey[];
+  // when reCAPTCHA is enabled; the server checks it before calling Gemini
+  recaptchaToken?: string;
 };
 
 // JSON body of a POST /api/assistant that failed before streaming; 409
-// "conversation_expired": Gemini no longer has previousInteractionId
+// "conversation_expired": Gemini no longer has previousInteractionId; 403
+// "recaptcha_failed": the token was missing or didn't pass
 export type ChatErrorResponse = { error: string };
 
 export type TextPart = { type: "text"; text: string };

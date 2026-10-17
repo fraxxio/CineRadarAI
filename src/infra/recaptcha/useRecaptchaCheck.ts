@@ -2,47 +2,32 @@
 import { useState } from "react";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 
-// reCAPTCHA verification to run before each chat message
+// the reCAPTCHA token sent with each chat message; the server verifies it
 export function useRecaptchaCheck(enabled: boolean) {
   const { executeRecaptcha } = useGoogleReCaptcha();
   const [failed, setFailed] = useState(false);
 
-  async function verify(signal: AbortSignal) {
+  // null when there's no token to send
+  async function getToken(): Promise<string | null> {
     if (!executeRecaptcha) {
       console.log("Execute recaptcha not yet available");
-      return false;
+      return null;
     }
     try {
-      const recaptchaToken = await executeRecaptcha("AIchatSubmit");
-      const response = await fetch("/api/recaptcha", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ recaptchaToken }),
-        signal,
-      });
-      if (!response.ok) {
-        throw new Error(
-          `Failed to verify captcha. (Status: ${response.status})`,
-        );
-      }
-      const res = await response.json();
-      if (res.success === false) {
-        setFailed(true);
-        setTimeout(() => {
-          setFailed(false);
-        }, 3000);
-        return false;
-      }
-      return true;
+      return await executeRecaptcha("AIchatSubmit");
     } catch (error) {
-      if (!signal.aborted) {
-        console.error("Recaptcha verify error (Client):", error);
-      }
-      return false;
+      console.error("Recaptcha token error (Client):", error);
+      return null;
     }
   }
 
-  return { verify: enabled ? verify : undefined, failed };
+  // shows the failure message for a while
+  function showFailed() {
+    setFailed(true);
+    setTimeout(() => {
+      setFailed(false);
+    }, 3000);
+  }
+
+  return { getToken: enabled ? getToken : undefined, showFailed, failed };
 }

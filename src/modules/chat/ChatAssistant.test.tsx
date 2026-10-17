@@ -515,21 +515,18 @@ describe("ChatAssistant", () => {
       expect(stoppedTurns[0].partialText).toHaveLength(MAX_STOPPED_TEXT_LENGTH);
     });
 
-    test("during reCAPTCHA verification: nothing is sent and the prompt is kept", async () => {
-      mockRecaptcha(async () => "tok");
-      const verification = controlledStream();
-      const { calls } = routeFetch({
-        "/api/recaptcha": [verification.response],
-      });
+    test("while the reCAPTCHA token is pending: nothing is sent, the prompt stays as a stopped turn", async () => {
+      mockRecaptcha(() => new Promise(() => {}));
+      const { spy } = routeFetch({});
       renderChat({ recaptchaEnabled: true });
       await send("hi");
-      await waitFor(() => expect(calls).toHaveLength(1));
 
       await user.click(stopBtn());
 
-      expect(screen.queryByText("Stopped")).toBeNull();
-      expect(input()).toHaveValue("hi");
-      expect(calls.map((c) => c.url)).toEqual(["/api/recaptcha"]);
+      expect(screen.getByText("hi")).toBeInTheDocument();
+      expect(screen.getByText("Stopped")).toBeInTheDocument();
+      expect(input()).toHaveValue("");
+      expect(spy).not.toHaveBeenCalled();
     });
   });
 
@@ -2216,17 +2213,25 @@ describe("ChatAssistant", () => {
         expect(answer.parts[0]).not.toHaveProperty("runningSince");
       });
 
-      test("before the prompt was accepted: saves nothing", async () => {
-        mockRecaptcha(async () => "tok");
-        const verification = controlledStream();
-        const { calls } = routeFetch({
-          "/api/recaptcha": [verification.response],
-        });
+      test("while the reCAPTCHA token is pending: saves the prompt as a stopped turn", async () => {
+        mockRecaptcha(() => new Promise(() => {}));
+        routeFetch({});
         const { unmount } = renderChat({ recaptchaEnabled: true });
         await send("hi");
-        await waitFor(() => expect(calls).toHaveLength(1));
 
-        expect(savedOnLeave(unmount)).toBeNull();
+        const saved = savedOnLeave(unmount)!;
+        expect(saved.messages).toEqual([
+          expect.objectContaining({
+            role: "user",
+            parts: [{ type: "text", text: "hi" }],
+          }),
+          expect.objectContaining({
+            role: "assistant",
+            parts: [],
+            stopped: true,
+          }),
+        ]);
+        expect(saved.stoppedTurns).toEqual([{ prompt: "hi", partialText: "" }]);
       });
     });
 
@@ -2272,72 +2277,110 @@ describe("ChatAssistant", () => {
   });
 
   describe("reCAPTCHA enabled", () => {
-    test("verifies the token before calling the assistant", async () => {
-      const executeRecaptcha = vi.fn(async () => "tok");
+    const rejected = () =>
+      Response.json({ error: "recaptcha_failed" }, { status: 403 });
+
+    test("shows the prompt before the token arrives, then sends the token with it", async () => {
+      let resolveToken!: (token: string) => void;
+      const executeRecaptcha = vi.fn(
+        () => new Promise<string>((resolve) => (resolveToken = resolve)),
+      );
       mockRecaptcha(executeRecaptcha);
-      const { calls, bodies } = routeFetch({
-        "/api/recaptcha": [Response.json({ success: true, score: 0.9 })],
-        "/api/assistant": [answer("i1", "a1")],
-      });
+      const { bodies } = routeFetch({ "/api/assistant": [answer("i1", "a1")] });
       renderChat({ recaptchaEnabled: true });
 
       await send("hi");
+
+      expect(screen.getByText("hi")).toBeInTheDocument();
+      expect(input()).toHaveValue("");
+      expect(bodies("/api/assistant")).toEqual([]);
+
+      act(() => resolveToken("tok"));
       await settled();
 
       expect(executeRecaptcha).toHaveBeenCalledWith("AIchatSubmit");
-      expect(calls.map((c) => c.url)).toEqual([
-        "/api/recaptcha",
-        "/api/assistant",
+      expect(bodies("/api/assistant")).toEqual([
+        { content: "hi", recaptchaToken: "tok" },
       ]);
-      expect(bodies("/api/recaptcha")).toEqual([{ recaptchaToken: "tok" }]);
       expect(screen.getByText("a1")).toBeInTheDocument();
     });
 
-    test("a failed verification shows a message for 3 s and skips the assistant", async () => {
+    test("a rejected token takes the prompt back to the input and shows a message for 3 s", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       mockRecaptcha(async () => "tok");
-      const { bodies } = routeFetch({
-        "/api/recaptcha": [Response.json({ success: false })],
-      });
+      routeFetch({ "/api/assistant": [rejected()] });
       renderChat({ recaptchaEnabled: true });
 
       await send("hi");
 
       expect(await screen.findByText(CAPTCHA_FAILED)).toBeInTheDocument();
       await settled();
-      expect(input()).toHaveValue("hi"); // the prompt is kept for a retry
+      expect(input()).toHaveValue("hi"); // for a retry
+      expect(screen.queryByText("hi")).toBeNull();
+      expect(screen.queryByText(ERROR_TEXT)).toBeNull();
 
       act(() => vi.advanceTimersByTime(3000));
       expect(screen.queryByText(CAPTCHA_FAILED)).toBeNull();
-      expect(bodies("/api/assistant")).toEqual([]);
     });
 
-    test("a failed verification request skips the assistant", async () => {
+    test("a rejected token leaves the conversation as it was", async () => {
+      mockRecaptcha(async () => "tok");
+      const { bodies } = routeFetch({
+        "/api/assistant": [answer("i1", "a1"), rejected(), answer("i2", "a2")],
+      });
+      renderChat({ recaptchaEnabled: true });
+      await send("p1");
+      await settled();
+      await send("p2");
+      await screen.findByText(CAPTCHA_FAILED);
+      await settled();
+
+      await user.click(submitBtn());
+      await settled();
+
+      expect(bodies("/api/assistant")[2]).toEqual({
+        content: "p2",
+        previousInteractionId: "i1",
+        recaptchaToken: "tok",
+      });
+      expect(loadChat()?.messages).toHaveLength(4);
+    });
+
+    test("a 403 with another error is a plain error", async () => {
       vi.spyOn(console, "error").mockImplementation(() => {});
       mockRecaptcha(async () => "tok");
-      const { calls } = routeFetch({
-        "/api/recaptcha": [new Response("", { status: 500 })],
+      routeFetch({
+        "/api/assistant": [Response.json({ error: "x" }, { status: 403 })],
       });
       renderChat({ recaptchaEnabled: true });
 
       await send("hi");
-      await settled();
 
-      expect(calls.map((c) => c.url)).toEqual(["/api/recaptcha"]);
-      expect(screen.queryByText(ERROR_TEXT)).toBeNull();
+      expect(await screen.findByText(ERROR_TEXT)).toBeInTheDocument();
+      expect(screen.queryByText(CAPTCHA_FAILED)).toBeNull();
     });
 
-    test("sends nothing while executeRecaptcha is not ready", async () => {
+    it.each([
+      ["executeRecaptcha is not ready", undefined],
+      [
+        "executeRecaptcha throws",
+        () => Promise.reject(new Error("recaptcha down")),
+      ],
+    ])("%s: sends nothing and takes the prompt back", async (_, execute) => {
       vi.spyOn(console, "log").mockImplementation(() => {});
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      mockRecaptcha(execute);
       const { spy } = routeFetch({});
       renderChat({ recaptchaEnabled: true });
 
       await send("hi");
 
+      expect(await screen.findByText(CAPTCHA_FAILED)).toBeInTheDocument();
+      await settled();
       expect(spy).not.toHaveBeenCalled();
       expect(input()).toHaveValue("hi");
-      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.queryByText("hi")).toBeNull();
     });
 
     test("shows the reCAPTCHA legal notice", () => {
@@ -2347,14 +2390,16 @@ describe("ChatAssistant", () => {
   });
 
   describe("reCAPTCHA disabled", () => {
-    test("calls the assistant directly", async () => {
+    test("calls the assistant without a token", async () => {
       const { calls } = routeFetch({ "/api/assistant": [answer("i1", "a1")] });
       renderChat();
 
       await send("hi");
       await settled();
 
-      expect(calls.map((c) => c.url)).toEqual(["/api/assistant"]);
+      expect(calls.map((c) => [c.url, c.body])).toEqual([
+        ["/api/assistant", { content: "hi" }],
+      ]);
     });
 
     test("hides the reCAPTCHA legal notice", () => {

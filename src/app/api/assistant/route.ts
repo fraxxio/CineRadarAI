@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/infra/auth/auth";
 import {
+  isRecaptchaEnabled,
+  verifyRecaptcha,
+} from "@/infra/recaptcha/recaptcha";
+import {
   MAX_LIST_CHANGES,
   MAX_PROMPT_LENGTH,
   MAX_STOPPED_TEXT_LENGTH,
@@ -44,6 +48,8 @@ const chatRequestSchema = z.object({
     )
     .max(MAX_LIST_CHANGES)
     .optional(),
+  // checked when reCAPTCHA is enabled
+  recaptchaToken: z.string().optional(),
 });
 
 // the only source of the user the tools act for; the chat works without it
@@ -79,8 +85,19 @@ export async function POST(request: NextRequest) {
     previousInteractionId,
     stoppedTurns = [],
     listChanges = [],
+    recaptchaToken,
   } = parsed.data;
-  const user = await chatUser();
+  // checked here, not in a request of its own, so the prompt costs the client
+  // one round trip less before Gemini starts
+  const [recaptchaPassed, user] = await Promise.all([
+    !isRecaptchaEnabled() ||
+      (recaptchaToken !== undefined &&
+        verifyRecaptcha(recaptchaToken, request.signal)),
+    chatUser(),
+  ]);
+  if (!recaptchaPassed) {
+    return NextResponse.json({ error: "recaptcha_failed" }, { status: 403 });
+  }
 
   // stops the Gemini request when the client leaves: cancel() below is the
   // reliable trigger, request.signal may not abort on every runtime
