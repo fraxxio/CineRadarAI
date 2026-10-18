@@ -1,21 +1,22 @@
 import ListCard from "./ListCard";
 import type { StoredEntry } from "../entry";
-import { viewEntries, type ListView } from "../view";
+import { PAGE_SIZE } from "../view";
 
 type ListProps = {
-  // the page starts the read once; each component awaits it in its own Suspense boundary
+  // the page starts the read and streams the rows in a Suspense boundary
   entries: Promise<StoredEntry[]>;
-  view: ListView;
+  page: number;
 };
 
-export async function ListLength({ entries, view }: ListProps) {
-  const movies = viewEntries(await entries, view);
-
-  return <p className="text-lg">Length: {movies.length}</p>;
+// the rows in the view, from the counts query
+export function ListLength({ length }: { length: number }) {
+  return <p className="text-lg">Length: {length}</p>;
 }
 
-export default async function MyListItems({ entries, view }: ListProps) {
-  const movies = viewEntries(await entries, view);
+export default async function MyListItems({ entries, page }: ListProps) {
+  const movies = await entries;
+  // numbering continues across pages
+  const offset = (page - 1) * PAGE_SIZE;
 
   return (
     <div className="border-t border-border-clr">
@@ -30,7 +31,7 @@ export default async function MyListItems({ entries, view }: ListProps) {
             <ListCard
               key={`${movie.type}-${movie.movieId}`}
               movie={movie}
-              index={index}
+              index={offset + index}
             />
           );
         })

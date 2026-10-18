@@ -56,9 +56,10 @@ const row = (page: Page, name: string) =>
 
 const itemLinks = (page: Page) => page.locator('main a[href^="/search/"]');
 
-async function expectItems(page: Page, names: string[]) {
+// `length` is the view's total, across pages
+async function expectItems(page: Page, names: string[], length = names.length) {
   await expect(itemLinks(page)).toHaveText(names);
-  await expect(page.getByText(`Length: ${names.length}`)).toBeVisible();
+  await expect(page.getByText(`Length: ${length}`)).toBeVisible();
 }
 
 test("add from the details page", async ({ page, loginAs, db }) => {
@@ -160,23 +161,37 @@ test("sort and filter, with a matching length", async ({
     "Alpha Movie",
   ]);
 
-  await page.getByRole("link", { name: "Ascending" }).click();
-  await expect(page).toHaveURL(/rating=asc/);
+  // unrated titles come last under both rating sorts
+  await page.getByRole("link", { name: "Lowest rated" }).click();
+  await expect(page).toHaveURL(/sort=rating-asc/);
   await expectItems(page, [
-    "Alpha Movie",
     "Bravo Show",
     "Charlie Movie",
     "Delta Show",
+    "Alpha Movie",
   ]);
-  await expect(page.getByRole("button", { name: "Ascending" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Lowest rated" }),
+  ).toBeDisabled();
+
+  await page.getByRole("link", { name: "Recently added" }).click();
+  await expect(page).toHaveURL(/sort=recent/);
+  await expectItems(page, [
+    "Delta Show",
+    "Charlie Movie",
+    "Bravo Show",
+    "Alpha Movie",
+  ]);
 
   await page.getByRole("link", { name: "TV shows" }).click();
   await expect(page).toHaveURL(/type=tv/);
-  await expectItems(page, ["Bravo Show", "Delta Show"]);
+  // the sort carries over to the filter
+  await expectItems(page, ["Delta Show", "Bravo Show"]);
 
   await page.getByRole("link", { name: "Watching" }).click();
   await expect(page).toHaveURL(/status=watching/);
   await expect(page).toHaveURL(/type=tv/);
+  await expect(page).toHaveURL(/sort=recent/);
   await expectItems(page, ["Bravo Show"]);
 
   await page.getByRole("link", { name: "Movies" }).click();
@@ -247,7 +262,7 @@ test("a new user has an empty list", async ({ page, loginAs }) => {
 test("refresh clears the filters", async ({ page, loginAs, db }) => {
   const user = await loginAs();
   await seedList(db, user.id, mixed);
-  await page.goto("/my-list?rating=asc&status=watching&type=tv");
+  await page.goto("/my-list?sort=rating-asc&status=watching&type=tv");
   await expectItems(page, ["Bravo Show"]);
 
   await page.getByRole("button", { name: "Refresh list" }).click();
@@ -259,6 +274,66 @@ test("refresh clears the filters", async ({ page, loginAs, db }) => {
     "Bravo Show",
     "Alpha Movie",
   ]);
+});
+
+// 30 rows, all rated 5, so the default sort keeps insertion order
+const thirty: ListMovie[] = Array.from({ length: 30 }, (_, i) => ({
+  movieId: i + 1,
+  name: `Title ${i + 1}`,
+  image: "",
+  rating: 5,
+  status: "Completed",
+  type: "movie",
+}));
+const titles = (from: number, to: number) =>
+  thirty.slice(from, to).map((entry) => entry.name);
+
+test("a long list is paginated", async ({ page, loginAs, db }) => {
+  const user = await loginAs();
+  await seedList(db, user.id, thirty);
+  await page.goto("/my-list");
+
+  await expectItems(page, titles(0, 24), 30);
+  const pager = page.getByRole("navigation", { name: "Pagination" });
+  await expect(pager.getByRole("link", { name: "Page 1" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+
+  await pager.getByRole("link", { name: "Page 2" }).click();
+  await expect(page).toHaveURL(`${BASE_URL}/my-list?page=2`);
+  await expectItems(page, titles(24, 30), 30);
+  await expect(page.getByText("#25")).toBeVisible();
+
+  await pager.getByRole("link", { name: "Previous" }).click();
+  await expect(page).toHaveURL(`${BASE_URL}/my-list`);
+  await expectItems(page, titles(0, 24), 30);
+});
+
+test("a page past the end redirects to the last page", async ({
+  page,
+  loginAs,
+  db,
+}) => {
+  const user = await loginAs();
+  await seedList(db, user.id, thirty);
+
+  await page.goto("/my-list?sort=recent&page=9");
+
+  await expect(page).toHaveURL(`${BASE_URL}/my-list?sort=recent&page=2`);
+  await expectItems(page, titles(0, 6).reverse(), 30);
+});
+
+test("a page past the end of an empty view drops the page", async ({
+  page,
+  loginAs,
+}) => {
+  await loginAs();
+
+  await page.goto("/my-list?type=tv&page=3");
+
+  await expect(page).toHaveURL(`${BASE_URL}/my-list?type=tv`);
+  await expect(page.getByText("Your list is empty.")).toBeVisible();
 });
 
 test("adding while logged out asks to log in", async ({ page }) => {

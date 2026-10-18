@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { db } from "@/infra/db";
 import { listEntries } from "@/modules/my-list/schema";
-import { getEntries } from "@/modules/my-list/server";
+import { readEntries } from "@/modules/my-list/server";
 import { forceFailure, getMovies, seedList, seedUser } from "../../helpers/db";
 import { makeMovie } from "../../helpers/factories";
 
@@ -18,7 +18,7 @@ describe("integration infrastructure", () => {
     const movies = [makeMovie(), makeMovie({ movieId: 2, name: "Heat" })];
     await seedList(user.id, movies);
 
-    expect(await getEntries(user.id)).toEqual(movies);
+    expect(await readEntries(user.id)).toEqual(movies);
     expect(await getMovies(user.id)).toEqual(movies);
   });
 

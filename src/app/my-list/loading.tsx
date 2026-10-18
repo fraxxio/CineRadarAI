@@ -2,7 +2,7 @@ import { ListLengthSkeleton, ListRowsSkeleton } from "@/modules/my-list";
 import { Skeleton } from "@/shared/ui/Skeleton";
 
 const sortGroups = [
-  { label: "Sort by rating:", widths: ["w-24", "w-28"] },
+  { label: "Sort by:", widths: ["w-28", "w-28", "w-32"] },
   { label: "Type:", widths: ["w-20", "w-16", "w-12"] },
   { label: "Show only:", widths: ["w-24", "w-36", "w-20", "w-10"] },
 ];

@@ -1,9 +1,15 @@
 import "server-only";
 import { cache } from "react";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, notInArray, sql } from "drizzle-orm";
 import { db } from "@/infra/db";
 import { entryColumns, listEntries } from "./schema";
-import type { EntryKey, ListEntry, StoredEntry } from "./entry";
+import {
+  LIST_STATUSES,
+  type EntryKey,
+  type ListEntry,
+  type StoredEntry,
+} from "./entry";
+import { PAGE_SIZE, type ListCountRow, type ListView } from "./view";
 
 // Each write is a single statement, so it's atomic without a transaction and
 // concurrent writes to different entries can't overwrite each other (for the
@@ -20,7 +26,61 @@ export const readEntries = async (userId: string) =>
     .where(eq(listEntries.userId, userId))
     .orderBy(asc(listEntries.id));
 
-export const getEntries = cache(readEntries);
+const viewFilter = (userId: string, { status, type }: ListView) =>
+  and(
+    eq(listEntries.userId, userId),
+    type === "both" ? undefined : eq(listEntries.type, type),
+    status === "all"
+      ? undefined
+      : status === "other"
+        ? notInArray(
+            listEntries.status,
+            LIST_STATUSES.map((s) => s.value),
+          )
+        : eq(
+            listEntries.status,
+            LIST_STATUSES.find((s) => s.slug === status)!.value,
+          ),
+  );
+
+// rated first, then unrated (0); ties keep insertion order. `recent` uses the
+// id as the date added
+const viewOrder = ({ sort }: ListView) =>
+  sort === "recent"
+    ? [desc(listEntries.id)]
+    : [
+        sql`${listEntries.rating} = 0`,
+        sort === "rating-asc"
+          ? asc(listEntries.rating)
+          : desc(listEntries.rating),
+        asc(listEntries.id),
+      ];
+
+// one page of the view: [] past the last page
+export const getListPage = cache(
+  async (userId: string, view: ListView): Promise<StoredEntry[]> =>
+    db
+      .select(entryColumns)
+      .from(listEntries)
+      .where(viewFilter(userId, view))
+      .orderBy(...viewOrder(view))
+      .limit(PAGE_SIZE)
+      .offset((view.page - 1) * PAGE_SIZE),
+);
+
+// the count per stored status and type; the page derives every total from it
+export const getListCounts = cache(
+  async (userId: string): Promise<ListCountRow[]> =>
+    db
+      .select({
+        status: listEntries.status,
+        type: listEntries.type,
+        count: count(),
+      })
+      .from(listEntries)
+      .where(eq(listEntries.userId, userId))
+      .groupBy(listEntries.status, listEntries.type),
+);
 
 // adds the entry, or replaces the one with the same key
 export async function saveEntry(userId: string, entry: ListEntry) {

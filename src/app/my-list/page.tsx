@@ -1,11 +1,15 @@
-import { getEntries } from "@/modules/my-list/server";
+import { getListCounts, getListPage } from "@/modules/my-list/server";
 import {
   ListLength,
-  ListLengthSkeleton,
+  ListPager,
   MyListItems,
   ListRowsSkeleton,
   ListSortBtn,
   ListSortLink,
+  countsFor,
+  listHref,
+  pageCount,
+  parseListView,
   type ListView,
 } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
@@ -21,24 +25,30 @@ export const metadata: Metadata = {
 };
 
 type UrlParams = {
-  searchParams: Partial<ListView>;
+  searchParams: Record<string, string | string[] | undefined>;
 };
 
-export default async function page({
-  searchParams: { type = "both", status = "all", rating = "desc" },
-}: UrlParams) {
+export default async function page({ searchParams }: UrlParams) {
   const session = await getSession();
   if (session?.user === undefined) {
     redirect("/signin");
   }
   const safeSession = session!;
+  const userId = safeSession.user.id;
 
-  const sortValues = { rating, status, type };
-  // not awaited: both Suspense boundaries below wait for it and stream separately
-  const entries = getEntries(safeSession.user.id);
-  const sortKey = `${type}-${status}-${rating}`;
-  const sortHref = (value: Partial<ListView>) =>
-    `/my-list?${new URLSearchParams({ ...sortValues, ...value })}`;
+  const view = parseListView(searchParams);
+  // awaited so a page past the end can redirect before streaming starts
+  const counts = countsFor(await getListCounts(userId), view.type);
+  const total = counts[view.status];
+  const lastPage = pageCount(total);
+  if (view.page > lastPage) {
+    redirect(listHref(view, { page: lastPage }));
+  }
+
+  // not awaited: the rows stream in their own Suspense boundary
+  const entries = getListPage(userId, view);
+  const { status, type, sort } = view;
+  const sortHref = (changes: Partial<ListView>) => listHref(view, changes);
 
   return (
     <main className="container">
@@ -58,27 +68,29 @@ export default async function page({
           <h1 className="text-center text-3xl">
             <b>{safeSession.user.name}</b> movie and TV show list.
           </h1>
-          <Suspense key={sortKey} fallback={<ListLengthSkeleton />}>
-            <ListLength entries={entries} view={sortValues} />
-          </Suspense>
+          <ListLength length={total} />
         </div>
         <div className="flex items-center justify-center gap-8 pb-8 max-[1070px]:flex-col">
           <div>
-            <p className="pb-2 text-center text-lg font-medium">
-              Sort by rating:
-            </p>
+            <p className="pb-2 text-center text-lg font-medium">Sort by:</p>
             <div className="flex flex-wrap items-center justify-center gap-2">
               <ListSortLink
-                href={sortHref({ rating: "asc" })}
-                isActive={rating === "asc"}
+                href={sortHref({ sort: "rating-desc" })}
+                isActive={sort === "rating-desc"}
               >
-                Ascending
+                Highest rated
               </ListSortLink>
               <ListSortLink
-                href={sortHref({ rating: "desc" })}
-                isActive={rating === "desc"}
+                href={sortHref({ sort: "rating-asc" })}
+                isActive={sort === "rating-asc"}
               >
-                Descending
+                Lowest rated
+              </ListSortLink>
+              <ListSortLink
+                href={sortHref({ sort: "recent" })}
+                isActive={sort === "recent"}
+              >
+                Recently added
               </ListSortLink>
             </div>
           </div>
@@ -135,9 +147,10 @@ export default async function page({
             </div>
           </div>
         </div>
-        <Suspense key={sortKey} fallback={<ListRowsSkeleton />}>
-          <MyListItems entries={entries} view={sortValues} />
+        <Suspense key={listHref(view, {})} fallback={<ListRowsSkeleton />}>
+          <MyListItems entries={entries} page={view.page} />
         </Suspense>
+        <ListPager view={view} total={total} />
       </section>
     </main>
   );
