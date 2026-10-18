@@ -157,7 +157,7 @@ export default function ListEntryDialog({
       ) : (
         <DialogTrigger
           aria-label="Edit list entry"
-          className="h-10 w-10 rounded-md border border-border-clr bg-dark-bg px-3 py-2 font-medium duration-200 hover:bg-primary-text hover:text-dark-bg max-[840px]:h-7 max-[840px]:w-7 max-[840px]:p-1"
+          className="flex h-10 w-10 items-center justify-center rounded-md border border-border-clr bg-dark-bg font-medium duration-200 hover:bg-primary-text hover:text-dark-bg"
         >
           <Pencil size={16} />
         </DialogTrigger>

@@ -48,10 +48,11 @@ const mixed: ListMovie[] = [
   },
 ];
 
-// a ListCard: the only bordered row that contains an item link
+// a ListRow: the list item that contains the title link
 const row = (page: Page, name: string) =>
   page
-    .locator("main div.border-b")
+    .getByRole("list", { name: "Titles" })
+    .getByRole("listitem")
     .filter({ has: page.getByRole("link", { name, exact: true }) });
 
 const itemLinks = (page: Page) => page.locator('main a[href^="/search/"]');
@@ -111,9 +112,12 @@ test("the list shows a saved item", async ({ page, loginAs, db }) => {
     "href",
     "/search/movie/550",
   );
-  await expect(item.getByText("8", { exact: true })).toBeVisible();
-  await expect(item.getByText("Type: Movie")).toBeVisible();
+  await expect(item.getByText(/^Movie ·/)).toHaveText("Movie · 8");
   await expect(item.getByText("Completed", { exact: true })).toBeVisible();
+  await expect(item.getByAltText("Fight Club")).toHaveAttribute(
+    "src",
+    "https://image.tmdb.org/t/p/w300/fight-club.jpg",
+  );
   await expect(
     statusTabs(page).getByRole("link", { name: "Completed 1" }),
   ).toBeVisible();
@@ -358,7 +362,6 @@ test("a long list is paginated", async ({ page, loginAs, db }) => {
   await pager.getByRole("link", { name: "Page 2" }).click();
   await expect(page).toHaveURL(`${BASE_URL}/my-list?page=2`);
   await expectItems(page, titles(24, 30), 30);
-  await expect(page.getByText("#25")).toBeVisible();
 
   await pager.getByRole("link", { name: "Previous" }).click();
   await expect(page).toHaveURL(`${BASE_URL}/my-list`);
@@ -437,5 +440,30 @@ test.describe("at 320 px", () => {
           document.documentElement.clientWidth,
       ),
     ).toBe(false);
+  });
+
+  // a single long word mustn't push the row past the section's border
+  test("rows with long titles fit the screen", async ({
+    page,
+    loginAs,
+    db,
+  }) => {
+    const user = await loginAs();
+    const name = "An Extraordinarily Long Title That Has To Wrap Somewhere";
+    await seedList(db, user.id, [{ ...fightClub, name }]);
+    await page.goto("/my-list");
+
+    const item = row(page, name);
+    await expect(item).toBeVisible();
+    const sticksOut = await item.evaluate((li) => {
+      const { left, right } = li.closest("section")!.getBoundingClientRect();
+      return [li, ...li.querySelectorAll("*")]
+        .filter((e) => {
+          const box = e.getBoundingClientRect();
+          return box.left < left || box.right > right;
+        })
+        .map((e) => e.textContent);
+    });
+    expect(sticksOut).toEqual([]);
   });
 });
