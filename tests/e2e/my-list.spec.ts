@@ -56,10 +56,20 @@ const row = (page: Page, name: string) =>
 
 const itemLinks = (page: Page) => page.locator('main a[href^="/search/"]');
 
-// `length` is the view's total, across pages
+const statusTabs = (page: Page) =>
+  page.getByRole("navigation", { name: "Status" });
+const typeGroup = (page: Page) => page.getByRole("group", { name: "Type" });
+const sortGroup = (page: Page) => page.getByRole("group", { name: "Sort by" });
+// the header's link; an empty view can show a second one
+const resetFilters = (page: Page) =>
+  page.getByRole("link", { name: "Reset filters" }).first();
+
+// `length` is the view's total, across pages, shown on the open status tab
 async function expectItems(page: Page, names: string[], length = names.length) {
   await expect(itemLinks(page)).toHaveText(names);
-  await expect(page.getByText(`Length: ${length}`)).toBeVisible();
+  await expect(statusTabs(page).locator('[aria-current="page"]')).toHaveText(
+    new RegExp(` ${length}$`),
+  );
 }
 
 test("add from the details page", async ({ page, loginAs, db }) => {
@@ -93,8 +103,9 @@ test("the list shows a saved item", async ({ page, loginAs, db }) => {
   await page.goto("/my-list");
 
   await expect(
-    page.getByRole("heading", { name: `${user.name} movie and TV show list.` }),
+    page.getByRole("heading", { name: `${user.name}'s list` }),
   ).toBeVisible();
+  await expect(page.getByText("1 title", { exact: true })).toBeVisible();
   const item = row(page, "Fight Club");
   await expect(item.getByRole("link", { name: "Fight Club" })).toHaveAttribute(
     "href",
@@ -103,7 +114,10 @@ test("the list shows a saved item", async ({ page, loginAs, db }) => {
   await expect(item.getByText("8", { exact: true })).toBeVisible();
   await expect(item.getByText("Type: Movie")).toBeVisible();
   await expect(item.getByText("Completed", { exact: true })).toBeVisible();
-  await expect(page.getByText("Length: 1")).toBeVisible();
+  await expect(
+    statusTabs(page).getByRole("link", { name: "Completed 1" }),
+  ).toBeVisible();
+  await expect(resetFilters(page)).toHaveCount(0);
 });
 
 test("edit an entry", async ({ page, loginAs, db }) => {
@@ -142,11 +156,11 @@ test("remove an entry", async ({ page, loginAs, db }) => {
 
   await expect(page.getByText("Fight Club was removed.")).toBeVisible();
   await expect(page.getByText("Your list is empty.")).toBeVisible();
-  await expect(page.getByText("Length: 0")).toBeVisible();
+  await expect(page.getByText("0 titles", { exact: true })).toBeVisible();
   expect(await getMovies(db, user.id)).toEqual([]);
 });
 
-test("sort and filter, with a matching length", async ({
+test("sort and filter, with matching tab counts", async ({
   page,
   loginAs,
   db,
@@ -160,9 +174,15 @@ test("sort and filter, with a matching length", async ({
     "Bravo Show",
     "Alpha Movie",
   ]);
+  await expect(statusTabs(page).getByRole("link")).toHaveText([
+    "All 4",
+    "Watching 1",
+    "Planning to watch 1",
+    "Completed 2",
+  ]);
 
   // unrated titles come last under both rating sorts
-  await page.getByRole("link", { name: "Lowest rated" }).click();
+  await sortGroup(page).getByRole("link", { name: "Lowest rated" }).click();
   await expect(page).toHaveURL(/sort=rating-asc/);
   await expectItems(page, [
     "Bravo Show",
@@ -171,10 +191,10 @@ test("sort and filter, with a matching length", async ({
     "Alpha Movie",
   ]);
   await expect(
-    page.getByRole("button", { name: "Lowest rated" }),
-  ).toBeDisabled();
+    sortGroup(page).getByRole("link", { name: "Lowest rated" }),
+  ).toHaveAttribute("aria-current", "page");
 
-  await page.getByRole("link", { name: "Recently added" }).click();
+  await sortGroup(page).getByRole("link", { name: "Recently added" }).click();
   await expect(page).toHaveURL(/sort=recent/);
   await expectItems(page, [
     "Delta Show",
@@ -183,20 +203,30 @@ test("sort and filter, with a matching length", async ({
     "Alpha Movie",
   ]);
 
-  await page.getByRole("link", { name: "TV shows" }).click();
+  await typeGroup(page).getByRole("link", { name: "TV" }).click();
   await expect(page).toHaveURL(/type=tv/);
   // the sort carries over to the filter
   await expectItems(page, ["Delta Show", "Bravo Show"]);
+  // the tab counts follow the type, the header doesn't
+  await expect(statusTabs(page).getByRole("link")).toHaveText([
+    "All 2",
+    "Watching 1",
+    "Planning to watch 0",
+    "Completed 1",
+  ]);
+  await expect(page.getByText("4 titles", { exact: true })).toBeVisible();
 
-  await page.getByRole("link", { name: "Watching" }).click();
+  await statusTabs(page)
+    .getByRole("link", { name: /^Watching/ })
+    .click();
   await expect(page).toHaveURL(/status=watching/);
   await expect(page).toHaveURL(/type=tv/);
   await expect(page).toHaveURL(/sort=recent/);
   await expectItems(page, ["Bravo Show"]);
 
-  await page.getByRole("link", { name: "Movies" }).click();
+  await typeGroup(page).getByRole("link", { name: "Movies" }).click();
   await expect(page).toHaveURL(/type=movie/);
-  await expect(page.getByText("Your list is empty.")).toBeVisible();
+  await expect(page.getByText("No titles match these filters.")).toBeVisible();
   await expectItems(page, []);
 });
 
@@ -256,16 +286,21 @@ test("a new user has an empty list", async ({ page, loginAs }) => {
   await page.goto("/my-list");
 
   await expect(page.getByText("Your list is empty.")).toBeVisible();
-  await expect(page.getByText("Length: 0")).toBeVisible();
+  await expect(page.getByText("0 titles", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Search for a movie or TV show" }),
+  ).toHaveAttribute("href", "/search");
+  // the e2e server runs with the chat on
+  await expect(page.getByRole("link", { name: "ask the chat" })).toBeVisible();
 });
 
-test("refresh clears the filters", async ({ page, loginAs, db }) => {
+test("reset filters clears the filters", async ({ page, loginAs, db }) => {
   const user = await loginAs();
   await seedList(db, user.id, mixed);
   await page.goto("/my-list?sort=rating-asc&status=watching&type=tv");
   await expectItems(page, ["Bravo Show"]);
 
-  await page.getByRole("button", { name: "Refresh list" }).click();
+  await resetFilters(page).click();
 
   await expect(page).toHaveURL(`${BASE_URL}/my-list`);
   await expectItems(page, [
@@ -274,6 +309,26 @@ test("refresh clears the filters", async ({ page, loginAs, db }) => {
     "Bravo Show",
     "Alpha Movie",
   ]);
+  await expect(resetFilters(page)).toHaveCount(0);
+});
+
+test("a filtered view with no matches shows the filtered empty state", async ({
+  page,
+  loginAs,
+  db,
+}) => {
+  const user = await loginAs();
+  await seedList(db, user.id, [fightClub]);
+  await page.goto("/my-list?status=watching");
+
+  await expect(page.getByText("No titles match these filters.")).toBeVisible();
+  await expect(page.getByText("Your list is empty.")).toHaveCount(0);
+  await expectItems(page, []);
+
+  // the empty state's own reset link
+  await page.getByRole("link", { name: "Reset filters" }).last().click();
+  await expect(page).toHaveURL(`${BASE_URL}/my-list`);
+  await expectItems(page, ["Fight Club"]);
 });
 
 // 30 rows, all rated 5, so the default sort keeps insertion order
@@ -345,4 +400,42 @@ test("adding while logged out asks to log in", async ({ page }) => {
   await dialog.getByRole("button", { name: "Add to list" }).click();
 
   await expect(page.getByText("You need to be logged in!")).toBeVisible();
+});
+
+test.describe("at 320 px", () => {
+  test.use({ viewport: { width: 320, height: 800 } });
+
+  // the status tabs scroll on their own, everything else has to wrap
+  test("the header and filters fit the screen", async ({
+    page,
+    loginAs,
+    db,
+  }) => {
+    const user = await loginAs();
+    await seedList(db, user.id, mixed);
+    await page.goto("/my-list?sort=recent");
+
+    await expect(resetFilters(page)).toBeVisible();
+    const sticksOut = await page
+      .getByRole("main")
+      .locator("section")
+      .first()
+      .evaluate((section) => {
+        const { left, right } = section.getBoundingClientRect();
+        return [...section.querySelectorAll("[role=group] *")]
+          .filter((e) => {
+            const box = e.getBoundingClientRect();
+            return box.left < left || box.right > right;
+          })
+          .map((e) => e.textContent);
+      });
+    expect(sticksOut).toEqual([]);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth >
+          document.documentElement.clientWidth,
+      ),
+    ).toBe(false);
+  });
 });

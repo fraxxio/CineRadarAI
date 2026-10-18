@@ -1,12 +1,14 @@
 import { getListCounts, getListPage } from "@/modules/my-list/server";
 import {
-  ListLength,
+  FilterGroup,
+  FilterLink,
+  ListEmpty,
   ListPager,
   MyListItems,
   ListRowsSkeleton,
-  ListSortBtn,
-  ListSortLink,
+  StatusTabs,
   countsFor,
+  isFiltered,
   listHref,
   pageCount,
   parseListView,
@@ -14,6 +16,7 @@ import {
 } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
 import { RotateCcw } from "lucide-react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Metadata } from "next";
 import { Suspense } from "react";
@@ -38,119 +41,102 @@ export default async function page({ searchParams }: UrlParams) {
 
   const view = parseListView(searchParams);
   // awaited so a page past the end can redirect before streaming starts
-  const counts = countsFor(await getListCounts(userId), view.type);
+  const countRows = await getListCounts(userId);
+  const counts = countsFor(countRows, view.type);
+  // the whole list, whatever the type
+  const listTotal = countsFor(countRows, "both").all;
   const total = counts[view.status];
   const lastPage = pageCount(total);
   if (view.page > lastPage) {
     redirect(listHref(view, { page: lastPage }));
   }
 
-  // not awaited: the rows stream in their own Suspense boundary
-  const entries = getListPage(userId, view);
-  const { status, type, sort } = view;
-  const sortHref = (changes: Partial<ListView>) => listHref(view, changes);
+  const { type, sort } = view;
+  const viewHref = (changes: Partial<ListView>) => listHref(view, changes);
+  const name = safeSession.user.name;
 
   return (
     <main className="container">
       <section className="my-20 border border-border-clr bg-primary-bg">
-        <div className="relative flex items-center justify-between p-8 pb-12 max-[1070px]:flex-col max-[1070px]:gap-4">
-          <form
-            action={async () => {
-              "use server";
-              redirect("/my-list");
-            }}
-          >
-            <ListSortBtn type="submit" withIcon>
-              <RotateCcw size={18} />
-              Refresh list
-            </ListSortBtn>
-          </form>
-          <h1 className="text-center text-3xl">
-            <b>{safeSession.user.name}</b> movie and TV show list.
-          </h1>
-          <ListLength length={total} />
+        <div className="flex flex-wrap items-start justify-between gap-4 px-8 pb-4 pt-8 max-[480px]:px-4">
+          <div>
+            <h1 className="text-3xl font-medium">
+              {name ? `${name}'s list` : "Your list"}
+            </h1>
+            <p className="pt-1 text-secondary-text">
+              {listTotal} {listTotal === 1 ? "title" : "titles"}
+            </p>
+          </div>
+          {isFiltered(view) && (
+            <Link
+              href="/my-list"
+              className="flex items-center gap-2 rounded-md border border-border-clr bg-dark-bg px-3 py-1.5 text-sm duration-200 hover:bg-primary-text hover:text-dark-bg"
+            >
+              <RotateCcw size={16} aria-hidden />
+              Reset filters
+            </Link>
+          )}
         </div>
-        <div className="flex items-center justify-center gap-8 pb-8 max-[1070px]:flex-col">
-          <div>
-            <p className="pb-2 text-center text-lg font-medium">Sort by:</p>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <ListSortLink
-                href={sortHref({ sort: "rating-desc" })}
-                isActive={sort === "rating-desc"}
-              >
-                Highest rated
-              </ListSortLink>
-              <ListSortLink
-                href={sortHref({ sort: "rating-asc" })}
-                isActive={sort === "rating-asc"}
-              >
-                Lowest rated
-              </ListSortLink>
-              <ListSortLink
-                href={sortHref({ sort: "recent" })}
-                isActive={sort === "recent"}
-              >
-                Recently added
-              </ListSortLink>
-            </div>
-          </div>
-          <div>
-            <p className="pb-2 text-center text-lg font-medium">Type:</p>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <ListSortLink
-                href={sortHref({ type: "tv" })}
-                isActive={type === "tv"}
-              >
-                TV shows
-              </ListSortLink>
-              <ListSortLink
-                href={sortHref({ type: "movie" })}
-                isActive={type === "movie"}
-              >
-                Movies
-              </ListSortLink>
-              <ListSortLink
-                href={sortHref({ type: "both" })}
-                isActive={type === "both"}
-              >
-                Both
-              </ListSortLink>
-            </div>
-          </div>
-          <div>
-            <p className="pb-2 text-center text-lg font-medium">Show only:</p>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <ListSortLink
-                href={sortHref({ status: "completed" })}
-                isActive={status === "completed"}
-              >
-                Completed
-              </ListSortLink>
-              <ListSortLink
-                href={sortHref({ status: "planning" })}
-                isActive={status === "planning"}
-              >
-                Planning to watch
-              </ListSortLink>
-              <ListSortLink
-                href={sortHref({ status: "watching" })}
-                isActive={status === "watching"}
-              >
-                Watching
-              </ListSortLink>
-              <ListSortLink
-                href={sortHref({ status: "all" })}
-                isActive={status === "all"}
-              >
-                All
-              </ListSortLink>
-            </div>
-          </div>
+        <StatusTabs view={view} counts={counts} />
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-t border-border-clr px-8 py-4 max-[480px]:px-4">
+          <FilterGroup id="list-type-label" label="Type">
+            <FilterLink
+              href={viewHref({ type: "both" })}
+              isActive={type === "both"}
+            >
+              All
+            </FilterLink>
+            <FilterLink
+              href={viewHref({ type: "movie" })}
+              isActive={type === "movie"}
+            >
+              Movies
+            </FilterLink>
+            <FilterLink
+              href={viewHref({ type: "tv" })}
+              isActive={type === "tv"}
+            >
+              TV
+            </FilterLink>
+          </FilterGroup>
+          <FilterGroup id="list-sort-label" label="Sort by">
+            <FilterLink
+              href={viewHref({ sort: "rating-desc" })}
+              isActive={sort === "rating-desc"}
+            >
+              Highest rated
+            </FilterLink>
+            <FilterLink
+              href={viewHref({ sort: "rating-asc" })}
+              isActive={sort === "rating-asc"}
+            >
+              Lowest rated
+            </FilterLink>
+            <FilterLink
+              href={viewHref({ sort: "recent" })}
+              isActive={sort === "recent"}
+            >
+              Recently added
+            </FilterLink>
+          </FilterGroup>
         </div>
-        <Suspense key={listHref(view, {})} fallback={<ListRowsSkeleton />}>
-          <MyListItems entries={entries} page={view.page} />
-        </Suspense>
-        <ListPager view={view} total={total} />
+        {total === 0 ? (
+          <ListEmpty
+            filtered={listTotal > 0}
+            chatEnabled={process.env.AI_CHAT_ENABLED === "true"}
+          />
+        ) : (
+          <>
+            <Suspense key={listHref(view, {})} fallback={<ListRowsSkeleton />}>
+              {/* not awaited: the rows stream in their own boundary */}
+              <MyListItems
+                entries={getListPage(userId, view)}
+                page={view.page}
+              />
+            </Suspense>
+            <ListPager view={view} total={total} />
+          </>
+        )}
       </section>
     </main>
   );

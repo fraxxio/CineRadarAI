@@ -19,3 +19,11 @@ test("[B9] the chat input can't be used", async ({ page }) => {
   await expect(page.getByPlaceholder(/Suggest me movies/)).toHaveValue("");
   await expect(page.locator("[inert]")).toHaveCount(1);
 });
+
+test("the empty list doesn't point to the chat", async ({ page, loginAs }) => {
+  await loginAs();
+  await page.goto("/my-list");
+
+  await expect(page.getByText("Your list is empty.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "ask the chat" })).toHaveCount(0);
+});

@@ -2,7 +2,9 @@ import { describe, expect, it, test } from "vitest";
 import {
   DEFAULT_VIEW,
   PAGE_SIZE,
+  STATUS_TABS,
   countsFor,
+  isFiltered,
   listHref,
   pageCount,
   parseListView,
@@ -188,5 +190,35 @@ describe("pageCount", () => {
     [PAGE_SIZE * 3, 3],
   ])("%i rows -> %i pages", (total, pages) => {
     expect(pageCount(total)).toBe(pages);
+  });
+});
+
+describe("STATUS_TABS", () => {
+  test("All, then watching, planning, completed and other", () => {
+    expect(STATUS_TABS.map((tab) => tab.slug)).toEqual([
+      "all",
+      "watching",
+      "planning",
+      "completed",
+      "other",
+    ]);
+  });
+});
+
+describe("isFiltered", () => {
+  test("the default view isn't filtered", () => {
+    expect(isFiltered(DEFAULT_VIEW)).toBe(false);
+  });
+
+  test("the page alone isn't a filter", () => {
+    expect(isFiltered({ ...DEFAULT_VIEW, page: 3 })).toBe(false);
+  });
+
+  it.each<Partial<ListView>>([
+    { status: "watching" },
+    { type: "tv" },
+    { sort: "recent" },
+  ])("%j is filtered", (changes) => {
+    expect(isFiltered({ ...DEFAULT_VIEW, ...changes })).toBe(true);
   });
 });

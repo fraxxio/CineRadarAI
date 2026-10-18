@@ -25,6 +25,18 @@ export const DEFAULT_VIEW: ListView = {
 
 export const PAGE_SIZE = 24;
 
+// the tabs and, from phase 5, the shelves are shown in this order
+export const STATUS_TABS: readonly {
+  slug: ListStatusFilter;
+  label: string;
+}[] = [
+  { slug: "all", label: "All" },
+  { slug: "watching", label: "Watching" },
+  { slug: "planning", label: "Planning to watch" },
+  { slug: "completed", label: "Completed" },
+  { slug: "other", label: "Other" },
+];
+
 const STATUS_FILTERS: readonly ListStatusFilter[] = [
   "all",
   ...LIST_STATUSES.map((s) => s.slug),
@@ -68,6 +80,12 @@ export function listHref(view: ListView, changes: Partial<ListView>) {
   const query = params.toString();
   return query ? `/my-list?${query}` : "/my-list";
 }
+
+// the page alone isn't a filter, so it doesn't offer a reset
+export const isFiltered = (view: ListView) =>
+  view.status !== DEFAULT_VIEW.status ||
+  view.type !== DEFAULT_VIEW.type ||
+  view.sort !== DEFAULT_VIEW.sort;
 
 // a row of the grouped counts query
 export type ListCountRow = { status: string; type: MediaType; count: number };

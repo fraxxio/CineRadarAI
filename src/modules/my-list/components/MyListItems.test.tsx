@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
-import MyListItems, { ListLength } from "./MyListItems";
+import MyListItems from "./MyListItems";
 import type { StoredEntry } from "../entry";
 import { makeMovie } from "@test/helpers/factories";
 
@@ -36,11 +36,6 @@ describe("MyListItems", () => {
     expect(screen.getByText("#26")).toBeInTheDocument();
   });
 
-  test("an empty list", async () => {
-    render(await MyListItems({ entries: list([]), page: 1 }));
-    expect(screen.getByText("Your list is empty.")).toBeInTheDocument();
-  });
-
   test("[B4] a movie and a TV show with the same id both render", async () => {
     const error = vi.spyOn(console, "error");
     const entries = list([
@@ -54,12 +49,5 @@ describe("MyListItems", () => {
     expect(screen.getByRole("link", { name: "Show" })).toBeInTheDocument();
     // React reports duplicate keys through console.error
     expect(error).not.toHaveBeenCalled();
-  });
-});
-
-describe("ListLength", () => {
-  test("shows the given length", () => {
-    render(<ListLength length={30} />);
-    expect(screen.getByText("Length: 30")).toBeInTheDocument();
   });
 });
