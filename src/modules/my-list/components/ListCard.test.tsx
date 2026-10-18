@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, test } from "vitest";
 import ListCard from "./ListCard";
 import type { StoredEntry } from "../entry";
@@ -76,5 +77,15 @@ describe("ListCard", () => {
     expect(
       screen.getByRole("button", { name: "Remove from list" }),
     ).toBeInTheDocument();
+  });
+
+  test("the edit dialog opens with the entry's status and rating", async () => {
+    renderCard({ status: "Watching", rating: 6 });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Edit list entry" }),
+    );
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.getByLabelText("Status:")).toHaveValue("Watching");
+    expect(dialog.getByLabelText("Rating (optional):")).toHaveValue("6");
   });
 });

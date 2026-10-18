@@ -112,17 +112,19 @@ test("edit an entry", async ({ page, loginAs, db }) => {
 
   await page.getByRole("button", { name: "Edit list entry" }).click();
   const dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Status:")).toHaveValue("Completed");
+  await expect(dialog.getByLabel("Rating (optional):")).toHaveValue("8");
+  // only the status changes; the rating must survive
   await dialog.getByLabel("Status:").selectOption("Watching");
-  await dialog.getByLabel("Rating (optional):").selectOption("5");
-  await dialog.getByRole("button", { name: "Edit" }).click();
+  await dialog.getByRole("button", { name: "Save" }).click();
 
   await expect(page.getByText("Fight Club was updated.")).toBeVisible();
   // router.refresh(), no manual reload
   const item = row(page, "Fight Club");
   await expect(item.getByText("Watching", { exact: true })).toBeVisible();
-  await expect(item.getByText("5", { exact: true })).toBeVisible();
+  await expect(item.getByText("8", { exact: true })).toBeVisible();
   expect(await getMovies(db, user.id)).toEqual([
-    expect.objectContaining({ movieId: 550, status: "Watching", rating: 5 }),
+    expect.objectContaining({ movieId: 550, status: "Watching", rating: 8 }),
   ]);
 });
 

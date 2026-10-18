@@ -89,6 +89,8 @@ export default function ListCard({ movie, index }: ListCardProps) {
             title={movie.name}
             image={movie.image}
             type={movie.type}
+            status={movie.status}
+            rating={movie.rating}
           />
           <RemoveEntryButton
             movieId={movie.movieId}

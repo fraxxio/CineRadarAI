@@ -12,7 +12,7 @@ import {
 } from "@/shared/ui/Modal";
 import StatusSelect from "./StatusSelect";
 import RatingSelect from "./RatingSelect";
-import type { ListStatus } from "../entry";
+import { isListStatus, type ListStatus } from "../entry";
 import type { MediaType } from "@/infra/tmdb";
 import { FormEvent, useState } from "react";
 
@@ -26,8 +26,8 @@ const COPY = {
   },
   edit: {
     title: "Edit the list",
-    submit: "Edit",
-    loading: "Editing...",
+    submit: "Save",
+    loading: "Saving...",
     success: (title: string) => `${title} was updated.`,
     error: "Something went wrong while editing the list.",
   },
@@ -43,6 +43,9 @@ type ListEntryDialogProps = {
   title: string;
   image: string;
   type: MediaType;
+  // edit mode: the entry's current values, so saving one field keeps the other
+  status?: string;
+  rating?: number;
 };
 
 export default function ListEntryDialog({
@@ -53,13 +56,30 @@ export default function ListEntryDialog({
   title,
   image,
   type,
+  status: currentStatus,
+  rating: currentRating,
 }: ListEntryDialogProps) {
+  // a legacy status isn't an option, so the user has to pick one
+  const initialStatus =
+    currentStatus && isListStatus(currentStatus) ? currentStatus : "";
+  const initialRating = currentRating ? String(currentRating) : "";
   const [isOpen, setIsOpen] = useState(false);
-  const [status, setStatus] = useState<ListStatus | "">("");
-  const [rating, setRating] = useState("");
+  const [status, setStatus] = useState<ListStatus | "">(initialStatus);
+  const [rating, setRating] = useState(initialRating);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const copy = COPY[mode];
+
+  // reset on open too, so it picks up values refreshed since the last save
+  function resetForm() {
+    setStatus(initialStatus);
+    setRating(initialRating);
+  }
+
+  function hOpenChange(open: boolean) {
+    if (open) resetForm();
+    setIsOpen(open);
+  }
 
   async function hSaveEntry(e: FormEvent) {
     e.preventDefault();
@@ -109,8 +129,7 @@ export default function ListEntryDialog({
     } finally {
       setLoading(false);
       setIsOpen(false);
-      setStatus("");
-      setRating("");
+      resetForm();
       // the list page shows the entry, so it needs the new data
       if (mode === "edit") {
         router.refresh();
@@ -119,7 +138,7 @@ export default function ListEntryDialog({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={hOpenChange}>
       {mode === "add" ? (
         <DialogTrigger
           className={`${fullSize ? "mt-6 block py-1" : "absolute right-2 top-2 border border-border-clr bg-primary-bg p-2 hover:pl-24 [&_span]:pointer-events-none [&_span]:opacity-0 [&_span]:hover:opacity-100 [&_span]:hover:duration-200"} flex items-center gap-2 rounded-md duration-200 hover:bg-primary-text hover:text-primary-bg`}
