@@ -159,7 +159,10 @@ export default async function page({ searchParams }: UrlParams) {
           <>
             <Suspense key={listHref(view, {})} fallback={<ListRowsSkeleton />}>
               {/* not awaited: the rows stream in their own boundary */}
-              <MyListItems entries={getListPage(userId, view)} />
+              <MyListItems
+                entries={getListPage(userId, view)}
+                tab={view.status}
+              />
             </Suspense>
             <ListPager view={view} total={total} />
           </>

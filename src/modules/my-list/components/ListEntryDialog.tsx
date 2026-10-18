@@ -1,6 +1,5 @@
 "use client";
-import { BookmarkPlus, LoaderCircle, Pencil } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { BookmarkPlus, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -12,73 +11,40 @@ import {
 } from "@/shared/ui/Modal";
 import StatusSelect from "./StatusSelect";
 import RatingSelect from "./RatingSelect";
-import { isListStatus, type ListStatus } from "../entry";
+import type { ListStatus } from "../entry";
 import type { MediaType } from "@/infra/tmdb";
 import { FormEvent, useState } from "react";
 
-const COPY = {
-  add: {
-    title: "Choose options to add to the list.",
-    submit: "Add to list",
-    loading: "Adding...",
-    success: (title: string) => `${title} was added to the list.`,
-    error: "Something went wrong while adding to the list.",
-  },
-  edit: {
-    title: "Edit the list",
-    submit: "Save",
-    loading: "Saving...",
-    success: (title: string) => `${title} was updated.`,
-    error: "Something went wrong while editing the list.",
-  },
-};
+const ERROR_TEXT = "Something went wrong while adding to the list.";
 
+// adds a title from search results, details pages and the chat's cards; the
+// list itself edits inline (RowEditor)
 type ListEntryDialogProps = {
-  // add: from search results and details pages; edit: from the list itself
-  mode: "add" | "edit";
   signedIn: boolean;
-  // add mode only: a full-width trigger instead of the card corner button
+  // a full-width trigger instead of the card corner button
   fullSize?: boolean;
   movieId: number;
   title: string;
   image: string;
   type: MediaType;
-  // edit mode: the entry's current values, so saving one field keeps the other
-  status?: string;
-  rating?: number;
 };
 
 export default function ListEntryDialog({
-  mode,
   signedIn,
   fullSize,
   movieId,
   title,
   image,
   type,
-  status: currentStatus,
-  rating: currentRating,
 }: ListEntryDialogProps) {
-  // a legacy status isn't an option, so the user has to pick one
-  const initialStatus =
-    currentStatus && isListStatus(currentStatus) ? currentStatus : "";
-  const initialRating = currentRating ? String(currentRating) : "";
   const [isOpen, setIsOpen] = useState(false);
-  const [status, setStatus] = useState<ListStatus | "">(initialStatus);
-  const [rating, setRating] = useState(initialRating);
+  const [status, setStatus] = useState<ListStatus | "">("");
+  const [rating, setRating] = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
-  const copy = COPY[mode];
 
-  // reset on open too, so it picks up values refreshed since the last save
   function resetForm() {
-    setStatus(initialStatus);
-    setRating(initialRating);
-  }
-
-  function hOpenChange(open: boolean) {
-    if (open) resetForm();
-    setIsOpen(open);
+    setStatus("");
+    setRating("");
   }
 
   async function hSaveEntry(e: FormEvent) {
@@ -113,59 +79,46 @@ export default function ListEntryDialog({
       });
       const data = await response.json();
       if (data.addToListResult === "success") {
-        toast.success(copy.success(title), {
+        toast.success(`${title} was added to the list.`, {
           style: { color: "green" },
         });
       } else {
-        toast.error(copy.error, {
+        toast.error(ERROR_TEXT, {
           style: { color: "red" },
         });
       }
     } catch (error) {
       console.error("/api/add-to-list ERROR:", error);
-      toast.error(copy.error, {
+      toast.error(ERROR_TEXT, {
         style: { color: "red" },
       });
     } finally {
       setLoading(false);
       setIsOpen(false);
       resetForm();
-      // the list page shows the entry, so it needs the new data
-      if (mode === "edit") {
-        router.refresh();
-      }
     }
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={hOpenChange}>
-      {mode === "add" ? (
-        <DialogTrigger
-          className={`${fullSize ? "mt-6 block py-1" : "absolute right-2 top-2 border border-border-clr bg-primary-bg p-2 hover:pl-24 [&_span]:pointer-events-none [&_span]:opacity-0 [&_span]:hover:opacity-100 [&_span]:hover:duration-200"} flex items-center gap-2 rounded-md duration-200 hover:bg-primary-text hover:text-primary-bg`}
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger
+        className={`${fullSize ? "mt-6 block py-1" : "absolute right-2 top-2 border border-border-clr bg-primary-bg p-2 hover:pl-24 [&_span]:pointer-events-none [&_span]:opacity-0 [&_span]:hover:opacity-100 [&_span]:hover:duration-200"} flex items-center gap-2 rounded-md duration-200 hover:bg-primary-text hover:text-primary-bg`}
+      >
+        <div
+          className={`relative ${fullSize ? "flex flex-row-reverse items-center gap-2" : ""}`}
         >
-          <div
-            className={`relative ${fullSize ? "flex flex-row-reverse items-center gap-2" : ""}`}
+          <span
+            className={`${fullSize ? "pr-1" : "absolute right-6 top-0 w-[6rem] text-primary-bg"}`}
           >
-            <span
-              className={`${fullSize ? "pr-1" : "absolute right-6 top-0 w-[6rem] text-primary-bg"}`}
-            >
-              Add to list
-            </span>
-            <BookmarkPlus />
-          </div>
-        </DialogTrigger>
-      ) : (
-        <DialogTrigger
-          aria-label="Edit list entry"
-          className="flex h-10 w-10 items-center justify-center rounded-md border border-border-clr bg-dark-bg font-medium duration-200 hover:bg-primary-text hover:text-dark-bg"
-        >
-          <Pencil size={16} />
-        </DialogTrigger>
-      )}
+            Add to list
+          </span>
+          <BookmarkPlus />
+        </div>
+      </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="max-w-[85%] text-2xl">
-            {copy.title}
+            Choose options to add to the list.
           </DialogTitle>
           <DialogDescription>
             <span className="text-base">
@@ -192,10 +145,10 @@ export default function ListEntryDialog({
                 <span className="animate-spin">
                   <LoaderCircle size={18} />
                 </span>
-                {copy.loading}
+                Adding...
               </p>
             ) : (
-              <p>{copy.submit}</p>
+              <p>Add to list</p>
             )}
           </button>
         </form>

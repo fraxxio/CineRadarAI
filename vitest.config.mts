@@ -47,6 +47,7 @@ export default defineConfig({
           environment: "node",
           include: ["src/**/*.test.ts", "tests/setup/smoke/*.test.ts"],
           exclude: [...configDefaults.exclude, "**/*.int.test.ts"],
+          setupFiles: ["./tests/setup/unit.ts"],
         },
       },
       {

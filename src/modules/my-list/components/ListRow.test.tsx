@@ -1,5 +1,4 @@
 import { render, screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it, test } from "vitest";
 import ListRow from "./ListRow";
 import type { StoredEntry } from "../entry";
@@ -10,6 +9,7 @@ const renderRow = (overrides: Partial<StoredEntry> = {}, priority?: boolean) =>
     <ul>
       <ListRow
         movie={{ ...makeMovie({ movieId: 550 }), ...overrides }}
+        tab="all"
         priority={priority}
       />
     </ul>,
@@ -90,28 +90,20 @@ describe("ListRow", () => {
     ["Dropped", "lucide-notebook-pen", "text-slate-300"],
   ])("status %s -> a badge with the %s icon", (status, icon, color) => {
     renderRow({ status });
-    const badge = screen.getByText(status);
+    const badge = screen.getByText(status, { selector: "span" });
     expect(badge).toHaveClass(color);
     expect(badge.querySelector(`svg.${icon}`)).not.toBeNull();
   });
 
-  test("renders the edit and remove buttons", () => {
-    renderRow();
-    expect(
-      screen.getByRole("button", { name: "Edit list entry" }),
-    ).toBeInTheDocument();
+  test("edits inline: status and rating selects, and a remove button", () => {
+    renderRow({ status: "Watching", rating: 6 });
+    expect(screen.getByLabelText("Status for Fury")).toHaveValue("Watching");
+    expect(screen.getByLabelText("Rating for Fury")).toHaveValue("6");
     expect(
       screen.getByRole("button", { name: "Remove from list" }),
     ).toBeInTheDocument();
-  });
-
-  test("the edit dialog opens with the entry's status and rating", async () => {
-    renderRow({ status: "Watching", rating: 6 });
-    await userEvent.click(
-      screen.getByRole("button", { name: "Edit list entry" }),
-    );
-    const dialog = within(screen.getByRole("dialog"));
-    expect(dialog.getByLabelText("Status:")).toHaveValue("Watching");
-    expect(dialog.getByLabelText("Rating (optional):")).toHaveValue("6");
+    expect(
+      screen.queryByRole("button", { name: "Edit list entry" }),
+    ).toBeNull();
   });
 });

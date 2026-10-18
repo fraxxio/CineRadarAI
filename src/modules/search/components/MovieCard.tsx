@@ -28,7 +28,6 @@ export default function MovieCard({
   return (
     <div className="relative w-full border border-border-clr bg-primary-bg duration-300 hover:border-primary-text hover:shadow-md hover:shadow-primary-text">
       <ListEntryDialog
-        mode="add"
         signedIn={signedIn}
         movieId={id}
         title={title}

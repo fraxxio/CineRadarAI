@@ -46,6 +46,11 @@ vi.mock("@/modules/account/actions", () => ({
   DeleteUser: vi.fn(),
   signInWithProvider: vi.fn(),
 }));
+vi.mock("@/modules/my-list/actions", () => ({
+  updateEntryStatus: vi.fn(),
+  updateEntryRating: vi.fn(),
+  removeListEntry: vi.fn(),
+}));
 vi.mock("react-google-recaptcha-v3", () => ({
   useGoogleReCaptcha: vi.fn(() => ({ executeRecaptcha: undefined })),
   GoogleReCaptchaProvider: ({ children }: { children: React.ReactNode }) =>

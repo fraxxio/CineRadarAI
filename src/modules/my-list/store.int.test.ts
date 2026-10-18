@@ -11,6 +11,7 @@ import {
   removeEntry,
   saveEntry,
   saveEntryStatus,
+  updateEntry,
 } from "./store";
 import type { ListStatus } from "./entry";
 import { DEFAULT_VIEW, PAGE_SIZE, SHELF_SIZE, type ListView } from "./view";
@@ -628,6 +629,105 @@ describe("saveEntryStatus", () => {
       "forced failure",
     );
     expect(await getMovies(user.id)).toEqual(existing);
+  });
+});
+
+describe("updateEntry", () => {
+  const key = { movieId: 550, type: "movie" as const };
+  const stored = makeMovie({
+    movieId: 550,
+    name: "Fight Club",
+    status: "Completed",
+    rating: 8,
+  });
+
+  test("changes only the status, in place", async () => {
+    const user = await seedUser();
+    const before = makeMovie({ movieId: 1 });
+    await seedList(user.id, [before, stored]);
+
+    await expect(
+      updateEntry(user.id, key, { status: "Watching" }),
+    ).resolves.toBe(true);
+
+    expect(await getMovies(user.id)).toEqual([
+      before,
+      { ...stored, status: "Watching" },
+    ]);
+  });
+
+  test("changes only the rating", async () => {
+    const user = await seedUser();
+    await seedList(user.id, [stored]);
+
+    await expect(updateEntry(user.id, key, { rating: 3 })).resolves.toBe(true);
+
+    expect(await getMovies(user.id)).toEqual([{ ...stored, rating: 3 }]);
+  });
+
+  test("rating 0 clears the rating", async () => {
+    const user = await seedUser();
+    await seedList(user.id, [stored]);
+
+    await updateEntry(user.id, key, { rating: 0 });
+
+    expect(await getMovies(user.id)).toEqual([{ ...stored, rating: 0 }]);
+  });
+
+  test("a legacy status is replaced", async () => {
+    const user = await seedUser();
+    const legacy = { ...stored, status: "Dropped" };
+    await seedList(user.id, [legacy]);
+
+    await updateEntry(user.id, key, { status: "Planning to watch" });
+
+    expect(await getMovies(user.id)).toEqual([
+      { ...stored, status: "Planning to watch" },
+    ]);
+  });
+
+  test("a missing key is a no-op and never inserts", async () => {
+    const user = await seedUser();
+    await seedList(user.id, [stored]);
+
+    await expect(
+      updateEntry(user.id, { movieId: 551, type: "movie" }, { rating: 1 }),
+    ).resolves.toBe(false);
+
+    expect(await getMovies(user.id)).toEqual([stored]);
+  });
+
+  test("[B4] a TV show with the same id doesn't change a movie", async () => {
+    const user = await seedUser();
+    await seedList(user.id, [stored]);
+
+    await expect(
+      updateEntry(user.id, { ...key, type: "tv" }, { status: "Watching" }),
+    ).resolves.toBe(false);
+
+    expect(await getMovies(user.id)).toEqual([stored]);
+  });
+
+  test("doesn't touch another user's entry", async () => {
+    const user = await seedUser();
+    const other = await seedUser();
+    await seedList(other.id, [stored]);
+
+    await expect(updateEntry(user.id, key, { rating: 1 })).resolves.toBe(false);
+
+    expect(await getMovies(other.id)).toEqual([stored]);
+    expect(await getMovies(user.id)).toEqual([]);
+  });
+
+  test("throws and keeps the old values when the update fails", async () => {
+    const user = await seedUser();
+    await seedList(user.id, [stored]);
+    await forceFailure("UPDATE", "list_entries");
+
+    await expect(updateEntry(user.id, key, { rating: 1 })).rejects.toThrow(
+      "forced failure",
+    );
+    expect(await getMovies(user.id)).toEqual([stored]);
   });
 });
 

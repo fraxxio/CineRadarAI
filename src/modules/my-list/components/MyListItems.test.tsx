@@ -14,7 +14,7 @@ describe("MyListItems", () => {
       makeMovie({ movieId: 2, name: "High", rating: 9 }),
     ]);
 
-    render(await MyListItems({ entries }));
+    render(await MyListItems({ entries, tab: "completed" }));
 
     const rows = within(
       screen.getByRole("list", { name: "Titles" }),
@@ -31,7 +31,7 @@ describe("MyListItems", () => {
       ),
     );
 
-    render(await MyListItems({ entries }));
+    render(await MyListItems({ entries, tab: "completed" }));
 
     expect(
       screen.getAllByRole("img").map((img) => img.getAttribute("loading")),
@@ -45,7 +45,7 @@ describe("MyListItems", () => {
       makeMovie({ movieId: 550, type: "tv", name: "Show" }),
     ]);
 
-    render(await MyListItems({ entries }));
+    render(await MyListItems({ entries, tab: "completed" }));
 
     expect(screen.getByRole("link", { name: "Film" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Show" })).toBeInTheDocument();

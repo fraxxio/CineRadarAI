@@ -7,6 +7,7 @@ import {
   LIST_STATUSES,
   type EntryKey,
   type ListEntry,
+  type ListStatus,
   type StoredEntry,
 } from "./entry";
 import {
@@ -152,6 +153,20 @@ export async function saveEntryStatus(
       target: [listEntries.userId, listEntries.movieId, listEntries.type],
       set: { status: fields.status },
     });
+}
+
+// changes only the given fields of an existing entry, never inserts; false
+// when the title isn't in the list
+export async function updateEntry(
+  userId: string,
+  key: EntryKey,
+  changes: { status?: ListStatus; rating?: number },
+): Promise<boolean> {
+  const { rowsAffected } = await db
+    .update(listEntries)
+    .set(changes)
+    .where(byKey(userId, key));
+  return rowsAffected > 0;
 }
 
 // removing an entry that isn't in the list is a no-op

@@ -80,6 +80,7 @@ export default async function ListShelves({
                 <ListRow
                   key={`${movie.type}-${movie.movieId}`}
                   movie={movie}
+                  tab="all"
                   priority={offsets[shelfIndex] + index < PRIORITY_ROWS}
                 />
               ))}

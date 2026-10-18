@@ -118,7 +118,13 @@ test("the list shows a saved item", async ({ page, loginAs, db }) => {
     "/search/movie/550",
   );
   await expect(item.getByText(/^Movie ·/)).toHaveText("Movie · 8");
-  await expect(item.getByText("Completed", { exact: true })).toBeVisible();
+  // the badge; the status select's option has the same text
+  await expect(
+    item.locator("span").filter({ hasText: /^Completed$/ }),
+  ).toBeVisible();
+  await expect(item.getByLabel("Status for Fight Club")).toHaveValue(
+    "Completed",
+  );
   await expect(item.getByAltText("Fight Club")).toHaveAttribute(
     "src",
     "https://image.tmdb.org/t/p/w300/fight-club.jpg",
@@ -134,22 +140,68 @@ test("edit an entry", async ({ page, loginAs, db }) => {
   await seedList(db, user.id, [fightClub]);
   await page.goto("/my-list");
 
-  await page.getByRole("button", { name: "Edit list entry" }).click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog.getByLabel("Status:")).toHaveValue("Completed");
-  await expect(dialog.getByLabel("Rating (optional):")).toHaveValue("8");
-  // only the status changes; the rating must survive
-  await dialog.getByLabel("Status:").selectOption("Watching");
-  await dialog.getByRole("button", { name: "Save" }).click();
-
-  await expect(page.getByText("Fight Club was updated.")).toBeVisible();
-  // router.refresh(), no manual reload
   const item = row(page, "Fight Club");
-  await expect(item.getByText("Watching", { exact: true })).toBeVisible();
-  await expect(item.getByText("8", { exact: true })).toBeVisible();
+  const rating = item.getByLabel("Rating for Fight Club");
+  const status = item.getByLabel("Status for Fight Club");
+  await expect(rating).toHaveValue("8");
+  await expect(status).toHaveValue("Completed");
+  // only the rating changes; the status must survive
+  await rating.selectOption("6");
+
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  // the action revalidates the page, no manual reload
+  await expect(item.getByText(/^Movie ·/)).toHaveText("Movie · 6");
+  await page.reload();
+  await expect(rating).toHaveValue("6");
+  await expect(status).toHaveValue("Completed");
   expect(await getMovies(db, user.id)).toEqual([
-    expect.objectContaining({ movieId: 550, status: "Watching", rating: 8 }),
+    expect.objectContaining({ movieId: 550, status: "Completed", rating: 6 }),
   ]);
+});
+
+test("a status change on a status tab moves the row out of it", async ({
+  page,
+  loginAs,
+  db,
+}) => {
+  const user = await loginAs();
+  await seedList(db, user.id, mixed);
+  await page.goto("/my-list?status=completed");
+  await expectItems(page, ["Delta Show", "Alpha Movie"]);
+
+  await row(page, "Delta Show")
+    .getByLabel("Status for Delta Show")
+    .selectOption("Watching");
+
+  await expect(page.getByText("Moved to Watching")).toBeVisible();
+  await expectItems(page, ["Alpha Movie"]);
+  await expect(
+    statusTabs(page).getByRole("link", { name: "Watching 2" }),
+  ).toBeVisible();
+  expect(await getMovies(db, user.id)).toContainEqual(
+    expect.objectContaining({ movieId: 4, status: "Watching", rating: 10 }),
+  );
+});
+
+test("a status change on the All tab moves the row to another shelf", async ({
+  page,
+  loginAs,
+  db,
+}) => {
+  const user = await loginAs();
+  await seedList(db, user.id, mixed);
+  await page.goto("/my-list");
+
+  await row(page, "Charlie Movie")
+    .getByLabel("Status for Charlie Movie")
+    .selectOption("Completed");
+
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  // the only planning title left, so its shelf goes
+  await expect(shelf(page, "Planning to watch 1")).toHaveCount(0);
+  await expect(
+    shelf(page, "Completed 3").getByRole("link", { name: "Charlie Movie" }),
+  ).toBeVisible();
 });
 
 test("remove an entry", async ({ page, loginAs, db }) => {
@@ -550,7 +602,8 @@ test.describe("at 320 px", () => {
       const { left, right } = li
         .closest("main > section")!
         .getBoundingClientRect();
-      return [li, ...li.querySelectorAll("*")]
+      // a closed select's options have no layout box
+      return [li, ...li.querySelectorAll("*:not(option)")]
         .filter((e) => {
           const box = e.getBoundingClientRect();
           return box.left < left || box.right > right;

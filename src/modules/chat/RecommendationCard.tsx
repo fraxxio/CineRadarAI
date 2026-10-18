@@ -82,7 +82,6 @@ export function RecommendationCard({
         <p className="break-words">{reason}</p>
       </div>
       <ListEntryDialog
-        mode="add"
         signedIn={signedIn}
         movieId={id}
         title={title}
