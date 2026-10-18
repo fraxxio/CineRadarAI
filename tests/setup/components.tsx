@@ -24,11 +24,12 @@ vi.mock("next/navigation", () => {
     redirect: vi.fn(),
   };
 });
-// plain <img>: next/image's default loader rewrites src to /_next/image?... outside Next
+// plain <img>: next/image's default loader rewrites src to /_next/image?... outside Next;
+// lazy unless `priority`, like next/image
 vi.mock("next/image", () => ({
   // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
   default: ({ priority, fill, ...props }: Record<string, unknown>) => (
-    <img {...props} />
+    <img loading={priority ? undefined : "lazy"} {...props} />
   ),
 }));
 vi.mock("sonner", () => ({
@@ -44,6 +45,11 @@ vi.mock("@/modules/account/actions", () => ({
   SignOut: vi.fn(),
   DeleteUser: vi.fn(),
   signInWithProvider: vi.fn(),
+}));
+vi.mock("@/modules/my-list/actions", () => ({
+  updateEntryStatus: vi.fn(),
+  updateEntryRating: vi.fn(),
+  removeListEntry: vi.fn(),
 }));
 vi.mock("react-google-recaptcha-v3", () => ({
   useGoogleReCaptcha: vi.fn(() => ({ executeRecaptcha: undefined })),

@@ -104,12 +104,11 @@ describe("Details", () => {
     }
   });
 
-  test("signed in -> an add ListEntryDialog with the entry", async () => {
+  test("signed in -> a ListEntryDialog with the entry", async () => {
     vi.mocked(getSession).mockResolvedValue(makeSession() as any);
     await renderMovie();
 
     expect(vi.mocked(ListEntryDialog).mock.lastCall![0]).toEqual({
-      mode: "add",
       signedIn: true,
       movieId: 550,
       title: "Fight Club",

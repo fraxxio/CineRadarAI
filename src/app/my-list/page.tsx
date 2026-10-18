@@ -1,15 +1,27 @@
-import { getEntries } from "@/modules/my-list/server";
+import { getListCounts, getListPage, getShelf } from "@/modules/my-list/server";
 import {
-  ListLength,
-  ListLengthSkeleton,
+  FilterGroup,
+  FilterLink,
+  ListEmpty,
+  ListPager,
+  ListShelves,
+  ListShelvesSkeleton,
   MyListItems,
   ListRowsSkeleton,
-  ListSortBtn,
-  ListSortLink,
+  StatusTabs,
+  countsFor,
+  isFiltered,
+  listHref,
+  pageCount,
+  parseListView,
+  shelfStatuses,
+  type ListCounts,
   type ListView,
+  type ShelfEntries,
 } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
 import { RotateCcw } from "lucide-react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Metadata } from "next";
 import { Suspense } from "react";
@@ -21,123 +33,140 @@ export const metadata: Metadata = {
 };
 
 type UrlParams = {
-  searchParams: Partial<ListView>;
+  searchParams: Record<string, string | string[] | undefined>;
 };
 
-export default async function page({
-  searchParams: { type = "both", status = "all", rating = "desc" },
-}: UrlParams) {
+// one small query per non-empty status, in parallel
+const readShelves = async (
+  userId: string,
+  { type, sort }: ListView,
+  counts: ListCounts,
+): Promise<ShelfEntries> =>
+  Object.fromEntries(
+    await Promise.all(
+      shelfStatuses(counts).map(
+        async (status) =>
+          [status, await getShelf(userId, { status, type, sort })] as const,
+      ),
+    ),
+  );
+
+export default async function page({ searchParams }: UrlParams) {
   const session = await getSession();
   if (session?.user === undefined) {
     redirect("/signin");
   }
   const safeSession = session!;
+  const userId = safeSession.user.id;
 
-  const sortValues = { rating, status, type };
-  // not awaited: both Suspense boundaries below wait for it and stream separately
-  const entries = getEntries(safeSession.user.id);
-  const sortKey = `${type}-${status}-${rating}`;
-  const sortHref = (value: Partial<ListView>) =>
-    `/my-list?${new URLSearchParams({ ...sortValues, ...value })}`;
+  const view = parseListView(searchParams);
+  // awaited so a page past the end can redirect before streaming starts
+  const countRows = await getListCounts(userId);
+  const counts = countsFor(countRows, view.type);
+  // the whole list, whatever the type
+  const listTotal = countsFor(countRows, "both").all;
+  const total = counts[view.status];
+  // the "All" tab is always page 1, so it never redirects
+  const lastPage = pageCount(total);
+  if (view.page > lastPage) {
+    redirect(listHref(view, { page: lastPage }));
+  }
+
+  const { type, sort } = view;
+  const viewHref = (changes: Partial<ListView>) => listHref(view, changes);
+  const name = safeSession.user.name;
 
   return (
     <main className="container">
       <section className="my-20 border border-border-clr bg-primary-bg">
-        <div className="relative flex items-center justify-between p-8 pb-12 max-[1070px]:flex-col max-[1070px]:gap-4">
-          <form
-            action={async () => {
-              "use server";
-              redirect("/my-list");
-            }}
-          >
-            <ListSortBtn type="submit" withIcon>
-              <RotateCcw size={18} />
-              Refresh list
-            </ListSortBtn>
-          </form>
-          <h1 className="text-center text-3xl">
-            <b>{safeSession.user.name}</b> movie and TV show list.
-          </h1>
-          <Suspense key={sortKey} fallback={<ListLengthSkeleton />}>
-            <ListLength entries={entries} view={sortValues} />
-          </Suspense>
-        </div>
-        <div className="flex items-center justify-center gap-8 pb-8 max-[1070px]:flex-col">
+        <div className="flex flex-wrap items-start justify-between gap-4 px-8 pb-4 pt-8 max-[480px]:px-4">
           <div>
-            <p className="pb-2 text-center text-lg font-medium">
-              Sort by rating:
+            <h1 className="text-3xl font-medium">
+              {name ? `${name}'s list` : "Your list"}
+            </h1>
+            <p className="pt-1 text-secondary-text">
+              {listTotal} {listTotal === 1 ? "title" : "titles"}
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <ListSortLink
-                href={sortHref({ rating: "asc" })}
-                isActive={rating === "asc"}
-              >
-                Ascending
-              </ListSortLink>
-              <ListSortLink
-                href={sortHref({ rating: "desc" })}
-                isActive={rating === "desc"}
-              >
-                Descending
-              </ListSortLink>
-            </div>
           </div>
-          <div>
-            <p className="pb-2 text-center text-lg font-medium">Type:</p>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <ListSortLink
-                href={sortHref({ type: "tv" })}
-                isActive={type === "tv"}
-              >
-                TV shows
-              </ListSortLink>
-              <ListSortLink
-                href={sortHref({ type: "movie" })}
-                isActive={type === "movie"}
-              >
-                Movies
-              </ListSortLink>
-              <ListSortLink
-                href={sortHref({ type: "both" })}
-                isActive={type === "both"}
-              >
-                Both
-              </ListSortLink>
-            </div>
-          </div>
-          <div>
-            <p className="pb-2 text-center text-lg font-medium">Show only:</p>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <ListSortLink
-                href={sortHref({ status: "completed" })}
-                isActive={status === "completed"}
-              >
-                Completed
-              </ListSortLink>
-              <ListSortLink
-                href={sortHref({ status: "planning" })}
-                isActive={status === "planning"}
-              >
-                Planning to watch
-              </ListSortLink>
-              <ListSortLink
-                href={sortHref({ status: "watching" })}
-                isActive={status === "watching"}
-              >
-                Watching
-              </ListSortLink>
-              <ListSortLink
-                href={sortHref({ status: "all" })}
-                isActive={status === "all"}
-              >
-                All
-              </ListSortLink>
-            </div>
-          </div>
+          {isFiltered(view) && (
+            <Link
+              href="/my-list"
+              className="flex items-center gap-2 rounded-md border border-border-clr bg-dark-bg px-3 py-1.5 text-sm duration-200 hover:bg-primary-text hover:text-dark-bg"
+            >
+              <RotateCcw size={16} aria-hidden />
+              Reset filters
+            </Link>
+          )}
         </div>
-        <Suspense key={sortKey} fallback={<ListRowsSkeleton />}>
-          <MyListItems entries={entries} view={sortValues} />
-        </Suspense>
+        <StatusTabs view={view} counts={counts} />
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-t border-border-clr px-8 py-4 max-[480px]:px-4">
+          <FilterGroup id="list-type-label" label="Type">
+            <FilterLink
+              href={viewHref({ type: "both" })}
+              isActive={type === "both"}
+            >
+              All
+            </FilterLink>
+            <FilterLink
+              href={viewHref({ type: "movie" })}
+              isActive={type === "movie"}
+            >
+              Movies
+            </FilterLink>
+            <FilterLink
+              href={viewHref({ type: "tv" })}
+              isActive={type === "tv"}
+            >
+              TV
+            </FilterLink>
+          </FilterGroup>
+          <FilterGroup id="list-sort-label" label="Sort by">
+            <FilterLink
+              href={viewHref({ sort: "rating-desc" })}
+              isActive={sort === "rating-desc"}
+            >
+              Highest rated
+            </FilterLink>
+            <FilterLink
+              href={viewHref({ sort: "rating-asc" })}
+              isActive={sort === "rating-asc"}
+            >
+              Lowest rated
+            </FilterLink>
+            <FilterLink
+              href={viewHref({ sort: "recent" })}
+              isActive={sort === "recent"}
+            >
+              Recently added
+            </FilterLink>
+          </FilterGroup>
+        </div>
+        {total === 0 ? (
+          <ListEmpty
+            filtered={listTotal > 0}
+            chatEnabled={process.env.AI_CHAT_ENABLED === "true"}
+          />
+        ) : view.status === "all" ? (
+          <Suspense key={listHref(view, {})} fallback={<ListShelvesSkeleton />}>
+            {/* not awaited: the shelves stream in their own boundary */}
+            <ListShelves
+              view={view}
+              counts={counts}
+              shelves={readShelves(userId, view, counts)}
+            />
+          </Suspense>
+        ) : (
+          <>
+            <Suspense key={listHref(view, {})} fallback={<ListRowsSkeleton />}>
+              {/* not awaited: the rows stream in their own boundary */}
+              <MyListItems
+                entries={getListPage(userId, view)}
+                tab={view.status}
+              />
+            </Suspense>
+            <ListPager view={view} total={total} />
+          </>
+        )}
       </section>
     </main>
   );

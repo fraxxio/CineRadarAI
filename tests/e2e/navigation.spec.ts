@@ -32,7 +32,7 @@ test("My list: logged in -> the list", async ({ page, loginAs }) => {
 
   await expect(page).toHaveURL(`${BASE_URL}/my-list`);
   await expect(
-    page.getByText(`${user.name} movie and TV show list.`),
+    page.getByRole("heading", { name: `${user.name}'s list` }),
   ).toBeVisible();
 });
 

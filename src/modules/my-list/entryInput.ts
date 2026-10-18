@@ -31,7 +31,12 @@ export const titleToSaveInput = z
     status: status ?? undefined,
   }));
 
-// the add/edit dialog payload -> a ListEntry
+// the list row's inline edits
+export const entryStatusInput = z.enum(statusValues);
+// 0 clears the rating
+export const entryRatingInput = z.number().int().min(0).max(10);
+
+// the add dialog payload -> a ListEntry
 export const entryInput = entryKeyInput
   .extend({
     title: z.string().min(1),
@@ -40,7 +45,7 @@ export const entryInput = entryKeyInput
       .string()
       .nullable()
       .transform((image) => image ?? ""),
-    status: z.enum(statusValues),
+    status: entryStatusInput,
     rating: z.union([z.literal(""), z.coerce.number().int().min(1).max(10)]),
   })
   .transform(

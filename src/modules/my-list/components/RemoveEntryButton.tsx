@@ -1,6 +1,5 @@
 "use client";
 import { LoaderCircle, Trash2 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import React, { FormEvent, useState } from "react";
 import {
   Dialog,
@@ -11,6 +10,7 @@ import {
   DialogTrigger,
 } from "@/shared/ui/Modal";
 import { toast } from "sonner";
+import { removeListEntry } from "../actions";
 import type { MediaType } from "@/infra/tmdb";
 
 type RemoveEntryButtonProps = {
@@ -26,19 +26,15 @@ export default function RemoveEntryButton({
 }: RemoveEntryButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   async function hRemoveFromList(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const response = await fetch("/api/remove-from-list", {
-        method: "DELETE",
-        headers: { movieId: movieId.toString(), type },
-      });
-      const data = await response.json();
-      if (data.addToListResult === "success") {
+      // the action revalidates the list, so the row goes in the same round trip
+      const { ok } = await removeListEntry({ movieId, type });
+      if (ok) {
         toast.success(`${title} was removed.`, {
           style: { color: "green" },
         });
@@ -55,7 +51,6 @@ export default function RemoveEntryButton({
     } finally {
       setLoading(false);
       setIsOpen(false);
-      router.refresh();
     }
   }
 
@@ -63,7 +58,7 @@ export default function RemoveEntryButton({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger
         aria-label="Remove from list"
-        className="h-10 w-10 rounded-md border border-border-clr bg-dark-bg px-3 py-2 font-medium duration-200 hover:bg-red-700 hover:text-dark-bg max-[840px]:h-7 max-[840px]:w-7 max-[840px]:p-1"
+        className="flex h-10 w-10 items-center justify-center rounded-md border border-border-clr bg-dark-bg font-medium duration-200 hover:bg-red-700 hover:text-dark-bg"
       >
         <Trash2 size={16} />
       </DialogTrigger>

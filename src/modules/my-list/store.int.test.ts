@@ -1,19 +1,31 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/infra/db";
 import { users } from "@/infra/db/schema/users";
 import {
-  getEntries,
   getEntry,
+  getListCounts,
+  getListPage,
+  getShelf,
+  readEntries,
   removeEntry,
   saveEntry,
   saveEntryStatus,
+  updateEntry,
 } from "./store";
-import { forceFailure, getMovies, seedList, seedUser } from "@test/helpers/db";
+import type { ListStatus } from "./entry";
+import { DEFAULT_VIEW, PAGE_SIZE, SHELF_SIZE, type ListView } from "./view";
+import {
+  forceFailure,
+  getMovies,
+  seedList,
+  seedUser,
+  type ListMovie,
+} from "@test/helpers/db";
 import { makeMovie } from "@test/helpers/factories";
 
 // `cache` is the identity shim (tests/setup/shared.ts), so nothing is cached across tests
-describe("getEntries", () => {
+describe("readEntries", () => {
   test("returns the stored entries in insertion order", async () => {
     const user = await seedUser();
     const entries = [
@@ -22,12 +34,340 @@ describe("getEntries", () => {
     ];
     await seedList(user.id, entries);
 
-    expect(await getEntries(user.id)).toEqual(entries);
+    expect(await readEntries(user.id)).toEqual(entries);
   });
 
   test("returns [] for a user with no entries", async () => {
     const user = await seedUser();
-    expect(await getEntries(user.id)).toEqual([]);
+    expect(await readEntries(user.id)).toEqual([]);
+  });
+});
+
+describe("getListPage", () => {
+  // ratings across both types, all three statuses and a legacy one
+  const fixture: ListMovie[] = [
+    makeMovie({ movieId: 1, name: "Fury", status: "Completed", rating: 7 }),
+    makeMovie({ movieId: 2, name: "Heat", status: "Planning to watch" }),
+    makeMovie({ movieId: 3, name: "Alien", status: "Watching", rating: 10 }),
+    makeMovie({
+      movieId: 4,
+      name: "Dark",
+      type: "tv",
+      status: "Watching",
+      rating: 3,
+    }),
+    makeMovie({ movieId: 5, name: "Lost", type: "tv", status: "Completed" }),
+    makeMovie({
+      movieId: 6,
+      name: "Fargo",
+      type: "tv",
+      status: "Watching",
+      rating: 7,
+    }),
+    {
+      ...makeMovie({ movieId: 7, name: "Ozark", type: "tv" }),
+      status: "Dropped",
+    },
+  ];
+
+  const names = async (userId: string, changes: Partial<ListView> = {}) =>
+    (await getListPage(userId, { ...DEFAULT_VIEW, ...changes })).map(
+      (entry) => entry.name,
+    );
+
+  const seeded = async (entries = fixture) => {
+    const user = await seedUser();
+    await seedList(user.id, entries);
+    return user.id;
+  };
+
+  test("the default view: every row, highest rated first, unrated last", async () => {
+    const userId = await seeded();
+    expect(await names(userId)).toEqual([
+      "Alien",
+      "Fury",
+      "Fargo",
+      "Dark",
+      "Heat",
+      "Lost",
+      "Ozark",
+    ]);
+  });
+
+  test("returns the stored entry shape", async () => {
+    const userId = await seeded();
+    const [first] = await getListPage(userId, DEFAULT_VIEW);
+    expect(first).toEqual(fixture[2]);
+  });
+
+  test("rating-asc: lowest rated first, unrated still last", async () => {
+    const userId = await seeded();
+    expect(await names(userId, { sort: "rating-asc" })).toEqual([
+      "Dark",
+      "Fury",
+      "Fargo",
+      "Alien",
+      "Heat",
+      "Lost",
+      "Ozark",
+    ]);
+  });
+
+  test("recent: the newest first", async () => {
+    const userId = await seeded();
+    expect(await names(userId, { sort: "recent" })).toEqual([
+      "Ozark",
+      "Fargo",
+      "Lost",
+      "Dark",
+      "Alien",
+      "Heat",
+      "Fury",
+    ]);
+  });
+
+  it.each(["rating-desc", "rating-asc"] as const)(
+    "%s: equal ratings keep insertion order",
+    async (sort) => {
+      const userId = await seeded([
+        makeMovie({ movieId: 3, name: "C", rating: 5 }),
+        makeMovie({ movieId: 1, name: "A", rating: 5 }),
+        makeMovie({ movieId: 2, name: "B", rating: 5 }),
+      ]);
+      expect(await names(userId, { sort })).toEqual(["C", "A", "B"]);
+    },
+  );
+
+  it.each([
+    ["watching", ["Alien", "Fargo", "Dark"]],
+    ["planning", ["Heat"]],
+    ["completed", ["Fury", "Lost"]],
+    ["other", ["Ozark"]],
+  ] as const)("status %s", async (status, expected) => {
+    const userId = await seeded();
+    expect(await names(userId, { status })).toEqual(expected);
+  });
+
+  it.each([
+    ["movie", ["Alien", "Fury", "Heat"]],
+    ["tv", ["Fargo", "Dark", "Lost", "Ozark"]],
+  ] as const)("type %s", async (type, expected) => {
+    const userId = await seeded();
+    expect(await names(userId, { type })).toEqual(expected);
+  });
+
+  test("combines the status and type filters", async () => {
+    const userId = await seeded();
+    expect(await names(userId, { status: "watching", type: "tv" })).toEqual([
+      "Fargo",
+      "Dark",
+    ]);
+    expect(await names(userId, { status: "other", type: "movie" })).toEqual([]);
+  });
+
+  describe("pages", () => {
+    // 30 rows, all rated 5, so the order is insertion order
+    const many = Array.from({ length: 30 }, (_, i) =>
+      makeMovie({ movieId: i + 1, name: `Title ${i + 1}`, rating: 5 }),
+    );
+    const titles = (from: number, to: number) =>
+      many.slice(from, to).map((entry) => entry.name);
+
+    test("page 1 holds PAGE_SIZE rows", async () => {
+      const userId = await seeded(many);
+      expect(PAGE_SIZE).toBe(24);
+      expect(await names(userId, { page: 1 })).toEqual(titles(0, 24));
+    });
+
+    test("page 2 holds the rest", async () => {
+      const userId = await seeded(many);
+      expect(await names(userId, { page: 2 })).toEqual(titles(24, 30));
+    });
+
+    test("a page past the end is empty", async () => {
+      const userId = await seeded(many);
+      expect(await names(userId, { page: 3 })).toEqual([]);
+    });
+
+    test("pages follow the sort", async () => {
+      const userId = await seeded(many);
+      expect(await names(userId, { sort: "recent", page: 2 })).toEqual(
+        titles(0, 6).reverse(),
+      );
+    });
+  });
+
+  test("only reads the given user's rows", async () => {
+    const userId = await seeded();
+    const other = await seeded([
+      makeMovie({ movieId: 99, name: "Theirs", rating: 10 }),
+    ]);
+    expect(await names(other)).toEqual(["Theirs"]);
+    expect(await names(userId)).not.toContain("Theirs");
+  });
+
+  test("returns [] for a user with no entries", async () => {
+    const user = await seedUser();
+    expect(await getListPage(user.id, DEFAULT_VIEW)).toEqual([]);
+  });
+});
+
+describe("getShelf", () => {
+  const seeded = async (entries: ListMovie[]) => {
+    const user = await seedUser();
+    await seedList(user.id, entries);
+    return user.id;
+  };
+
+  const names = async (userId: string, shelf: Parameters<typeof getShelf>[1]) =>
+    (await getShelf(userId, shelf)).map((entry) => entry.name);
+
+  // 8 watching titles, rated 1-8 in insertion order, half of them TV
+  const watching = Array.from({ length: 8 }, (_, i) =>
+    makeMovie({
+      movieId: i + 1,
+      name: `W${i + 1}`,
+      type: i % 2 ? "tv" : "movie",
+      status: "Watching",
+      rating: i + 1,
+    }),
+  );
+
+  test("holds at most SHELF_SIZE rows, in the sort", async () => {
+    const userId = await seeded(watching);
+    expect(SHELF_SIZE).toBe(6);
+    expect(
+      await names(userId, {
+        status: "watching",
+        type: "both",
+        sort: "rating-desc",
+      }),
+    ).toEqual(["W8", "W7", "W6", "W5", "W4", "W3"]);
+    expect(
+      await names(userId, {
+        status: "watching",
+        type: "both",
+        sort: "rating-asc",
+      }),
+    ).toEqual(["W1", "W2", "W3", "W4", "W5", "W6"]);
+  });
+
+  test("recent: the newest first", async () => {
+    const userId = await seeded([
+      ...watching,
+      makeMovie({ movieId: 9, name: "W9", status: "Watching" }),
+    ]);
+    expect(
+      await names(userId, { status: "watching", type: "both", sort: "recent" }),
+    ).toEqual(["W9", "W8", "W7", "W6", "W5", "W4"]);
+  });
+
+  test("respects the type", async () => {
+    const userId = await seeded(watching);
+    expect(
+      await names(userId, {
+        status: "watching",
+        type: "tv",
+        sort: "rating-desc",
+      }),
+    ).toEqual(["W8", "W6", "W4", "W2"]);
+  });
+
+  test("only holds its status", async () => {
+    const userId = await seeded([
+      ...watching,
+      makeMovie({ movieId: 20, name: "Done", status: "Completed", rating: 9 }),
+    ]);
+    expect(
+      await names(userId, {
+        status: "completed",
+        type: "both",
+        sort: "rating-desc",
+      }),
+    ).toEqual(["Done"]);
+  });
+
+  test("the other shelf holds the legacy statuses", async () => {
+    const userId = await seeded([
+      ...watching,
+      { ...makeMovie({ movieId: 20, name: "Gone" }), status: "Dropped" },
+      {
+        ...makeMovie({ movieId: 21, name: "Held", type: "tv", rating: 4 }),
+        status: "On hold",
+      },
+    ]);
+    expect(
+      await names(userId, {
+        status: "other",
+        type: "both",
+        sort: "rating-desc",
+      }),
+    ).toEqual(["Held", "Gone"]);
+  });
+
+  test("only reads the given user's rows", async () => {
+    const userId = await seeded(watching);
+    const other = await seeded([
+      makeMovie({ movieId: 99, name: "Theirs", status: "Watching" }),
+    ]);
+    expect(
+      await names(other, {
+        status: "watching",
+        type: "both",
+        sort: "rating-desc",
+      }),
+    ).toEqual(["Theirs"]);
+    expect(
+      await names(userId, {
+        status: "watching",
+        type: "both",
+        sort: "rating-desc",
+      }),
+    ).not.toContain("Theirs");
+  });
+});
+
+describe("getListCounts", () => {
+  const sorted = (rows: Awaited<ReturnType<typeof getListCounts>>) =>
+    [...rows].sort((a, b) =>
+      `${a.status}-${a.type}`.localeCompare(`${b.status}-${b.type}`),
+    );
+
+  test("one row per stored status and type", async () => {
+    const user = await seedUser();
+    await seedList(user.id, [
+      makeMovie({ movieId: 1, status: "Watching" }),
+      makeMovie({ movieId: 2, status: "Watching" }),
+      makeMovie({ movieId: 3, type: "tv", status: "Watching" }),
+      makeMovie({ movieId: 4, status: "Completed" }),
+      { ...makeMovie({ movieId: 5 }), status: "Dropped" as ListStatus },
+    ]);
+
+    expect(sorted(await getListCounts(user.id))).toEqual([
+      { status: "Completed", type: "movie", count: 1 },
+      { status: "Dropped", type: "movie", count: 1 },
+      { status: "Watching", type: "movie", count: 2 },
+      { status: "Watching", type: "tv", count: 1 },
+    ]);
+  });
+
+  test("only counts the given user's rows", async () => {
+    const user = await seedUser();
+    const other = await seedUser();
+    await seedList(user.id, [makeMovie({ movieId: 1 })]);
+    await seedList(other.id, [
+      makeMovie({ movieId: 1 }),
+      makeMovie({ movieId: 2 }),
+    ]);
+
+    expect(await getListCounts(user.id)).toEqual([
+      { status: "Completed", type: "movie", count: 1 },
+    ]);
+  });
+
+  test("[] for a user with no entries", async () => {
+    const user = await seedUser();
+    expect(await getListCounts(user.id)).toEqual([]);
   });
 });
 
@@ -289,6 +629,105 @@ describe("saveEntryStatus", () => {
       "forced failure",
     );
     expect(await getMovies(user.id)).toEqual(existing);
+  });
+});
+
+describe("updateEntry", () => {
+  const key = { movieId: 550, type: "movie" as const };
+  const stored = makeMovie({
+    movieId: 550,
+    name: "Fight Club",
+    status: "Completed",
+    rating: 8,
+  });
+
+  test("changes only the status, in place", async () => {
+    const user = await seedUser();
+    const before = makeMovie({ movieId: 1 });
+    await seedList(user.id, [before, stored]);
+
+    await expect(
+      updateEntry(user.id, key, { status: "Watching" }),
+    ).resolves.toBe(true);
+
+    expect(await getMovies(user.id)).toEqual([
+      before,
+      { ...stored, status: "Watching" },
+    ]);
+  });
+
+  test("changes only the rating", async () => {
+    const user = await seedUser();
+    await seedList(user.id, [stored]);
+
+    await expect(updateEntry(user.id, key, { rating: 3 })).resolves.toBe(true);
+
+    expect(await getMovies(user.id)).toEqual([{ ...stored, rating: 3 }]);
+  });
+
+  test("rating 0 clears the rating", async () => {
+    const user = await seedUser();
+    await seedList(user.id, [stored]);
+
+    await updateEntry(user.id, key, { rating: 0 });
+
+    expect(await getMovies(user.id)).toEqual([{ ...stored, rating: 0 }]);
+  });
+
+  test("a legacy status is replaced", async () => {
+    const user = await seedUser();
+    const legacy = { ...stored, status: "Dropped" };
+    await seedList(user.id, [legacy]);
+
+    await updateEntry(user.id, key, { status: "Planning to watch" });
+
+    expect(await getMovies(user.id)).toEqual([
+      { ...stored, status: "Planning to watch" },
+    ]);
+  });
+
+  test("a missing key is a no-op and never inserts", async () => {
+    const user = await seedUser();
+    await seedList(user.id, [stored]);
+
+    await expect(
+      updateEntry(user.id, { movieId: 551, type: "movie" }, { rating: 1 }),
+    ).resolves.toBe(false);
+
+    expect(await getMovies(user.id)).toEqual([stored]);
+  });
+
+  test("[B4] a TV show with the same id doesn't change a movie", async () => {
+    const user = await seedUser();
+    await seedList(user.id, [stored]);
+
+    await expect(
+      updateEntry(user.id, { ...key, type: "tv" }, { status: "Watching" }),
+    ).resolves.toBe(false);
+
+    expect(await getMovies(user.id)).toEqual([stored]);
+  });
+
+  test("doesn't touch another user's entry", async () => {
+    const user = await seedUser();
+    const other = await seedUser();
+    await seedList(other.id, [stored]);
+
+    await expect(updateEntry(user.id, key, { rating: 1 })).resolves.toBe(false);
+
+    expect(await getMovies(other.id)).toEqual([stored]);
+    expect(await getMovies(user.id)).toEqual([]);
+  });
+
+  test("throws and keeps the old values when the update fails", async () => {
+    const user = await seedUser();
+    await seedList(user.id, [stored]);
+    await forceFailure("UPDATE", "list_entries");
+
+    await expect(updateEntry(user.id, key, { rating: 1 })).rejects.toThrow(
+      "forced failure",
+    );
+    expect(await getMovies(user.id)).toEqual([stored]);
   });
 });
 

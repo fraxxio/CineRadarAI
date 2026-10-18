@@ -1,4 +1,10 @@
-import { integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  unique,
+} from "drizzle-orm/sqlite-core";
 // type-only: the e2e helpers import this file and mustn't pull in @/infra/tmdb
 import type { MediaType } from "@/infra/tmdb";
 import { users } from "@/infra/db/schema/users";
@@ -19,8 +25,17 @@ export const listEntries = sqliteTable(
     status: text("status").notNull(), // not ListStatus: see StoredEntry
     rating: integer("rating", { mode: "number" }).notNull(), // 0 = not rated
   },
-  // movie and TV ids can collide, so the key includes the type
-  (t) => ({ entryKey: unique().on(t.userId, t.movieId, t.type) }),
+  (t) => ({
+    // movie and TV ids can collide, so the key includes the type
+    entryKey: unique().on(t.userId, t.movieId, t.type),
+    // for the /my-list rating sorts and the status/type filters and counts
+    byRating: index("list_entries_user_rating_idx").on(t.userId, t.rating),
+    byStatus: index("list_entries_user_status_type_idx").on(
+      t.userId,
+      t.status,
+      t.type,
+    ),
+  }),
 );
 
 // a row without its id and owner: the StoredEntry shape

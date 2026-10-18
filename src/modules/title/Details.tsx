@@ -137,7 +137,6 @@ export default async function Details({
           </div>
         </div>
         <ListEntryDialog
-          mode="add"
           movieId={id}
           fullSize={true}
           signedIn={session?.user !== undefined}

@@ -1,40 +1,28 @@
-import ListCard from "./ListCard";
+import ListRow, { PRIORITY_ROWS } from "./ListRow";
 import type { StoredEntry } from "../entry";
-import { viewEntries, type ListView } from "../view";
+import type { ListStatusFilter } from "../view";
 
 type ListProps = {
-  // the page starts the read once; each component awaits it in its own Suspense boundary
+  // the page starts the read and streams the rows in a Suspense boundary;
+  // an empty view shows ListEmpty instead
   entries: Promise<StoredEntry[]>;
-  view: ListView;
+  tab: ListStatusFilter;
 };
 
-export async function ListLength({ entries, view }: ListProps) {
-  const movies = viewEntries(await entries, view);
-
-  return <p className="text-lg">Length: {movies.length}</p>;
-}
-
-export default async function MyListItems({ entries, view }: ListProps) {
-  const movies = viewEntries(await entries, view);
+export default async function MyListItems({ entries, tab }: ListProps) {
+  const movies = await entries;
 
   return (
-    <div className="border-t border-border-clr">
-      {movies.length === 0 ? (
-        <div className="border-b border-border-clr py-4 text-center font-medium last:border-none">
-          Your list is empty.
-        </div>
-      ) : (
-        movies.map((movie, index) => {
-          // movie and TV ids can collide
-          return (
-            <ListCard
-              key={`${movie.type}-${movie.movieId}`}
-              movie={movie}
-              index={index}
-            />
-          );
-        })
-      )}
-    </div>
+    <ul aria-label="Titles" className="border-t border-border-clr">
+      {movies.map((movie, index) => (
+        // movie and TV ids can collide
+        <ListRow
+          key={`${movie.type}-${movie.movieId}`}
+          movie={movie}
+          tab={tab}
+          priority={index < PRIORITY_ROWS}
+        />
+      ))}
+    </ul>
   );
 }

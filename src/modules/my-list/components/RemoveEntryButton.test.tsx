@@ -1,9 +1,9 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, test, vi } from "vitest";
 import RemoveEntryButton from "./RemoveEntryButton";
+import { removeListEntry } from "../actions";
 import { deferred } from "@test/helpers/deferred";
 
 const props = {
@@ -18,7 +18,7 @@ beforeEach(() => {
   user = userEvent.setup();
 });
 
-const fetchSpy = () => vi.spyOn(globalThis, "fetch");
+const removeMock = () => vi.mocked(removeListEntry);
 
 async function open() {
   await user.click(screen.getByRole("button", { name: "Remove from list" }));
@@ -34,11 +34,8 @@ const dialogClosed = () =>
   waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
 const replies = [
-  [
-    "success",
-    () => Promise.resolve(Response.json({ addToListResult: "success" })),
-  ],
-  ["fail", () => Promise.resolve(Response.json({ addToListResult: "fail" }))],
+  ["success", () => Promise.resolve({ ok: true as const })],
+  ["fail", () => Promise.resolve({ ok: false as const })],
   ["network error", () => Promise.reject(new TypeError("offline"))],
 ] as const;
 
@@ -55,28 +52,21 @@ describe("RemoveEntryButton", () => {
     );
   });
 
-  test("sends a DELETE with the movie id and type in headers", async () => {
-    const fetch = fetchSpy().mockResolvedValue(
-      Response.json({ addToListResult: "success" }),
-    );
+  test("calls the remove action with the entry key", async () => {
+    removeMock().mockResolvedValue({ ok: true });
     render(<RemoveEntryButton {...props} />);
 
     await remove();
 
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/remove-from-list",
-      expect.objectContaining({
-        method: "DELETE",
-        headers: expect.objectContaining({ movieId: "550", type: "tv" }),
-      }),
-    );
-    // only the entry key: the route takes the user from the session (B2)
-    const headers = fetch.mock.calls[0][1]!.headers as Record<string, string>;
-    expect(Object.keys(headers)).toEqual(["movieId", "type"]);
+    // only the entry key: the action takes the user from the session
+    expect(removeListEntry).toHaveBeenCalledExactlyOnceWith({
+      movieId: 550,
+      type: "tv",
+    });
   });
 
   test("success toast names the title", async () => {
-    fetchSpy().mockResolvedValue(Response.json({ addToListResult: "success" }));
+    removeMock().mockResolvedValue({ ok: true });
     render(<RemoveEntryButton {...props} />);
 
     await remove();
@@ -92,7 +82,7 @@ describe("RemoveEntryButton", () => {
 
   it.each(replies.slice(1))("error toast on %s", async (_, reply) => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    fetchSpy().mockImplementation(reply);
+    removeMock().mockImplementation(reply);
     render(<RemoveEntryButton {...props} />);
 
     await remove();
@@ -103,20 +93,22 @@ describe("RemoveEntryButton", () => {
     expect(toast.success).not.toHaveBeenCalled();
   });
 
-  it.each(replies)("refreshes and closes after %s", async (_, reply) => {
+  // the action revalidates the page, so there's no router.refresh()
+  it.each(replies)("closes after %s", async (_, reply) => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    fetchSpy().mockImplementation(reply);
+    removeMock().mockImplementation(reply);
     render(<RemoveEntryButton {...props} />);
 
     await remove();
 
     await dialogClosed();
-    expect(useRouter().refresh).toHaveBeenCalledOnce();
   });
 
   test("shows Removing... and disables the button while in flight", async () => {
-    const response = deferred<Response>();
-    fetchSpy().mockReturnValue(response.promise);
+    const reply = deferred<{ ok: boolean }>();
+    removeMock().mockReturnValue(
+      reply.promise as ReturnType<typeof removeListEntry>,
+    );
     render(<RemoveEntryButton {...props} />);
 
     await remove();
@@ -126,7 +118,7 @@ describe("RemoveEntryButton", () => {
     });
     expect(button).toBeDisabled();
 
-    response.resolve(Response.json({ addToListResult: "success" }));
+    reply.resolve({ ok: true });
     await dialogClosed();
     expect(screen.queryByText("Removing...")).toBeNull();
   });

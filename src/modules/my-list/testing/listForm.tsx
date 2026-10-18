@@ -1,6 +1,5 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import { useRouter } from "next/navigation";
 import type { ReactElement } from "react";
 import { toast } from "sonner";
 import { beforeEach, describe, expect, it, test, vi } from "vitest";
@@ -23,10 +22,9 @@ export type ListFormConfig = {
   loadingText: string;
   successText: string;
   errorText: string;
-  refreshes: boolean;
 };
 
-// both ListEntryDialog modes share one form: status + rating -> PUT /api/add-to-list
+// the ListEntryDialog form: status + rating -> PUT /api/add-to-list
 export function describeListForm(c: ListFormConfig) {
   let user: UserEvent;
   beforeEach(() => {
@@ -197,17 +195,5 @@ export function describeListForm(c: ListFormConfig) {
         expect(dialog.getByLabelText("Rating (optional):")).toHaveValue("");
       },
     );
-
-    if (c.refreshes) {
-      it.each(replies)("refreshes the page after %s", async (_, reply) => {
-        vi.spyOn(console, "error").mockImplementation(() => {});
-        fetchSpy().mockImplementation(reply);
-        render(c.element(true));
-
-        await fillAndSubmit();
-
-        await waitFor(() => expect(useRouter().refresh).toHaveBeenCalledOnce());
-      });
-    }
   });
 }
