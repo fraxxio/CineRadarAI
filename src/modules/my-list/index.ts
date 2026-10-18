@@ -23,10 +23,6 @@ export {
 } from "./entry";
 export { entryInput, entryKeyInput, titleToSaveInput } from "./entryInput";
 export {
-  DEFAULT_VIEW,
-  PAGE_SIZE,
-  SHELF_SIZE,
-  STATUS_TABS,
   countsFor,
   isFiltered,
   listHref,
@@ -35,5 +31,4 @@ export {
   shelfStatuses,
   type ListCounts,
   type ListView,
-  type ShelfStatus,
 } from "./view";

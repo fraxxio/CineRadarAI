@@ -25,11 +25,10 @@ const OTHER_STYLE = {
 
 type StatusBadgeProps = {
   status: string;
-  className?: string;
 };
 
 // the icon and the text carry the status, the colour only helps scanning
-export default function StatusBadge({ status, className }: StatusBadgeProps) {
+export default function StatusBadge({ status }: StatusBadgeProps) {
   const { icon: Icon, color } = isListStatus(status)
     ? STATUS_STYLES[status]
     : OTHER_STYLE;
@@ -39,7 +38,6 @@ export default function StatusBadge({ status, className }: StatusBadgeProps) {
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
         color,
-        className,
       )}
     >
       <Icon size={14} className="shrink-0" aria-hidden />
