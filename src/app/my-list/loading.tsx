@@ -1,4 +1,4 @@
-import { ListRowsSkeleton } from "@/modules/my-list";
+import { ListShelvesSkeleton } from "@/modules/my-list";
 import { Skeleton } from "@/shared/ui/Skeleton";
 
 const tabWidths = ["w-14", "w-28", "w-40", "w-32"];
@@ -37,7 +37,8 @@ export default function Loading() {
             </div>
           ))}
         </div>
-        <ListRowsSkeleton />
+        {/* most visits open the "All" tab */}
+        <ListShelvesSkeleton />
       </section>
     </main>
   );

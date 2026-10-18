@@ -1,9 +1,11 @@
-import { getListCounts, getListPage } from "@/modules/my-list/server";
+import { getListCounts, getListPage, getShelf } from "@/modules/my-list/server";
 import {
   FilterGroup,
   FilterLink,
   ListEmpty,
   ListPager,
+  ListShelves,
+  ListShelvesSkeleton,
   MyListItems,
   ListRowsSkeleton,
   StatusTabs,
@@ -12,7 +14,10 @@ import {
   listHref,
   pageCount,
   parseListView,
+  shelfStatuses,
+  type ListCounts,
   type ListView,
+  type ShelfEntries,
 } from "@/modules/my-list";
 import { getSession } from "@/infra/auth/session";
 import { RotateCcw } from "lucide-react";
@@ -31,6 +36,21 @@ type UrlParams = {
   searchParams: Record<string, string | string[] | undefined>;
 };
 
+// one small query per non-empty status, in parallel
+const readShelves = async (
+  userId: string,
+  { type, sort }: ListView,
+  counts: ListCounts,
+): Promise<ShelfEntries> =>
+  Object.fromEntries(
+    await Promise.all(
+      shelfStatuses(counts).map(
+        async (status) =>
+          [status, await getShelf(userId, { status, type, sort })] as const,
+      ),
+    ),
+  );
+
 export default async function page({ searchParams }: UrlParams) {
   const session = await getSession();
   if (session?.user === undefined) {
@@ -46,6 +66,7 @@ export default async function page({ searchParams }: UrlParams) {
   // the whole list, whatever the type
   const listTotal = countsFor(countRows, "both").all;
   const total = counts[view.status];
+  // the "All" tab is always page 1, so it never redirects
   const lastPage = pageCount(total);
   if (view.page > lastPage) {
     redirect(listHref(view, { page: lastPage }));
@@ -125,6 +146,15 @@ export default async function page({ searchParams }: UrlParams) {
             filtered={listTotal > 0}
             chatEnabled={process.env.AI_CHAT_ENABLED === "true"}
           />
+        ) : view.status === "all" ? (
+          <Suspense key={listHref(view, {})} fallback={<ListShelvesSkeleton />}>
+            {/* not awaited: the shelves stream in their own boundary */}
+            <ListShelves
+              view={view}
+              counts={counts}
+              shelves={readShelves(userId, view, counts)}
+            />
+          </Suspense>
         ) : (
           <>
             <Suspense key={listHref(view, {})} fallback={<ListRowsSkeleton />}>

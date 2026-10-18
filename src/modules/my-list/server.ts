@@ -2,6 +2,7 @@
 export {
   getListCounts,
   getListPage,
+  getShelf,
   readEntries,
   removeEntry,
   saveEntry,

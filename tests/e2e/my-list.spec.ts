@@ -48,12 +48,17 @@ const mixed: ListMovie[] = [
   },
 ];
 
-// a ListRow: the list item that contains the title link
+// a ListRow, in a status tab's list or an "All" tab shelf: the list item
+// that contains the title link
 const row = (page: Page, name: string) =>
   page
-    .getByRole("list", { name: "Titles" })
+    .getByRole("main")
     .getByRole("listitem")
     .filter({ has: page.getByRole("link", { name, exact: true }) });
+
+// an "All" tab shelf, named by its heading ("Completed 2")
+const shelf = (page: Page, name: string) =>
+  page.getByRole("region", { name, exact: true });
 
 const itemLinks = (page: Page) => page.locator('main a[href^="/search/"]');
 
@@ -164,18 +169,23 @@ test("remove an entry", async ({ page, loginAs, db }) => {
   expect(await getMovies(db, user.id)).toEqual([]);
 });
 
-test("sort and filter, with matching tab counts", async ({
-  page,
-  loginAs,
-  db,
-}) => {
+test("the All tab shows a shelf per status", async ({ page, loginAs, db }) => {
   const user = await loginAs();
   await seedList(db, user.id, mixed);
   await page.goto("/my-list");
-  await expectItems(page, [
-    "Delta Show",
-    "Charlie Movie",
+
+  await expect(page.getByRole("main").getByRole("region")).toHaveCount(3);
+  await expect(
+    page.getByRole("main").getByRole("heading", { level: 2 }),
+  ).toHaveText(["Watching 1", "Planning to watch 1", "Completed 2"]);
+  await expect(shelf(page, "Watching 1").getByRole("link")).toHaveText([
     "Bravo Show",
+  ]);
+  await expect(shelf(page, "Planning to watch 1").getByRole("link")).toHaveText(
+    ["Charlie Movie"],
+  );
+  await expect(shelf(page, "Completed 2").getByRole("link")).toHaveText([
+    "Delta Show",
     "Alpha Movie",
   ]);
   await expect(statusTabs(page).getByRole("link")).toHaveText([
@@ -184,11 +194,51 @@ test("sort and filter, with matching tab counts", async ({
     "Planning to watch 1",
     "Completed 2",
   ]);
+  // every shelf fits, so no "See all" and no pager
+  await expect(page.getByRole("link", { name: /^See all/ })).toHaveCount(0);
+  await expect(
+    page.getByRole("navigation", { name: "Pagination" }),
+  ).toHaveCount(0);
+
+  // the type applies to every shelf, and empty shelves go
+  await typeGroup(page).getByRole("link", { name: "TV" }).click();
+  await expect(page).toHaveURL(/type=tv/);
+  await expect(
+    page.getByRole("main").getByRole("heading", { level: 2 }),
+  ).toHaveText(["Watching 1", "Completed 1"]);
+  await expectItems(page, ["Bravo Show", "Delta Show"]);
+});
+
+// `mixed`, all watching, so one shelf (and one tab) holds every rating
+const allWatching = mixed.map(
+  (entry): ListMovie => ({ ...entry, status: "Watching" }),
+);
+
+test("sort and filter, with matching tab counts", async ({
+  page,
+  loginAs,
+  db,
+}) => {
+  const user = await loginAs();
+  await seedList(db, user.id, [...allWatching, fightClub]);
+  await page.goto("/my-list");
+  await expect(statusTabs(page).getByRole("link")).toHaveText([
+    "All 5",
+    "Watching 4",
+    "Planning to watch 0",
+    "Completed 1",
+  ]);
+  await expect(shelf(page, "Watching 4").getByRole("link")).toHaveText([
+    "Delta Show",
+    "Charlie Movie",
+    "Bravo Show",
+    "Alpha Movie",
+  ]);
 
   // unrated titles come last under both rating sorts
   await sortGroup(page).getByRole("link", { name: "Lowest rated" }).click();
   await expect(page).toHaveURL(/sort=rating-asc/);
-  await expectItems(page, [
+  await expect(shelf(page, "Watching 4").getByRole("link")).toHaveText([
     "Bravo Show",
     "Charlie Movie",
     "Delta Show",
@@ -200,6 +250,19 @@ test("sort and filter, with matching tab counts", async ({
 
   await sortGroup(page).getByRole("link", { name: "Recently added" }).click();
   await expect(page).toHaveURL(/sort=recent/);
+  // the shelves come in tab order, whatever the sort
+  await expectItems(
+    page,
+    ["Delta Show", "Charlie Movie", "Bravo Show", "Alpha Movie", "Fight Club"],
+    5,
+  );
+
+  await statusTabs(page)
+    .getByRole("link", { name: /^Watching/ })
+    .click();
+  await expect(page).toHaveURL(/status=watching/);
+  // the sort carries over to the tab
+  await expect(page).toHaveURL(/sort=recent/);
   await expectItems(page, [
     "Delta Show",
     "Charlie Movie",
@@ -209,27 +272,23 @@ test("sort and filter, with matching tab counts", async ({
 
   await typeGroup(page).getByRole("link", { name: "TV" }).click();
   await expect(page).toHaveURL(/type=tv/);
-  // the sort carries over to the filter
+  // the status and sort carry over to the filter
+  await expect(page).toHaveURL(/status=watching/);
   await expectItems(page, ["Delta Show", "Bravo Show"]);
   // the tab counts follow the type, the header doesn't
   await expect(statusTabs(page).getByRole("link")).toHaveText([
     "All 2",
-    "Watching 1",
+    "Watching 2",
     "Planning to watch 0",
-    "Completed 1",
+    "Completed 0",
   ]);
-  await expect(page.getByText("4 titles", { exact: true })).toBeVisible();
+  await expect(page.getByText("5 titles", { exact: true })).toBeVisible();
 
   await statusTabs(page)
-    .getByRole("link", { name: /^Watching/ })
+    .getByRole("link", { name: /^Completed/ })
     .click();
-  await expect(page).toHaveURL(/status=watching/);
+  await expect(page).toHaveURL(/status=completed/);
   await expect(page).toHaveURL(/type=tv/);
-  await expect(page).toHaveURL(/sort=recent/);
-  await expectItems(page, ["Bravo Show"]);
-
-  await typeGroup(page).getByRole("link", { name: "Movies" }).click();
-  await expect(page).toHaveURL(/type=movie/);
   await expect(page.getByText("No titles match these filters.")).toBeVisible();
   await expectItems(page, []);
 });
@@ -307,10 +366,11 @@ test("reset filters clears the filters", async ({ page, loginAs, db }) => {
   await resetFilters(page).click();
 
   await expect(page).toHaveURL(`${BASE_URL}/my-list`);
+  // the shelves, in tab order
   await expectItems(page, [
-    "Delta Show",
-    "Charlie Movie",
     "Bravo Show",
+    "Charlie Movie",
+    "Delta Show",
     "Alpha Movie",
   ]);
   await expect(resetFilters(page)).toHaveCount(0);
@@ -347,10 +407,29 @@ const thirty: ListMovie[] = Array.from({ length: 30 }, (_, i) => ({
 const titles = (from: number, to: number) =>
   thirty.slice(from, to).map((entry) => entry.name);
 
-test("a long list is paginated", async ({ page, loginAs, db }) => {
+test("a long shelf links to its tab", async ({ page, loginAs, db }) => {
   const user = await loginAs();
   await seedList(db, user.id, thirty);
   await page.goto("/my-list");
+
+  // the shelf holds the first 6, and the All tab has no pager
+  await expectItems(page, titles(0, 6), 30);
+  await expect(
+    page.getByRole("navigation", { name: "Pagination" }),
+  ).toHaveCount(0);
+
+  await shelf(page, "Completed 30")
+    .getByRole("link", { name: "See all (30)" })
+    .click();
+
+  await expect(page).toHaveURL(`${BASE_URL}/my-list?status=completed`);
+  await expectItems(page, titles(0, 24), 30);
+});
+
+test("a long list is paginated", async ({ page, loginAs, db }) => {
+  const user = await loginAs();
+  await seedList(db, user.id, thirty);
+  await page.goto("/my-list?status=completed");
 
   await expectItems(page, titles(0, 24), 30);
   const pager = page.getByRole("navigation", { name: "Pagination" });
@@ -360,11 +439,11 @@ test("a long list is paginated", async ({ page, loginAs, db }) => {
   );
 
   await pager.getByRole("link", { name: "Page 2" }).click();
-  await expect(page).toHaveURL(`${BASE_URL}/my-list?page=2`);
+  await expect(page).toHaveURL(`${BASE_URL}/my-list?status=completed&page=2`);
   await expectItems(page, titles(24, 30), 30);
 
   await pager.getByRole("link", { name: "Previous" }).click();
-  await expect(page).toHaveURL(`${BASE_URL}/my-list`);
+  await expect(page).toHaveURL(`${BASE_URL}/my-list?status=completed`);
   await expectItems(page, titles(0, 24), 30);
 });
 
@@ -376,10 +455,21 @@ test("a page past the end redirects to the last page", async ({
   const user = await loginAs();
   await seedList(db, user.id, thirty);
 
-  await page.goto("/my-list?sort=recent&page=9");
+  await page.goto("/my-list?status=completed&sort=recent&page=9");
 
-  await expect(page).toHaveURL(`${BASE_URL}/my-list?sort=recent&page=2`);
+  await expect(page).toHaveURL(
+    `${BASE_URL}/my-list?status=completed&sort=recent&page=2`,
+  );
   await expectItems(page, titles(0, 6).reverse(), 30);
+});
+
+test("the All tab ignores the page", async ({ page, loginAs, db }) => {
+  const user = await loginAs();
+  await seedList(db, user.id, thirty);
+
+  await page.goto("/my-list?sort=recent&page=2");
+
+  await expectItems(page, titles(24, 30).reverse(), 30);
 });
 
 test("a page past the end of an empty view drops the page", async ({
@@ -388,9 +478,9 @@ test("a page past the end of an empty view drops the page", async ({
 }) => {
   await loginAs();
 
-  await page.goto("/my-list?type=tv&page=3");
+  await page.goto("/my-list?status=watching&type=tv&page=3");
 
-  await expect(page).toHaveURL(`${BASE_URL}/my-list?type=tv`);
+  await expect(page).toHaveURL(`${BASE_URL}/my-list?status=watching&type=tv`);
   await expect(page.getByText("Your list is empty.")).toBeVisible();
 });
 
@@ -456,7 +546,10 @@ test.describe("at 320 px", () => {
     const item = row(page, name);
     await expect(item).toBeVisible();
     const sticksOut = await item.evaluate((li) => {
-      const { left, right } = li.closest("section")!.getBoundingClientRect();
+      // the page's section, not the shelf's
+      const { left, right } = li
+        .closest("main > section")!
+        .getBoundingClientRect();
       return [li, ...li.querySelectorAll("*")]
         .filter((e) => {
           const box = e.getBoundingClientRect();

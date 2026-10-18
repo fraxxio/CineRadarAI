@@ -6,13 +6,14 @@ import {
   getEntry,
   getListCounts,
   getListPage,
+  getShelf,
   readEntries,
   removeEntry,
   saveEntry,
   saveEntryStatus,
 } from "./store";
 import type { ListStatus } from "./entry";
-import { DEFAULT_VIEW, PAGE_SIZE, type ListView } from "./view";
+import { DEFAULT_VIEW, PAGE_SIZE, SHELF_SIZE, type ListView } from "./view";
 import {
   forceFailure,
   getMovies,
@@ -207,6 +208,121 @@ describe("getListPage", () => {
   test("returns [] for a user with no entries", async () => {
     const user = await seedUser();
     expect(await getListPage(user.id, DEFAULT_VIEW)).toEqual([]);
+  });
+});
+
+describe("getShelf", () => {
+  const seeded = async (entries: ListMovie[]) => {
+    const user = await seedUser();
+    await seedList(user.id, entries);
+    return user.id;
+  };
+
+  const names = async (userId: string, shelf: Parameters<typeof getShelf>[1]) =>
+    (await getShelf(userId, shelf)).map((entry) => entry.name);
+
+  // 8 watching titles, rated 1-8 in insertion order, half of them TV
+  const watching = Array.from({ length: 8 }, (_, i) =>
+    makeMovie({
+      movieId: i + 1,
+      name: `W${i + 1}`,
+      type: i % 2 ? "tv" : "movie",
+      status: "Watching",
+      rating: i + 1,
+    }),
+  );
+
+  test("holds at most SHELF_SIZE rows, in the sort", async () => {
+    const userId = await seeded(watching);
+    expect(SHELF_SIZE).toBe(6);
+    expect(
+      await names(userId, {
+        status: "watching",
+        type: "both",
+        sort: "rating-desc",
+      }),
+    ).toEqual(["W8", "W7", "W6", "W5", "W4", "W3"]);
+    expect(
+      await names(userId, {
+        status: "watching",
+        type: "both",
+        sort: "rating-asc",
+      }),
+    ).toEqual(["W1", "W2", "W3", "W4", "W5", "W6"]);
+  });
+
+  test("recent: the newest first", async () => {
+    const userId = await seeded([
+      ...watching,
+      makeMovie({ movieId: 9, name: "W9", status: "Watching" }),
+    ]);
+    expect(
+      await names(userId, { status: "watching", type: "both", sort: "recent" }),
+    ).toEqual(["W9", "W8", "W7", "W6", "W5", "W4"]);
+  });
+
+  test("respects the type", async () => {
+    const userId = await seeded(watching);
+    expect(
+      await names(userId, {
+        status: "watching",
+        type: "tv",
+        sort: "rating-desc",
+      }),
+    ).toEqual(["W8", "W6", "W4", "W2"]);
+  });
+
+  test("only holds its status", async () => {
+    const userId = await seeded([
+      ...watching,
+      makeMovie({ movieId: 20, name: "Done", status: "Completed", rating: 9 }),
+    ]);
+    expect(
+      await names(userId, {
+        status: "completed",
+        type: "both",
+        sort: "rating-desc",
+      }),
+    ).toEqual(["Done"]);
+  });
+
+  test("the other shelf holds the legacy statuses", async () => {
+    const userId = await seeded([
+      ...watching,
+      { ...makeMovie({ movieId: 20, name: "Gone" }), status: "Dropped" },
+      {
+        ...makeMovie({ movieId: 21, name: "Held", type: "tv", rating: 4 }),
+        status: "On hold",
+      },
+    ]);
+    expect(
+      await names(userId, {
+        status: "other",
+        type: "both",
+        sort: "rating-desc",
+      }),
+    ).toEqual(["Held", "Gone"]);
+  });
+
+  test("only reads the given user's rows", async () => {
+    const userId = await seeded(watching);
+    const other = await seeded([
+      makeMovie({ movieId: 99, name: "Theirs", status: "Watching" }),
+    ]);
+    expect(
+      await names(other, {
+        status: "watching",
+        type: "both",
+        sort: "rating-desc",
+      }),
+    ).toEqual(["Theirs"]);
+    expect(
+      await names(userId, {
+        status: "watching",
+        type: "both",
+        sort: "rating-desc",
+      }),
+    ).not.toContain("Theirs");
   });
 });
 

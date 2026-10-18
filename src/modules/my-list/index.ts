@@ -4,7 +4,12 @@ export { default as ListPager } from "./components/ListPager";
 export { default as FilterLink, FilterGroup } from "./components/FilterLink";
 export { default as StatusTabs } from "./components/StatusTabs";
 export { default as ListEmpty } from "./components/ListEmpty";
+export {
+  default as ListShelves,
+  type ShelfEntries,
+} from "./components/ListShelves";
 export { ListRowsSkeleton } from "./skeletons/ListRowsSkeleton";
+export { ListShelvesSkeleton } from "./skeletons/ListShelvesSkeleton";
 export {
   LIST_STATUSES,
   isListStatus,
@@ -20,12 +25,15 @@ export { entryInput, entryKeyInput, titleToSaveInput } from "./entryInput";
 export {
   DEFAULT_VIEW,
   PAGE_SIZE,
+  SHELF_SIZE,
   STATUS_TABS,
   countsFor,
   isFiltered,
   listHref,
   pageCount,
   parseListView,
+  shelfStatuses,
   type ListCounts,
   type ListView,
+  type ShelfStatus,
 } from "./view";

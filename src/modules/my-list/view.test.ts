@@ -8,7 +8,9 @@ import {
   listHref,
   pageCount,
   parseListView,
+  shelfStatuses,
   type ListCountRow,
+  type ListCounts,
   type ListView,
 } from "./view";
 
@@ -73,14 +75,22 @@ describe("parseListView", () => {
   it.each(["0", "-1", "abc", "1.5", "2e1", "", " 2", "02"])(
     "page=%j -> 1",
     (page) => {
-      expect(parseListView({ page }).page).toBe(1);
+      expect(parseListView({ status: "watching", page }).page).toBe(1);
     },
   );
 
   test("a huge page stays a safe integer", () => {
-    expect(parseListView({ page: "9".repeat(30) }).page).toBe(
-      Number.MAX_SAFE_INTEGER,
-    );
+    expect(
+      parseListView({ status: "watching", page: "9".repeat(30) }).page,
+    ).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  // the "All" tab shows shelves, not pages
+  test("the All tab ignores the page", () => {
+    expect(parseListView({ page: "3" }).page).toBe(1);
+    expect(parseListView({ status: "all", page: "3" }).page).toBe(1);
+    // an invalid status falls back to All, so its page goes too
+    expect(parseListView({ status: "nope", page: "3" }).page).toBe(1);
   });
 });
 
@@ -129,6 +139,14 @@ describe("listHref", () => {
     expect(listHref(view, { page: 1 })).toBe(
       "/my-list?status=watching&type=tv&sort=recent",
     );
+  });
+
+  test("the All tab never has a page", () => {
+    expect(listHref(view, { status: "all", page: 2 })).toBe(
+      "/my-list?type=tv&sort=recent",
+    );
+    expect(listHref({ ...DEFAULT_VIEW, page: 3 }, {})).toBe("/my-list");
+    expect(listHref(DEFAULT_VIEW, { page: 2 })).toBe("/my-list");
   });
 });
 
@@ -220,5 +238,35 @@ describe("isFiltered", () => {
     { sort: "recent" },
   ])("%j is filtered", (changes) => {
     expect(isFiltered({ ...DEFAULT_VIEW, ...changes })).toBe(true);
+  });
+});
+
+describe("shelfStatuses", () => {
+  const counts = (changes: Partial<ListCounts>): ListCounts => ({
+    all: 0,
+    watching: 0,
+    planning: 0,
+    completed: 0,
+    other: 0,
+    ...changes,
+  });
+
+  test("every status but All, in tab order", () => {
+    expect(
+      shelfStatuses(
+        counts({ all: 4, watching: 1, planning: 1, completed: 1, other: 1 }),
+      ),
+    ).toEqual(["watching", "planning", "completed", "other"]);
+  });
+
+  test("skips the empty statuses", () => {
+    expect(shelfStatuses(counts({ all: 3, completed: 2, other: 1 }))).toEqual([
+      "completed",
+      "other",
+    ]);
+  });
+
+  test("an empty view has no shelves", () => {
+    expect(shelfStatuses(counts({}))).toEqual([]);
   });
 });

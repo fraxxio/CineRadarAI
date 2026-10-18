@@ -3,12 +3,12 @@ import { describe, expect, it, test } from "vitest";
 import ListPager, { pagerItems } from "./ListPager";
 import { DEFAULT_VIEW, PAGE_SIZE, type ListView } from "../view";
 
+// only status tabs are paginated; the "All" tab shows shelves
+const tabView: ListView = { ...DEFAULT_VIEW, status: "completed" };
+
 const renderPager = (changes: Partial<ListView>, pages: number) =>
   render(
-    <ListPager
-      view={{ ...DEFAULT_VIEW, ...changes }}
-      total={pages * PAGE_SIZE}
-    />,
+    <ListPager view={{ ...tabView, ...changes }} total={pages * PAGE_SIZE} />,
   );
 
 const pagination = () => screen.getByRole("navigation", { name: "Pagination" });
@@ -34,18 +34,18 @@ describe("pagerItems", () => {
 describe("ListPager", () => {
   test("hidden with one page", () => {
     const { container } = render(
-      <ListPager view={DEFAULT_VIEW} total={PAGE_SIZE} />,
+      <ListPager view={tabView} total={PAGE_SIZE} />,
     );
     expect(container).toBeEmptyDOMElement();
   });
 
   test("hidden for an empty view", () => {
-    const { container } = render(<ListPager view={DEFAULT_VIEW} total={0} />);
+    const { container } = render(<ListPager view={tabView} total={0} />);
     expect(container).toBeEmptyDOMElement();
   });
 
   test("shows with one row over a page", () => {
-    render(<ListPager view={DEFAULT_VIEW} total={PAGE_SIZE + 1} />);
+    render(<ListPager view={tabView} total={PAGE_SIZE + 1} />);
     expect(pageLinks()).toEqual(["1", "2"]);
   });
 
@@ -76,11 +76,11 @@ describe("ListPager", () => {
     renderPager({ page: 2 }, 3);
     expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute(
       "href",
-      "/my-list",
+      "/my-list?status=completed",
     );
     expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute(
       "href",
-      "/my-list?page=3",
+      "/my-list?status=completed&page=3",
     );
   });
 

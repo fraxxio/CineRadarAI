@@ -24,8 +24,10 @@ export const DEFAULT_VIEW: ListView = {
 };
 
 export const PAGE_SIZE = 24;
+// the rows per shelf on the "All" tab
+export const SHELF_SIZE = 6;
 
-// the tabs and, from phase 5, the shelves are shown in this order
+// the tabs and the shelves are shown in this order
 export const STATUS_TABS: readonly {
   slug: ListStatusFilter;
   label: string;
@@ -57,21 +59,29 @@ const parsePage = (param: Param) =>
     ? Math.min(Number(param), Number.MAX_SAFE_INTEGER)
     : undefined;
 
-// unknown or invalid values fall back to the default, never an error
-export const parseListView = (searchParams: SearchParams): ListView => ({
-  status: oneOf(STATUS_FILTERS, searchParams.status) ?? DEFAULT_VIEW.status,
-  type: oneOf(TYPE_FILTERS, searchParams.type) ?? DEFAULT_VIEW.type,
-  sort: oneOf(SORTS, searchParams.sort) ?? DEFAULT_VIEW.sort,
-  page: parsePage(searchParams.page) ?? DEFAULT_VIEW.page,
-});
+// unknown or invalid values fall back to the default, never an error. The
+// "All" tab shows shelves, not pages, so it ignores the page
+export function parseListView(searchParams: SearchParams): ListView {
+  const status =
+    oneOf(STATUS_FILTERS, searchParams.status) ?? DEFAULT_VIEW.status;
+  return {
+    status,
+    type: oneOf(TYPE_FILTERS, searchParams.type) ?? DEFAULT_VIEW.type,
+    sort: oneOf(SORTS, searchParams.sort) ?? DEFAULT_VIEW.sort,
+    page:
+      (status !== "all" && parsePage(searchParams.page)) || DEFAULT_VIEW.page,
+  };
+}
 
-// changing a filter or the sort starts again from page 1
+// changing a filter or the sort starts again from page 1; the "All" tab
+// never has a page
 export function listHref(view: ListView, changes: Partial<ListView>) {
   const resetsPage = Object.keys(changes).some((key) => key !== "page");
+  const status = changes.status ?? view.status;
   const next: ListView = {
     ...view,
     ...changes,
-    page: changes.page ?? (resetsPage ? 1 : view.page),
+    page: status === "all" ? 1 : changes.page ?? (resetsPage ? 1 : view.page),
   };
   const params = new URLSearchParams();
   for (const key of ["status", "type", "sort", "page"] as const) {
@@ -114,3 +124,12 @@ export function countsFor(rows: ListCountRow[], type: ListTypeFilter) {
 // an empty view still has one (empty) page
 export const pageCount = (total: number) =>
   Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+// a shelf for every status tab but "all"
+export type ShelfStatus = Exclude<ListStatusFilter, "all">;
+
+// the "All" tab's shelves: the non-empty statuses, in tab order
+export const shelfStatuses = (counts: ListCounts): ShelfStatus[] =>
+  STATUS_TABS.flatMap(({ slug }) =>
+    slug !== "all" && counts[slug] > 0 ? [slug] : [],
+  );

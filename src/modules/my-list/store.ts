@@ -9,7 +9,13 @@ import {
   type ListEntry,
   type StoredEntry,
 } from "./entry";
-import { PAGE_SIZE, type ListCountRow, type ListView } from "./view";
+import {
+  PAGE_SIZE,
+  SHELF_SIZE,
+  type ListCountRow,
+  type ListView,
+  type ShelfStatus,
+} from "./view";
 
 // Each write is a single statement, so it's atomic without a transaction and
 // concurrent writes to different entries can't overwrite each other (for the
@@ -26,7 +32,10 @@ export const readEntries = async (userId: string) =>
     .where(eq(listEntries.userId, userId))
     .orderBy(asc(listEntries.id));
 
-const viewFilter = (userId: string, { status, type }: ListView) =>
+const viewFilter = (
+  userId: string,
+  { status, type }: Pick<ListView, "status" | "type">,
+) =>
   and(
     eq(listEntries.userId, userId),
     type === "both" ? undefined : eq(listEntries.type, type),
@@ -45,7 +54,7 @@ const viewFilter = (userId: string, { status, type }: ListView) =>
 
 // rated first, then unrated (0); ties keep insertion order. `recent` uses the
 // id as the date added
-const viewOrder = ({ sort }: ListView) =>
+const viewOrder = ({ sort }: Pick<ListView, "sort">) =>
   sort === "recent"
     ? [desc(listEntries.id)]
     : [
@@ -67,6 +76,20 @@ export const getListPage = cache(
       .limit(PAGE_SIZE)
       .offset((view.page - 1) * PAGE_SIZE),
 );
+
+// the first rows of one status on the "All" tab, in the view's sort. Not
+// cached: the page reads each shelf once, and `cache` would key the fresh
+// view object by identity anyway
+export const getShelf = async (
+  userId: string,
+  view: { status: ShelfStatus } & Pick<ListView, "type" | "sort">,
+): Promise<StoredEntry[]> =>
+  db
+    .select(entryColumns)
+    .from(listEntries)
+    .where(viewFilter(userId, view))
+    .orderBy(...viewOrder(view))
+    .limit(SHELF_SIZE);
 
 // the count per stored status and type; the page derives every total from it
 export const getListCounts = cache(

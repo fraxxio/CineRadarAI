@@ -1,4 +1,4 @@
-import ListRow from "./ListRow";
+import ListRow, { PRIORITY_ROWS } from "./ListRow";
 import type { StoredEntry } from "../entry";
 
 type ListProps = {
@@ -6,9 +6,6 @@ type ListProps = {
   // an empty view shows ListEmpty instead
   entries: Promise<StoredEntry[]>;
 };
-
-// rows whose images load eagerly, roughly the first screen
-const PRIORITY_ROWS = 3;
 
 export default async function MyListItems({ entries }: ListProps) {
   const movies = await entries;

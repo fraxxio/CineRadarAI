@@ -14,6 +14,9 @@ type ListRowProps = {
   priority?: boolean;
 };
 
+// rows whose images load eagerly, roughly the first screen
+export const PRIORITY_ROWS = 3;
+
 const TYPE_LABELS = { movie: "Movie", tv: "TV" } as const;
 
 export default function ListRow({ movie, priority = false }: ListRowProps) {
